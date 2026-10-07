@@ -74,7 +74,6 @@ export class BrowserSession {
   constructor(world) {
     this.world = world;
     this.cookies = new Map(); // name -> { value, path }
-    this.blockThirdPartyCookies = false;
   }
   _cookieHeaderFor(path) {
     return [...this.cookies.entries()]
