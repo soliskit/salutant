@@ -133,10 +133,25 @@ test('a correctly signed proof missing required claims is rejected', async () =>
   }
 });
 
-test('the exchange itself enforces the 60-second window', async () => {
+test('the exchange window runs from proof issuance: a slow code step does not shut out a resend', async () => {
+  const w = await makeWorld();
+  // The person takes 61 seconds to read the mail and type the code.
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  await w.service.drain();
+  const code = w.mailer.lastCode();
+  w.advance(61_000);
+  const verified = await (await browser.verify({ challengeId: created.challengeId, code, address: OWNER })).json();
+  assert.ok(verified.proof, 'proof issued after a slow code step');
+  const exchange = await w.app.handleExchange({ proof: verified.proof, state: verified.state }, SERVICE_ORIGIN);
+  assert.equal(exchange.status, 200, 'window runs from issuance, not state creation');
+});
+
+test('the exchange rejects a proof 61 seconds after issuance', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
   w.advance(61_000);
   const late = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
-  assert.notEqual(late.status, 200, 'an exchange 61 seconds after the state was created is rejected');
+  assert.notEqual(late.status, 200, 'an exchange 61 seconds after issuance is rejected');
 });
