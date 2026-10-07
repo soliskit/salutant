@@ -173,7 +173,13 @@ test('10 concurrent creates cannot exceed the hourly send budget', async () => {
     new BrowserSession(w).postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': `192.0.2.${i}` } })));
   await w.service.drain();
   assert.equal(w.mailer.outbox.length, 3, 'cap 3 sends per hour holds under concurrency');
-  assert.equal(w.store.keysWithPrefix('challenge:').length, 3, 'refused requests wrote nothing');
+  // Refused requests do the same storage work as unlisted acceptances
+  // (R3), but none of their reservations is ever delivered.
+  const delivered = w.store.keysWithPrefix('reservation:')
+    .map((k) => w.store.transact((s) => s.getRef(k)))
+    .filter((r) => r.outcome === 'accepted');
+  assert.equal(delivered.length, 3, 'only 3 reservations delivered');
+  assert.equal(w.store.keysWithPrefix('challenge:').length, 10, 'uniform storage work');
 });
 
 test('10 concurrent resends after the cooldown produce exactly one resend', async () => {
@@ -279,4 +285,50 @@ test('resend budget refusal with sendsPerAddressPerHour=1 matches the unlisted r
     'the over-budget resend answer must not reveal membership');
   await w.service.drain();
   assert.equal(w.mailer.outbox.length, 1, 'no mail beyond the first send');
+});
+
+test('after a withheld resend, an immediate retry meets the same cooldown for both classes', async () => {
+  const w = await makeWorld();
+  const start = await w.app.startSignIn(null);
+  const listedBrowser = new BrowserSession(w);
+  const unlistedBrowser = new BrowserSession(w);
+  const lc = await (await listedBrowser.postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': '192.0.2.1' } })).json();
+  const uc = await (await unlistedBrowser.postChallenge({ address: STRANGER, stateId: start.stateId, headers: { 'cf-connecting-ip': '192.0.2.2' } })).json();
+  await w.service.drain();
+  // Three spaced resends each: the third listed resend is withheld
+  // (hourly budget 3 spent), the unlisted ones are all accepted.
+  for (let i = 0; i < 3; i++) {
+    w.advance(61_000);
+    await listedBrowser.resend({ challengeId: lc.challengeId, address: OWNER });
+    await unlistedBrowser.resend({ challengeId: uc.challengeId, address: STRANGER });
+  }
+  // Immediate follow-up: both classes must meet the same cooldown.
+  const listedRetry = await listedBrowser.resend({ challengeId: lc.challengeId, address: OWNER });
+  const unlistedRetry = await unlistedBrowser.resend({ challengeId: uc.challengeId, address: STRANGER });
+  assert.equal(listedRetry.status, unlistedRetry.status, 'withheld and accepted resends move the cooldown clock identically');
+  assert.deepEqual(await listedRetry.json(), { error: 'cooldown' });
+  assert.deepEqual(await unlistedRetry.json(), { error: 'cooldown' });
+});
+
+test('withheld resends move the cooldown clock under tight budgets (hourly, daily, monthly)', async () => {
+  for (const config of [{ sendsPerAddressPerHour: 1 }, { sendsPerDay: 1 }, { sendsPerMonth: 1 }]) {
+    const w = await makeWorld({ config });
+    const start = await w.app.startSignIn(null);
+    const listedBrowser = new BrowserSession(w);
+    const unlistedBrowser = new BrowserSession(w);
+    const lc = await (await listedBrowser.postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': '192.0.2.1' } })).json();
+    const uc = await (await unlistedBrowser.postChallenge({ address: STRANGER, stateId: start.stateId, headers: { 'cf-connecting-ip': '192.0.2.2' } })).json();
+    await w.service.drain();
+    w.advance(61_000);
+    const listedResend = await listedBrowser.resend({ challengeId: lc.challengeId, address: OWNER });
+    const unlistedResend = await unlistedBrowser.resend({ challengeId: uc.challengeId, address: STRANGER });
+    assert.equal(listedResend.status, unlistedResend.status, `first resend under ${JSON.stringify(config)}`);
+    // Immediate retry: the withheld listed resend and the accepted
+    // unlisted resend must both be in cooldown.
+    const listedRetry = await listedBrowser.resend({ challengeId: lc.challengeId, address: OWNER });
+    const unlistedRetry = await unlistedBrowser.resend({ challengeId: uc.challengeId, address: STRANGER });
+    assert.equal(listedRetry.status, unlistedRetry.status, `immediate retry under ${JSON.stringify(config)}`);
+    assert.equal(listedRetry.status, 429);
+    assert.deepEqual(await listedRetry.json(), { error: 'cooldown' });
+  }
 });
