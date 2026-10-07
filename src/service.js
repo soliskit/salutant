@@ -233,9 +233,28 @@ export class SalutantService {
         .filter((c) => c.addressHash === addressHash && c.state === 'open' && c.expiresAtMs > now)
         .length;
       if (openCount >= this.config.activeChallengesPerAddress) return 'withheld_cap';
-      if (readCounter(s, `sendaddr:${addressHash}`, hourWindow(now)) >= this.config.sendsPerAddressPerHour) return 'withheld_send_limit';
-      if (readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay) return 'budget_spent';
-      if (readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth) return 'budget_spent';
+      const overBudget =
+        readCounter(s, `sendaddr:${addressHash}`, hourWindow(now)) >= this.config.sendsPerAddressPerHour ||
+        readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay ||
+        readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth;
+      if (overBudget) {
+        // R3: a budget refusal does the SAME storage work as an
+        // unlisted acceptance (challenge + reservation, real ids, real
+        // binding) so resends and cooldowns evolve identically for
+        // every class. The reservation outcome 'withheld' can never be
+        // delivered, so verify always rejects it (R5), and no send
+        // budget is touched because no mail goes out.
+        s.set(`challenge:${challengeId}`, {
+          id: challengeId, addressHash, appOrigin: app.origin, stateId: body.stateId,
+          purpose: 'signin', codeHmac, bindingHmac, attempts: 0, state: 'open',
+          epoch, createdAtMs: now, expiresAtMs: now + this.config.codeTtlMs,
+          lastSentAtMs: now, listed, proofId: null, requestId,
+        });
+        s.set(`reservation:${requestId}`, {
+          requestId, challengeId, addressHash, createdAtMs: now, epoch, outcome: 'withheld',
+        });
+        return 'withheld_send_limit';
+      }
       // Durable reservation in the same step (R5, contract: Atomic
       // state changes). Only after it exists may the adapter run. The
       // record carries the epoch (R14) and only keyed hashes of the
@@ -256,14 +275,21 @@ export class SalutantService {
       }
       return 'accepted';
     });
-    if (verdict !== 'accepted') {
-      // EVERY refusal - active cap, per-address budget, global budget -
-      // answers with the same generic 200, the same body shape and the
-      // same cookie shape as an acceptance (R3, R8). The response must
-      // never vary with the address class or with which limit fired:
-      // any difference is a membership oracle.
+    if (verdict === 'withheld_cap') {
+      // The cap refusal is class-uniform (every address hits it with
+      // full slots), so stand-in ids and a stand-in cookie reveal
+      // nothing; no record exists to bind.
       this.log('challenge', verdict, sourceHash);
       return withheldChallenge(respondAndRecord);
+    }
+    if (verdict === 'withheld_send_limit') {
+      // Budget refusal: the record exists (written in the gate above),
+      // so answer with its real ids and real binding cookie - on the
+      // wire this is indistinguishable from an acceptance (R3).
+      this.log('challenge', verdict, sourceHash);
+      const refusedCookie =
+        `sb_${cookieNameFragment(challengeId)}=${binding}; Path=/v1/challenges/${encodeURIComponent(challengeId)}/verify; Secure; HttpOnly; SameSite=Strict`;
+      return respondAndRecord(200, { status: 'ok', requestId, challengeId }, refusedCookie);
     }
 
     // The response never waits on the mail provider (R3); the send runs
@@ -317,9 +343,19 @@ export class SalutantService {
       if (!c || c.state !== 'open' || c.expiresAtMs <= now || c.epoch !== epoch) return 'gone';
       if (now - c.lastSentAtMs < this.config.resendCooldownMs) return 'cooldown';
       if (c.listed) {
-        if (readCounter(s, `sendaddr:${c.addressHash}`, hourWindow(now)) >= this.config.sendsPerAddressPerHour) return 'rate_limited';
-        if (readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay) return 'budget_spent';
-        if (readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth) return 'budget_spent';
+        const overBudget =
+          readCounter(s, `sendaddr:${c.addressHash}`, hourWindow(now)) >= this.config.sendsPerAddressPerHour ||
+          readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay ||
+          readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth;
+        if (overBudget) {
+          // A withheld resend moves the cooldown clock exactly like an
+          // accepted one (R3): identical state evolution, so an
+          // immediate retry meets the same cooldown for every class.
+          // The earlier code is NOT rotated - this refusal sent no
+          // mail, so the owner's last delivered code stays valid.
+          c.lastSentAtMs = now;
+          return 'withheld_send_limit';
+        }
       }
       c.codeHmac = codeHmac; // the earlier code is dead from this moment
       c.lastSentAtMs = now;
@@ -341,7 +377,7 @@ export class SalutantService {
       this.log('resend', verdict, sourceHash);
       return respond(429, { error: verdict });
     }
-    if (verdict === 'rate_limited' || verdict === 'budget_spent') {
+    if (verdict === 'withheld_send_limit') {
       // Budget refusals use the same uniform withheld path as challenge
       // creation (R3): the per-address send counter only moves for
       // listed addresses, so a 429 here would be a membership oracle.
