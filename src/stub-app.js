@@ -116,6 +116,12 @@ export class StubApp {
         typeof claims.exp === 'number' && typeof claims.nbf === 'number' &&
         typeof claims.iat === 'number' && typeof claims.epoch === 'number';
       if (!wellFormed) return { status: 400, acao: this.serviceOrigin, body: { error: 'bad_proof' } };
+      // The bounded exchange window runs from proof issuance, not from
+      // state creation: a resend (60s cooldown) must still be able to
+      // complete a sign-in.
+      if (now - claims.iat * 1000 >= 60_000) {
+        return { status: 400, acao: this.serviceOrigin, body: { error: 'bad_proof' } };
+      }
       const bad =
         claims.iss !== this.serviceOrigin ||
         claims.aud !== this.origin ||
@@ -137,12 +143,12 @@ export class StubApp {
       if (s.getRef(`redemption:${claims.jti}`)) return 'replayed';
       const pending = s.getRef(`state:${state}`);
       if (!pending || pending.consumed || pending.verifiedSub) return 'bad_state';
-      if (this.clock() - pending.createdAtMs >= 60_000) return 'bad_state'; // the bounded window
       s.set(`redemption:${claims.jti}`, {
         jti: claims.jti, redeemedAtMs: this.clock(), sessionId: null,
       });
       pending.verifiedSub = claims.sub;
       pending.verifiedEpoch = claims.epoch;
+      pending.verifiedAtMs = this.clock(); // the completion window starts at verification
       return 'ok';
     });
     if (verdict !== 'ok') {
@@ -170,7 +176,7 @@ export class StubApp {
         .map((k) => s.getRef(k))
         .find((p) => timingSafeEqual(fromBase64Url(p.cookieHmac), fromBase64Url(cookieHmac))
           && p.verifiedSub && !p.consumed
-          && now - p.createdAtMs < 60_000); // the exchange is bounded
+          && p.verifiedAtMs && now - p.verifiedAtMs < 60_000); // completion is bounded
       if (!pending) return { status: 401, body: { error: 'no_verified_signin' } };
       pending.consumed = true; // one-time
       const sessionId = randomId(24);
