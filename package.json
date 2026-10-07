@@ -1,0 +1,11 @@
+{
+  "name": "salutant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Email sign-in proofs. Phase 1: local mock service, stub app, and tests. No real sends, no credentials, no network calls.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  }
+}
