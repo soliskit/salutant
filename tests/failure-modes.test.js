@@ -91,7 +91,16 @@ test('provider timeout: the person can resend after the cooldown and sign in', a
   assert.equal(w.mailer.attempts.length, 2, 'a person-driven resend, not an automatic retry');
   const code = w.mailer.lastCode();
   const ok = await browser.verify({ challengeId: created.challengeId, code, address: OWNER });
-  assert.ok((await ok.json()).proof);
+  const verified = await ok.json();
+  assert.ok(verified.proof);
+  // The resent code must complete the whole sign-in: the exchange
+  // window runs from proof issuance, so a resend after the 60s
+  // cooldown is not shut out.
+  const exchange = await w.app.handleExchange(
+    { proof: verified.proof, state: verified.state }, 'https://salutant.example.test');
+  assert.equal(exchange.status, 200, 'resent proof exchanges');
+  const complete = await w.app.handleComplete(`pre=${start.cookieValue}`);
+  assert.equal(complete.status, 200, 'resent sign-in completes');
 });
 
 test('a failed send cannot verify: the undelivered code is dead on arrival', async () => {
