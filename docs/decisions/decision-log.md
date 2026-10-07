@@ -3,8 +3,9 @@
 Owner decisions this repository is built on, recorded 7 October 2026.
 Dates are when the owner decided. Bracketed values are proposals from the
 plan, not owner decisions. This log deliberately carries no message
-references or personal details; the full provenance lives in the private
-approved plan (Draft 10, plus the owner's later change to decision 2).
+references or personal details; the full provenance lives in the
+private Salutant Phase 1 Plan (plus the owner's later change to
+decision 2).
 
 ## Settled
 
