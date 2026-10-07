@@ -191,3 +191,46 @@ test('10 concurrent resends after the cooldown produce exactly one resend', asyn
   assert.equal(results.filter((r) => r.status === 429).length, 9);
   assert.equal(w.mailer.outbox.length, 2, 'one original mail plus one resend');
 });
+
+test('every refusal is identical for every address class, whatever limit fired', async () => {
+  const w = await makeWorld({ config: { sendsPerDay: 2 } });
+  const browser = new BrowserSession(w);
+  // Fill the owner's two slots and exhaust the daily budget.
+  const s1 = await w.app.startSignIn(null);
+  const s2 = await w.app.startSignIn(null);
+  await browser.postChallenge({ address: OWNER, stateId: s1.stateId, headers: { 'cf-connecting-ip': '192.0.2.1' } });
+  await browser.postChallenge({ address: OWNER, stateId: s2.stateId, headers: { 'cf-connecting-ip': '192.0.2.2' } });
+  await w.service.drain();
+  assert.equal(w.mailer.outbox.length, 2);
+  // The listed address hits the cap first; the unlisted address hits
+  // the global budget. Both must answer identically (R3).
+  const probe = async (address, ip) => {
+    const start = await w.app.startSignIn(null);
+    const res = await new BrowserSession(w).postChallenge({ address, stateId: start.stateId, headers: { 'cf-connecting-ip': ip } });
+    const body = JSON.stringify(await res.json()).replace(/"(requestId|challengeId)":"[^"]+"/g, '"$1":"x"');
+    const cookie = (res.headers.getSetCookie?.() ?? [''])[0]
+      .replace(/sb_[^=]+=[^;]+/, 'sb_ID=BINDING').replace(/challenges\/[^/]+/, 'challenges/ID');
+    return `${res.status}:${body}:${cookie}`;
+  };
+  assert.equal(await probe(OWNER, '192.0.2.250'), await probe(STRANGER, '192.0.2.251'),
+    'cap refusal and budget refusal must be indistinguishable');
+});
+
+test('an over-hourly-budget listed address gets the same cookie shape as an accepted unlisted one', async () => {
+  const w = await makeWorld({ config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 } });
+  for (let i = 0; i < 3; i++) {
+    const start = await w.app.startSignIn(null);
+    await new BrowserSession(w).postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': `192.0.2.${i}` } });
+    w.advance(61_000);
+  }
+  const probe = async (address, ip) => {
+    const start = await w.app.startSignIn(null);
+    const res = await new BrowserSession(w).postChallenge({ address, stateId: start.stateId, headers: { 'cf-connecting-ip': ip } });
+    const cookies = res.headers.getSetCookie?.() ?? [];
+    assert.equal(cookies.length, 1, `${address}: exactly one Set-Cookie`);
+    return cookies[0].replace(/sb_[^=]+=[^;]+/, 'sb_ID=BINDING').replace(/challenges\/[^/]+/, 'challenges/ID');
+  };
+  const listedOverBudget = await probe(OWNER, '192.0.2.250');
+  const unlistedAccepted = await probe(STRANGER, '192.0.2.251');
+  assert.equal(listedOverBudget, unlistedAccepted, 'cookie issuance must be uniform (R3)');
+});
