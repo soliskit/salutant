@@ -96,8 +96,8 @@ not locked out, and codes are never invalidated - but a code from an
 attacker-created challenge is never usable by the owner. The
 alternative (dropping the browser binding) would let a phished or
 observed code verify from any browser, which is the attack R2's
-binding exists to stop. This trade-off is the owner's call; the
-prototype keeps the binding.
+binding exists to stop. The owner decided this trade-off on 7 October
+2026: keep the binding (decision log, settled item 10).
 
 ## What local testing does not prove
 
