@@ -61,6 +61,7 @@ repo is the home of the email service; failure is closed.
 5. **Key staleness number.** One end-to-end bound, proposed as
    [10 minutes]. The owner's call: accept or shorten.
 6. **Later phases.** This approval covers phase 1 (local and mocks)
-   only. Cloud tests, real delivery (including the iCloud feasibility
-   gate), the owner-only live trial, and launch each need their own
-   authorization after measured values are reviewed.
+   only. Cloud tests, real delivery (including the Google terms and
+   sending-limits research gate for the dedicated Gmail account,
+   decision 2), the owner-only live trial, and launch each need their
+   own authorization after measured values are reviewed.
