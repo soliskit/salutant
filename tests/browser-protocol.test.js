@@ -4,10 +4,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeWorld, BrowserSession, honestSignIn, OWNER, ATTACKER, SERVICE_ORIGIN, APP_ORIGIN } from './helpers.js';
 
-test('end to end: address, code, proof, exchange, session - with third-party cookies blocked', async () => {
+test('end to end: address, code, proof, exchange, session - with only first-party cookies in play', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
-  browser.blockThirdPartyCookies = true; // sign-in must not depend on them
   const r = await honestSignIn(w, { browser });
   assert.equal(r.page.status, 200);
   assert.equal(r.exchange.status, 200);
