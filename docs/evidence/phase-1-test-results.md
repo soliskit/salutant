@@ -7,7 +7,7 @@ state; no production limits or data exist.
 
 ## Full suite
 
-62 tests, 62 pass, 0 fail, about 2.3 seconds. Files and what they prove:
+65 tests, 65 pass, 0 fail, about 2.2 seconds. Files and what they prove:
 
 - `tests/lifecycle.test.js` (R1, R2): correct code succeeds exactly
   once; reuse fails; wrong code gives one generic error and counts a
@@ -27,8 +27,10 @@ state; no production limits or data exist.
   foreign keys rejected; unknown key id rejected after one refresh;
   reused state rejected; a proof for another audience rejected; a
   correctly signed proof missing exp, nbf, iat or jti is rejected; the
-  exchange itself enforces the 60-second window (61 seconds is
-  rejected).
+  60-second exchange window runs from proof issuance, so a slow code
+  step (including a resend after its 60-second cooldown) still
+  exchanges, while a proof exchanged 61 seconds after issuance is
+  rejected.
 - `tests/failure-modes.test.js` (R5): an uncertain send is not retried,
   counts against budget and is reconciled; a failed send records the
   reservation and blocks no later retry; a failed send cannot verify -
@@ -38,13 +40,15 @@ state; no production limits or data exist.
   binding cookie, so a fresh-browser retry can still verify; a storage
   failure closes the service with nothing sent; an unreadable epoch
   closes every route; after a provider timeout the person can resend
-  and sign in.
+  and complete the full sign-in through the exchange and session.
 - `tests/limits.test.js` (R6, R8): per-source and per-address hourly
-  request limits; the per-address send budget refuses the fourth
-  request indistinguishably (the same generic 200 an unlisted address
-  always gets, so the limit reveals no membership) and sends no mail;
-  an over-budget listed address and an unlisted address return byte-
-  identical responses apart from the id fields; oversize bodies
+  request limits; every refusal - active cap, per-address budget,
+  global budget - answers with the identical generic 200, body shape
+  and binding-cookie shape for every address class, so no limit
+  response reveals membership; the per-address send budget refuses the
+  fourth request indistinguishably and sends no mail; an over-budget
+  listed address and an unlisted address return byte-identical
+  responses apart from the id fields; oversize bodies
   refused; the spoofed `x-forwarded-for` is ignored; address-linked
   state expires within 24 hours while the monthly total does not; the
   R8 attack test, honest owner path: a stranger fills the owner's two
