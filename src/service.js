@@ -334,9 +334,19 @@ export class SalutantService {
       }
       return 'accepted';
     });
-    if (verdict === 'cooldown' || verdict === 'rate_limited' || verdict === 'budget_spent') {
+    if (verdict === 'cooldown') {
+      // The cooldown is class-uniform (it keys on the challenge's own
+      // last-sent time, bumped for every accepted challenge), so a 429
+      // here reveals no membership.
       this.log('resend', verdict, sourceHash);
       return respond(429, { error: verdict });
+    }
+    if (verdict === 'rate_limited' || verdict === 'budget_spent') {
+      // Budget refusals use the same uniform withheld path as challenge
+      // creation (R3): the per-address send counter only moves for
+      // listed addresses, so a 429 here would be a membership oracle.
+      this.log('resend', verdict, sourceHash);
+      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: peek.id });
     }
     if (verdict === 'gone') {
       return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: peek.id });
