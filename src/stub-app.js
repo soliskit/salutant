@@ -106,6 +106,16 @@ export class StubApp {
       ({ claims } = await verifyProofSignature(proof, publicKey));
       const now = this.clock();
       const skew = this.config.clockSkewMs;
+      // Required claims must be present and typed: a signed proof that
+      // omits exp, nbf, iat or jti is rejected, not waved through by
+      // comparisons against undefined (R4).
+      const wellFormed =
+        typeof claims.iss === 'string' && typeof claims.aud === 'string' &&
+        typeof claims.sub === 'string' && typeof claims.nonce === 'string' &&
+        typeof claims.jti === 'string' && claims.jti.length > 0 &&
+        typeof claims.exp === 'number' && typeof claims.nbf === 'number' &&
+        typeof claims.iat === 'number' && typeof claims.epoch === 'number';
+      if (!wellFormed) return { status: 400, acao: this.serviceOrigin, body: { error: 'bad_proof' } };
       const bad =
         claims.iss !== this.serviceOrigin ||
         claims.aud !== this.origin ||
@@ -127,6 +137,7 @@ export class StubApp {
       if (s.getRef(`redemption:${claims.jti}`)) return 'replayed';
       const pending = s.getRef(`state:${state}`);
       if (!pending || pending.consumed || pending.verifiedSub) return 'bad_state';
+      if (this.clock() - pending.createdAtMs >= 60_000) return 'bad_state'; // the bounded window
       s.set(`redemption:${claims.jti}`, {
         jti: claims.jti, redeemedAtMs: this.clock(), sessionId: null,
       });
