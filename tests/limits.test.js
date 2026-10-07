@@ -234,3 +234,49 @@ test('an over-hourly-budget listed address gets the same cookie shape as an acce
   const unlistedAccepted = await probe(STRANGER, '192.0.2.251');
   assert.equal(listedOverBudget, unlistedAccepted, 'cookie issuance must be uniform (R3)');
 });
+
+test('resend budget refusals are identical for listed and unlisted addresses', async () => {
+  const w = await makeWorld();
+  const start = await w.app.startSignIn(null);
+  const listedBrowser = new BrowserSession(w);
+  const unlistedBrowser = new BrowserSession(w);
+  const lc = await (await listedBrowser.postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': '192.0.2.1' } })).json();
+  const uc = await (await unlistedBrowser.postChallenge({ address: STRANGER, stateId: start.stateId, headers: { 'cf-connecting-ip': '192.0.2.2' } })).json();
+  await w.service.drain();
+  const seq = async (browser, id) => {
+    const out = [];
+    for (let i = 0; i < 3; i++) {
+      w.advance(61_000);
+      const res = await browser.resend({ challengeId: id, address: id === lc.challengeId ? OWNER : STRANGER });
+      const body = JSON.stringify(await res.json()).replace(/"(requestId|challengeId)":"[^"]+"/g, '"$1":"x"');
+      out.push(`${res.status}:${body}`);
+    }
+    return out;
+  };
+  const listed = await seq(listedBrowser, lc.challengeId);
+  const unlisted = await seq(unlistedBrowser, uc.challengeId);
+  // The listed address exhausts its 3 sends/hour on the third resend;
+  // the unlisted address never bumps a counter. Both sequences must
+  // read identically (R3).
+  assert.deepEqual(listed, unlisted, 'resend refusals must not reveal membership');
+  assert.equal(w.mailer.outbox.length, 3, 'the withheld resend sent no mail');
+});
+
+test('resend budget refusal with sendsPerAddressPerHour=1 matches the unlisted response', async () => {
+  const w = await makeWorld({ config: { sendsPerAddressPerHour: 1 } });
+  const start = await w.app.startSignIn(null);
+  const listedBrowser = new BrowserSession(w);
+  const unlistedBrowser = new BrowserSession(w);
+  const lc = await (await listedBrowser.postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': '192.0.2.1' } })).json();
+  const uc = await (await unlistedBrowser.postChallenge({ address: STRANGER, stateId: start.stateId, headers: { 'cf-connecting-ip': '192.0.2.2' } })).json();
+  await w.service.drain();
+  w.advance(61_000);
+  const probe = async (browser, id, address) => {
+    const res = await browser.resend({ challengeId: id, address });
+    return `${res.status}:${JSON.stringify(await res.json()).replace(/"(requestId|challengeId)":"[^"]+"/g, '"$1":"x"')}`;
+  };
+  assert.equal(await probe(listedBrowser, lc.challengeId, OWNER), await probe(unlistedBrowser, uc.challengeId, STRANGER),
+    'the over-budget resend answer must not reveal membership');
+  await w.service.drain();
+  assert.equal(w.mailer.outbox.length, 1, 'no mail beyond the first send');
+});
