@@ -2,14 +2,14 @@
 
 Run on 7 October 2026, locally, on Node.js v22. Every result in this
 document was produced against the exact reviewed tree at commit
-1ff03d26207b8dafc0a3d970e0bd2f8e6e724960 on the `phase-1-local-mock-prototype` branch; the only change
+b9f9b61ff189b98115ff2cb46d1f7bd164681949 on the `phase-1-local-mock-prototype` branch; the only change
 after that commit is this document itself (it names the commit).
 Command: `npm test` (zero dependencies). All runs in the local harness
 with its own test state; no production limits or data exist.
 
 ## Full suite
 
-69 tests, 69 pass, 0 fail, about 2.2 seconds. Files and what they prove:
+71 tests, 71 pass, 0 fail, about 2.4 seconds. Files and what they prove:
 
 - `tests/lifecycle.test.js` (R1, R2): correct code succeeds exactly
   once; reuse fails; wrong code gives one generic error and counts a
@@ -64,7 +64,11 @@ with its own test state; no production limits or data exist.
   resends after the cooldown produce exactly one resend; resend budget
   refusals are byte-identical for listed and unlisted addresses, at the
   default 3-per-hour budget and at a 1-per-hour budget (no 429 to
-  reveal membership);
+  reveal membership); withheld creates and resends evolve state exactly
+  like unlisted acceptances (records, cooldown clock), so an immediate
+  retry after a withheld resend meets the same 429 cooldown for both
+  classes, under the default budget and under 1-per-hour, 1-per-day and
+  1-per-month budgets;
 - `tests/headers.test.js` (R9): every route type (page known and unknown
   app, script, style, challenge, verify error, key endpoint, 404)
   carries the full header set; no-store on sign-in and proof responses;
