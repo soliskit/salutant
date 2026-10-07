@@ -40,6 +40,13 @@ decision 2).
    owner's address can delay them for up to an hour at a time, for the
    owner-only trial. A bot check is added before the service opens to
    anyone else.
+10. **Browser binding stays.** A sign-in code verifies only from the
+    browser that requested it, so a phished or observed code is useless
+    elsewhere. The accepted cost: under a slot-filling attack a code
+    mailed from an attacker's challenge cannot be used in the owner's
+    own browser - the owner is delayed until a slot frees, never locked
+    out (finding 5). (Owner decision 7 October 2026, answering the
+    phase 1 finding-5 question: "Keep it".)
 
 Also settled: free is required, with single-solution hosting where
 possible (hosting order for all projects: GitHub, then Cloudflare, then
