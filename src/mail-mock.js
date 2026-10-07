@@ -1,6 +1,6 @@
 // Mock mail adapter. Implements docs/mail/mock-mail-adapter-contract.md
 // with no network I/O and no credentials. Provider-neutral: the service
-// cannot tell this from a future iCloud or Resend adapter (decision 2).
+// cannot tell this from a future Gmail or Resend adapter (decision 2).
 
 export class MockMailAdapter {
   // behavior: "ok" | "uncertain" | "failed" | (message) => outcome
