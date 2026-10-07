@@ -502,4 +502,4 @@ function bump(s, kind, window, ttlMs, now) {
 
 function readCounter(s, kind, window) {
   return s.getRef(`counter:${kind}:${window}`)?.count ?? 0;
-                                      }
+}
