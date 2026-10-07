@@ -155,3 +155,14 @@ test('the exchange rejects a proof 61 seconds after issuance', async () => {
   const late = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
   assert.notEqual(late.status, 200, 'an exchange 61 seconds after issuance is rejected');
 });
+
+test('exchange window boundary: 59,999 ms after issuance succeeds; 60,000 and 60,001 reject', async () => {
+  for (const [ms, ok] of [[59_999, true], [60_000, false], [60_001, false]]) {
+    const w = await makeWorld();
+    const r = await honestSignIn(w, { redeem: false });
+    assert.ok(r.verified.proof, 'setup proof');
+    w.advance(ms);
+    const res = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
+    assert.equal(res.status === 200, ok, `exchange at +${ms} ms`);
+  }
+});
