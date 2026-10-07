@@ -1,13 +1,15 @@
 # Phase 1 test results (lane D1)
 
-Run on 7 October 2026, locally, on Node.js v22, against the exact head
-of the `phase-1-local-mock-prototype` branch. Command: `npm test`
-(zero dependencies). All runs in the local harness with its own test
-state; no production limits or data exist.
+Run on 7 October 2026, locally, on Node.js v22. Every result in this
+document was produced against the exact reviewed tree at commit
+1ff03d26207b8dafc0a3d970e0bd2f8e6e724960 on the `phase-1-local-mock-prototype` branch; the only change
+after that commit is this document itself (it names the commit).
+Command: `npm test` (zero dependencies). All runs in the local harness
+with its own test state; no production limits or data exist.
 
 ## Full suite
 
-65 tests, 65 pass, 0 fail, about 2.2 seconds. Files and what they prove:
+69 tests, 69 pass, 0 fail, about 2.2 seconds. Files and what they prove:
 
 - `tests/lifecycle.test.js` (R1, R2): correct code succeeds exactly
   once; reuse fails; wrong code gives one generic error and counts a
@@ -30,7 +32,8 @@ state; no production limits or data exist.
   60-second exchange window runs from proof issuance, so a slow code
   step (including a resend after its 60-second cooldown) still
   exchanges, while a proof exchanged 61 seconds after issuance is
-  rejected.
+  rejected; the exchange boundary is pinned: 59,999 ms after issuance
+  succeeds, 60,000 and 60,001 reject.
 - `tests/failure-modes.test.js` (R5): an uncertain send is not retried,
   counts against budget and is reconciled; a failed send records the
   reservation and blocks no later retry; a failed send cannot verify -
@@ -58,7 +61,10 @@ state; no production limits or data exist.
   owner signs in end to end once a slot frees; 10 concurrent creates
   cannot exceed the active-challenge cap (2 live, 2 mails) or the
   hourly send budget (3 mails, nothing written beyond); 10 concurrent
-  resends after the cooldown produce exactly one resend.
+  resends after the cooldown produce exactly one resend; resend budget
+  refusals are byte-identical for listed and unlisted addresses, at the
+  default 3-per-hour budget and at a 1-per-hour budget (no 429 to
+  reveal membership);
 - `tests/headers.test.js` (R9): every route type (page known and unknown
   app, script, style, challenge, verify error, key endpoint, 404)
   carries the full header set; no-store on sign-in and proof responses;
@@ -85,8 +91,9 @@ state; no production limits or data exist.
   callback is returned and the completion URL carries no token; altered
   state rejected; CORS answers the service origin exactly; the required
   login-CSRF mock test passes (an attacker-owned state or proof cannot
-  log the victim into the attacker's session); the 60-second exchange
-  window is enforced.
+  log the victim into the attacker's session); the completion window
+  boundary is pinned: 59,999 ms after verification succeeds, 60,000
+  and 60,001 reject.
 - `tests/logging-hygiene.test.js` (R13, R10): logs hold no codes, proofs
   or addresses; subjects carry no code; the working tree scan for
   secrets and non-example addresses is clean.
