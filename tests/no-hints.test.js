@@ -18,10 +18,16 @@ test('responses for allowed and unlisted addresses differ only in the permitted 
   // needs to function). Everything else is byte-identical.
   assert.deepEqual(Object.keys(a).sort(), Object.keys(b).sort());
   assert.equal(a.status, b.status);
-  // Headers: same names, same values, except the per-challenge cookie.
-  const names = (res) => [...res.headers.keys()].filter((n) => n !== 'set-cookie');
+  // Headers: same names, same values. The per-challenge cookie differs
+  // only in its random name/value and path id - its shape is identical.
+  const names = (res) => [...res.headers.keys()];
   assert.deepEqual(names(rAllowed), names(rUnlisted));
-  for (const n of names(rAllowed)) assert.equal(rAllowed.headers.get(n), rUnlisted.headers.get(n));
+  const norm = (v) => v.replace(/sb_[^=]+=[^;]+/, 'sb_ID=BINDING').replace(/challenges\/[^/]+/, 'challenges/ID');
+  for (const n of names(rAllowed)) {
+    const a = rAllowed.headers.get(n);
+    const b = rUnlisted.headers.get(n);
+    assert.equal(n === 'set-cookie' ? norm(a) : a, n === 'set-cookie' ? norm(b) : b, `header ${n}`);
+  }
 });
 
 test('quota-state: driving the limits leaves allowed and unlisted classes indistinguishable', async () => {
