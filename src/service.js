@@ -26,7 +26,7 @@ export const DEFAULT_CONFIG = {
   endpointCacheSeconds: 300,
   keyCacheMs: 5 * 60_000,
   addressStateTtlMs: 24 * 3_600_000,
-  challengePurgeMs: 24 * 3_600_000,
+  challengePurgeMs: 3_600_000, // one hour after expiry: records never live 24h (R6)
 };
 
 const GENERIC_VERIFY_ERROR = 'invalid_or_expired_code';
@@ -147,28 +147,38 @@ export class SalutantService {
     // duplicates join the in-flight response; later duplicates get the
     // recorded response. Neither does new work or sends new mail.
     const idemKey = request.headers.get('idempotency-key');
+    const replay = (recorded) => {
+      const r = respond(recorded.status, recorded.body);
+      // The replay must carry the original binding cookie, or a
+      // fresh-browser retry could never verify the challenge it
+      // already paid for (R2, R5).
+      if (recorded.setCookie) r.headers.append('set-cookie', recorded.setCookie);
+      return r;
+    };
     if (idemKey) {
       const seen = this.store.transact((s) => s.get(`idem:${idemKey}`));
       if (seen) {
         this.log('challenge', 'duplicate', sourceHash);
-        return respond(seen.status, seen.body);
+        return replay(seen);
       }
       const flying = this._inflight.get(idemKey);
       if (flying) {
         this.log('challenge', 'duplicate', sourceHash);
-        const recorded = await flying;
-        return respond(recorded.status, recorded.body);
+        return replay(await flying);
       }
     }
     let markDone = null;
     if (idemKey) this._inflight.set(idemKey, new Promise((resolve) => { markDone = resolve; }));
-    const respondAndRecord = (status, respBody) => {
+    const respondAndRecord = (status, respBody, setCookie = null) => {
       if (idemKey) {
-        this.store.transact((s) => s.set(`idem:${idemKey}`, { status, body: respBody }));
-        markDone?.({ status, body: respBody });
+        const recorded = { status, body: respBody, setCookie, createdAtMs: this.clock() };
+        this.store.transact((s) => s.set(`idem:${idemKey}`, recorded));
+        markDone?.(recorded);
         this._inflight.delete(idemKey);
       }
-      return respond(status, respBody);
+      const r = respond(status, respBody);
+      if (setCookie) r.headers.append('set-cookie', setCookie);
+      return r;
     };
 
     const now = this.clock();
@@ -182,7 +192,20 @@ export class SalutantService {
       this.log('challenge', 'rejected_request', sourceHash);
       return respondAndRecord(400, { error: 'bad_request' });
     }
-    const addressHash = await this._hmac(this._stateKey, `addr:${address}`);
+    const listed = this.allowlist.has(address);
+    const challengeId = randomId(16);
+    const requestId = randomId(16);
+    const code = generateCode();
+    const binding = randomId(24);
+    // Every awaited step (keyed hashes) finishes here, BEFORE the gate.
+    // The gate below is then one synchronous step with no await between
+    // check and write, so concurrent requests cannot interleave between
+    // the cap check and the reservation (R6, R8).
+    const [addressHash, codeHmac, bindingHmac] = await Promise.all([
+      this._hmac(this._stateKey, `addr:${address}`),
+      this._hmac(this._codeKey, codeHmacMessage(app.origin, 'signin', challengeId, code)),
+      this._hmac(this._codeKey, `binding:${challengeId}:${binding}`),
+    ]);
 
     // R6: one synchronous step for the request counters. Listed and
     // unlisted addresses count the same way, so a limit response never
@@ -197,49 +220,31 @@ export class SalutantService {
       return respondAndRecord(429, { error: 'rate_limited' });
     }
 
-    // R8: at most N active challenges per address. The check runs for
-    // both address classes so the work (and timing) does not differ.
-    const overCap = this.store.transact((s) =>
-      s.keysWithPrefix('challenge:')
+    // R8 + R6 in ONE synchronous step: the active-challenge cap, the
+    // send budgets, the challenge write, the reservation write and the
+    // counter bumps. No await inside, so no concurrent request can slip
+    // between the checks and the writes. The per-address send budget
+    // answers with the same generic 200 as the cap refusal: a 429 here
+    // would reveal that the address is on the list, because an unlisted
+    // address never bumps its send counter (R3).
+    const verdict = this.store.transact((s) => {
+      const openCount = s.keysWithPrefix('challenge:')
         .map((k) => s.getRef(k))
         .filter((c) => c.addressHash === addressHash && c.state === 'open' && c.expiresAtMs > now)
-        .length >= this.config.activeChallengesPerAddress);
-    if (overCap) {
-      // A refused request sends no mail, uses no send budget and answers
-      // with the same generic message (R8). Nothing is written.
-      this.log('challenge', 'withheld_cap', sourceHash);
-      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: randomId(16) });
-    }
-
-    const sendGate = this.store.transact((s) => {
-      if (readCounter(s, `sendaddr:${addressHash}`, hourWindow(now)) >= this.config.sendsPerAddressPerHour) return 'rate_limited';
+        .length;
+      if (openCount >= this.config.activeChallengesPerAddress) return 'withheld_cap';
+      if (readCounter(s, `sendaddr:${addressHash}`, hourWindow(now)) >= this.config.sendsPerAddressPerHour) return 'withheld_send_limit';
       if (readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay) return 'budget_spent';
       if (readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth) return 'budget_spent';
-      return null;
-    });
-    if (sendGate) {
-      this.log('challenge', sendGate, sourceHash);
-      return respondAndRecord(429, { error: sendGate });
-    }
-
-    const listed = this.allowlist.has(address);
-    const challengeId = randomId(16);
-    const requestId = randomId(16);
-    const code = generateCode();
-    const binding = randomId(24);
-    const codeHmac = await this._hmac(this._codeKey, codeHmacMessage(app.origin, 'signin', challengeId, code));
-    const bindingHmac = await this._hmac(this._codeKey, `binding:${challengeId}:${binding}`);
-
-    // Durable reservation first, in one synchronous step (R5, contract:
-    // Atomic state changes). Only after it exists may the adapter run.
-    // The record carries the epoch (R14) and only keyed hashes of the
-    // address (R2, R6); the address itself is never stored.
-    this.store.transact((s) => {
+      // Durable reservation in the same step (R5, contract: Atomic
+      // state changes). Only after it exists may the adapter run. The
+      // record carries the epoch (R14) and only keyed hashes of the
+      // address (R2, R6); the address itself is never stored.
       s.set(`challenge:${challengeId}`, {
         id: challengeId, addressHash, appOrigin: app.origin, stateId: body.stateId,
         purpose: 'signin', codeHmac, bindingHmac, attempts: 0, state: 'open',
         epoch, createdAtMs: now, expiresAtMs: now + this.config.codeTtlMs,
-        lastSentAtMs: now, listed, proofId: null,
+        lastSentAtMs: now, listed, proofId: null, requestId,
       });
       s.set(`reservation:${requestId}`, {
         requestId, challengeId, addressHash, createdAtMs: now, epoch, outcome: 'pending',
@@ -249,7 +254,20 @@ export class SalutantService {
         bump(s, 'sendday', dayWindow(now), 2 * 24 * 3_600_000, now);
         bump(s, 'sendmonth', monthWindow(now), 32 * 24 * 3_600_000, now);
       }
+      return 'accepted';
     });
+    if (verdict === 'withheld_cap' || verdict === 'withheld_send_limit') {
+      // A refused request sends no mail, uses no send budget and answers
+      // with the same generic message (R8). Nothing is written.
+      this.log('challenge', verdict, sourceHash);
+      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: randomId(16) });
+    }
+    if (verdict === 'budget_spent') {
+      // Global budget: identical for every address, so it reveals no
+      // membership (R3).
+      this.log('challenge', verdict, sourceHash);
+      return respondAndRecord(429, { error: verdict });
+    }
 
     // The response never waits on the mail provider (R3); the send runs
     // after the reservation is durable and its result is recorded after.
@@ -265,56 +283,50 @@ export class SalutantService {
     }
     this.log('challenge', 'accepted', sourceHash);
 
-    const response = respondAndRecord(200, { status: 'ok', requestId, challengeId });
     // Bind the challenge to the browser that asked (R2 proposal): a
     // random value held only in that browser. Host-only, Secure,
     // HttpOnly, SameSite Strict, path-scoped to this challenge's verify
     // route. Same-origin first-party, so no third-party cookie is
     // needed (R16).
-    response.headers.append('set-cookie',
-      `sb_${cookieNameFragment(challengeId)}=${binding}; Path=/v1/challenges/${encodeURIComponent(challengeId)}/verify; Secure; HttpOnly; SameSite=Strict`);
-    return response;
+    const setCookie =
+      `sb_${cookieNameFragment(challengeId)}=${binding}; Path=/v1/challenges/${encodeURIComponent(challengeId)}/verify; Secure; HttpOnly; SameSite=Strict`;
+    return respondAndRecord(200, { status: 'ok', requestId, challengeId }, setCookie);
   }
 
   async _resend(body, epoch, now, sourceHash, respondAndRecord) {
     // R2: a resend gives its own challenge a new code and kills only
     // that challenge's earlier code. It reuses the slot (R8) and obeys
     // the resend cooldown.
-    const existing = this.store.transact((s) => s.get(`challenge:${body.resendOf}`));
-    if (!existing || typeof body.address !== 'string') {
+    const address = typeof body.address === 'string' ? body.address.trim() : '';
+    const peek = this.store.transact((s) => s.get(`challenge:${body.resendOf}`));
+    if (!peek || !address) {
       return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: randomId(16) });
     }
-    const addressHash = await this._hmac(this._stateKey, `addr:${body.address.trim()}`);
-    if (addressHash !== existing.addressHash) {
-      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: randomId(16) });
-    }
-    if (now - existing.lastSentAtMs < this.config.resendCooldownMs) {
-      this.log('resend', 'cooldown', sourceHash);
-      return respond(429, { error: 'cooldown' });
-    }
-    if (existing.state !== 'open' || existing.expiresAtMs <= now || existing.epoch !== epoch) {
-      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: existing.id });
-    }
-    if (existing.listed) {
-      const sendGate = this.store.transact((s) => {
-        if (readCounter(s, `sendaddr:${existing.addressHash}`, hourWindow(now)) >= this.config.sendsPerAddressPerHour) return 'rate_limited';
-        if (readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay) return 'budget_spent';
-        if (readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth) return 'budget_spent';
-        return null;
-      });
-      if (sendGate) {
-        this.log('resend', sendGate, sourceHash);
-        return respond(429, { error: sendGate });
-      }
-    }
+    // Every awaited step finishes here, BEFORE the gate. The gate below
+    // is one synchronous step with no await between check and write, so
+    // concurrent resends cannot all pass the cooldown and each send
+    // mail (R2, R6).
     const requestId = randomId(16);
     const code = generateCode();
-    const codeHmac = await this._hmac(this._codeKey, codeHmacMessage(existing.appOrigin, 'signin', existing.id, code));
-    this.store.transact((s) => {
-      const c = s.getRef(`challenge:${existing.id}`);
-      if (!c || c.state !== 'open' || c.expiresAtMs <= now) return;
+    const [addressHash, codeHmac] = await Promise.all([
+      this._hmac(this._stateKey, `addr:${address}`),
+      this._hmac(this._codeKey, codeHmacMessage(peek.appOrigin, 'signin', peek.id, code)),
+    ]);
+    if (addressHash !== peek.addressHash) {
+      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: randomId(16) });
+    }
+    const verdict = this.store.transact((s) => {
+      const c = s.getRef(`challenge:${peek.id}`);
+      if (!c || c.state !== 'open' || c.expiresAtMs <= now || c.epoch !== epoch) return 'gone';
+      if (now - c.lastSentAtMs < this.config.resendCooldownMs) return 'cooldown';
+      if (c.listed) {
+        if (readCounter(s, `sendaddr:${c.addressHash}`, hourWindow(now)) >= this.config.sendsPerAddressPerHour) return 'rate_limited';
+        if (readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay) return 'budget_spent';
+        if (readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth) return 'budget_spent';
+      }
       c.codeHmac = codeHmac; // the earlier code is dead from this moment
       c.lastSentAtMs = now;
+      c.requestId = requestId;
       s.set(`reservation:${requestId}`, {
         requestId, challengeId: c.id, addressHash: c.addressHash, createdAtMs: now, epoch, outcome: 'pending',
       });
@@ -323,12 +335,20 @@ export class SalutantService {
         bump(s, 'sendday', dayWindow(now), 2 * 24 * 3_600_000, now);
         bump(s, 'sendmonth', monthWindow(now), 32 * 24 * 3_600_000, now);
       }
+      return 'accepted';
     });
-    if (existing.listed) {
-      this.pendingSends.push(this._sendCode(requestId, body.address.trim(), code));
+    if (verdict === 'cooldown' || verdict === 'rate_limited' || verdict === 'budget_spent') {
+      this.log('resend', verdict, sourceHash);
+      return respond(429, { error: verdict });
+    }
+    if (verdict === 'gone') {
+      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: peek.id });
+    }
+    if (peek.listed) {
+      this.pendingSends.push(this._sendCode(requestId, address, code));
     }
     this.log('resend', 'accepted', sourceHash);
-    return respondAndRecord(200, { status: 'ok', requestId, challengeId: existing.id });
+    return respondAndRecord(200, { status: 'ok', requestId, challengeId: peek.id });
   }
 
   async _sendCode(requestId, address, code) {
@@ -344,7 +364,11 @@ export class SalutantService {
       if (r) r.outcome = result.outcome;
     });
     if (result.outcome === 'uncertain') {
-      await this.mailer.reconcile(requestId);
+      const rec = await this.mailer.reconcile(requestId);
+      this.store.transact((s) => {
+        const r = s.getRef(`reservation:${requestId}`);
+        if (r) r.reconciled = rec.state === 'sent' ? 'sent' : 'absent';
+      });
     }
   }
 
@@ -385,6 +409,13 @@ export class SalutantService {
         c.state = 'dead';
         return { ok: false };
       }
+      // R5: acceptance is not delivery. A challenge whose send failed,
+      // was reconciled absent, or is still in flight verifies nothing -
+      // the code it holds was never delivered. This check costs the
+      // request no attempt: only a delivered code can be tried.
+      const r = s.getRef(`reservation:${c.requestId}`);
+      const delivered = r && (r.outcome === 'accepted' || r.reconciled === 'sent');
+      if (!delivered) return { ok: false };
       const codeOk = timingSafeEqual(fromBase64Url(codeHmac), fromBase64Url(c.codeHmac));
       const bindingOk = timingSafeEqual(fromBase64Url(bindingHmac), fromBase64Url(c.bindingHmac));
       const addressOk = addressHash === c.addressHash;
@@ -462,6 +493,9 @@ export class SalutantService {
       }
       for (const k of s.keysWithPrefix('issuance:')) {
         if (s.getRef(k).expiresAtMs + this.config.challengePurgeMs <= now) s.delete(k);
+      }
+      for (const k of s.keysWithPrefix('idem:')) {
+        if (s.getRef(k).createdAtMs + this.config.addressStateTtlMs <= now) s.delete(k);
       }
     });
   }
