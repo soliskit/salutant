@@ -93,3 +93,36 @@ test('provider timeout: the person can resend after the cooldown and sign in', a
   const ok = await browser.verify({ challengeId: created.challengeId, code, address: OWNER });
   assert.ok((await ok.json()).proof);
 });
+
+test('a failed send cannot verify: the undelivered code is dead on arrival', async () => {
+  let captured;
+  const w = await makeWorld({
+    mailerBehavior: ({ text }) => { captured = text.match(/\d{6}/)[0]; return 'failed'; },
+  });
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  await w.service.drain();
+  const reservation = w.store.transact((s) => s.getRef(`reservation:${created.requestId}`));
+  assert.equal(reservation.outcome, 'failed');
+  // Even with the exact code in hand, verify issues no proof: the send
+  // failed, so the reservation was never delivered (R5).
+  const res = await browser.verify({ challengeId: created.challengeId, code: captured, address: OWNER });
+  assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' });
+});
+
+test('an idempotent replay carries the binding cookie, so a fresh-browser retry can verify', async () => {
+  const w = await makeWorld();
+  const browser1 = new BrowserSession(w);
+  const browser2 = new BrowserSession(w); // the retry, after the first response was lost
+  const start = await w.app.startSignIn(null);
+  const key = 'retry-abc';
+  await browser1.postChallenge({ address: OWNER, stateId: start.stateId, idempotencyKey: key });
+  const replay = await browser2.postChallenge({ address: OWNER, stateId: start.stateId, idempotencyKey: key });
+  assert.ok(replay.headers.getSetCookie().length > 0, 'replay re-sends the binding cookie');
+  await w.service.drain();
+  const code = w.mailer.lastCode();
+  const created = await replay.json();
+  const ok = await browser2.verify({ challengeId: created.challengeId, code, address: OWNER });
+  assert.ok((await ok.json()).proof, 'the retrying browser is bound and can verify');
+});
