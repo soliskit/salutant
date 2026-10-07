@@ -105,3 +105,15 @@ test('a verified state expires: the bounded exchange window is 60 seconds', asyn
   const late = await w.app.handleComplete(`pre=${r.start.cookieValue}`);
   assert.equal(late.status, 401, 'stale verified state is not completable');
 });
+
+test('completion window boundary: 59,999 ms after verification succeeds; 60,000 and 60,001 reject', async () => {
+  for (const [ms, ok] of [[59_999, true], [60_000, false], [60_001, false]]) {
+    const w = await makeWorld();
+    const r = await honestSignIn(w, { redeem: false });
+    const exchange = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
+    assert.equal(exchange.status, 200, 'setup exchange');
+    w.advance(ms);
+    const complete = await w.app.handleComplete(`pre=${r.start.cookieValue}`);
+    assert.equal(complete.status === 200, ok, `completion at +${ms} ms`);
+  }
+});
