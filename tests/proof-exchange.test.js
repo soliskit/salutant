@@ -113,3 +113,30 @@ test('a proof for another audience is rejected by this app', async () => {
   const res = await w.app.handleExchange({ proof: token, state: 'n1' }, SERVICE_ORIGIN);
   assert.equal(res.body.error, 'bad_proof');
 });
+
+test('a correctly signed proof missing required claims is rejected', async () => {
+  for (const field of ['exp', 'nbf', 'iat', 'jti']) {
+    const w = await makeWorld();
+    const r = await honestSignIn(w, { redeem: false });
+    assert.ok(r.verified.proof, 'setup proof');
+    // Mutate this sign-in's own claims so the missing field is the only
+    // defect: nonce, epoch and audience all match.
+    const [, p] = r.verified.proof.split('.');
+    const claims = JSON.parse(new TextDecoder().decode(
+      (await import('../src/crypto.js')).fromBase64Url(p)));
+    delete claims[field];
+    const key = w.service.signingKeys.get('k1');
+    const token = await signProof(claims, key.privateKey, 'k1');
+    const res = await w.app.handleExchange({ proof: token, state: r.verified.state }, SERVICE_ORIGIN);
+    assert.notEqual(res.status, 200, `missing ${field} must be rejected`);
+    assert.equal(res.body.error, 'bad_proof');
+  }
+});
+
+test('the exchange itself enforces the 60-second window', async () => {
+  const w = await makeWorld();
+  const r = await honestSignIn(w, { redeem: false });
+  w.advance(61_000);
+  const late = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
+  assert.notEqual(late.status, 200, 'an exchange 61 seconds after the state was created is rejected');
+});
