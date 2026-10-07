@@ -223,10 +223,10 @@ export class SalutantService {
     // R8 + R6 in ONE synchronous step: the active-challenge cap, the
     // send budgets, the challenge write, the reservation write and the
     // counter bumps. No await inside, so no concurrent request can slip
-    // between the checks and the writes. The per-address send budget
-    // answers with the same generic 200 as the cap refusal: a 429 here
-    // would reveal that the address is on the list, because an unlisted
-    // address never bumps its send counter (R3).
+    // between the checks and the writes. Every refusal verdict maps to the
+    // identical generic response below (R3): a 429 here would reveal
+    // that the address is on the list, because an unlisted address
+    // never bumps its send counter.
     const verdict = this.store.transact((s) => {
       const openCount = s.keysWithPrefix('challenge:')
         .map((k) => s.getRef(k))
@@ -256,17 +256,14 @@ export class SalutantService {
       }
       return 'accepted';
     });
-    if (verdict === 'withheld_cap' || verdict === 'withheld_send_limit') {
-      // A refused request sends no mail, uses no send budget and answers
-      // with the same generic message (R8). Nothing is written.
+    if (verdict !== 'accepted') {
+      // EVERY refusal - active cap, per-address budget, global budget -
+      // answers with the same generic 200, the same body shape and the
+      // same cookie shape as an acceptance (R3, R8). The response must
+      // never vary with the address class or with which limit fired:
+      // any difference is a membership oracle.
       this.log('challenge', verdict, sourceHash);
-      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: randomId(16) });
-    }
-    if (verdict === 'budget_spent') {
-      // Global budget: identical for every address, so it reveals no
-      // membership (R3).
-      this.log('challenge', verdict, sourceHash);
-      return respondAndRecord(429, { error: verdict });
+      return withheldChallenge(respondAndRecord);
     }
 
     // The response never waits on the mail provider (R3); the send runs
@@ -510,6 +507,18 @@ export function codeHmacMessage(appOrigin, purpose, challengeId, code) {
 
 export function cookieNameFragment(challengeId) {
   return challengeId.replaceAll('-', '_');
+}
+
+// The generic refusal: random stand-in ids and a binding-shaped cookie,
+// indistinguishable from an acceptance on the wire (R3). The ids name
+// no record and the cookie binds nothing.
+function withheldChallenge(respondAndRecord) {
+  const requestId = randomId(16);
+  const challengeId = randomId(16);
+  const binding = randomId(24);
+  const setCookie =
+    `sb_${cookieNameFragment(challengeId)}=${binding}; Path=/v1/challenges/${encodeURIComponent(challengeId)}/verify; Secure; HttpOnly; SameSite=Strict`;
+  return respondAndRecord(200, { status: 'ok', requestId, challengeId }, setCookie);
 }
 
 function concatBytes(chunks) {
