@@ -1,0 +1,95 @@
+// R5 closed on failure.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { makeWorld, BrowserSession, OWNER } from './helpers.js';
+
+test('an uncertain send is not retried, counts against budget, and is reconciled', async () => {
+  const w = await makeWorld({ mailerBehavior: 'uncertain' });
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  await browser.postChallenge({ address: OWNER, stateId: start.stateId });
+  await w.service.drain();
+  assert.equal(w.mailer.attempts.length, 1, 'no automatic retry');
+  assert.equal(w.mailer.reconciliations.length, 1, 'reconciled against the provider record');
+  const reservation = w.store.transact((s) => s.getRef([...s.keysWithPrefix('reservation:')][0]));
+  assert.equal(reservation.outcome, 'uncertain');
+  const sentDay = w.store.transact((s) => s.getRef('counter:sendday:' + Object.keys(Object.fromEntries(s.records)).find(() => true)));
+  assert.ok(w.store.keysWithPrefix('counter:sendday:').length === 1, 'budget counted');
+});
+
+test('a failed send means no proof and a recorded reservation', async () => {
+  const w = await makeWorld({ mailerBehavior: 'failed' });
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  await w.service.drain();
+  const reservation = w.store.transact((s) => s.getRef(`reservation:${created.requestId}`));
+  assert.equal(reservation.outcome, 'failed');
+  // The person can still retry after the cooldown: service stays up.
+  w.advance(61_000);
+  const res = await browser.resend({ challengeId: created.challengeId, address: OWNER });
+  assert.ok([200, 429].includes(res.status));
+});
+
+test('a double-click is one request', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const key = 'click-123';
+  const [r1, r2] = await Promise.all([
+    browser.postChallenge({ address: OWNER, stateId: start.stateId, idempotencyKey: key }),
+    browser.postChallenge({ address: OWNER, stateId: start.stateId, idempotencyKey: key }),
+  ]);
+  await w.service.drain();
+  const [b1, b2] = [await r1.json(), await r2.json()];
+  assert.equal(b1.requestId, b2.requestId);
+  assert.equal(b1.challengeId, b2.challengeId);
+  assert.equal(w.mailer.outbox.length, 1, 'one mail for one logical request');
+  assert.equal(w.store.keysWithPrefix('challenge:').length, 1);
+});
+
+test('a storage failure closes the service: no send, plain message', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const realTransact = w.store.transact.bind(w.store);
+  w.store.transact = () => { throw new Error('storage gone'); };
+  const res = await browser.postChallenge({ address: OWNER, stateId: start.stateId });
+  assert.equal(res.status, 500);
+  assert.deepEqual(await res.json(), { error: 'unavailable' });
+  await w.service.drain();
+  assert.equal(w.mailer.attempts.length, 0, 'nothing sent when the reservation write fails');
+  w.store.transact = realTransact;
+});
+
+test('an unreadable epoch closes every route', async () => {
+  const w = await makeWorld();
+  w.epoch.available = false;
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  for (const res of [
+    await browser.postChallenge({ address: OWNER, stateId: start.stateId }),
+    await browser.verify({ challengeId: 'x', code: '000000', address: OWNER }),
+    await w.service.fetch(new Request('https://salutant.example.test/.well-known/jwks.json')),
+  ]) {
+    assert.equal(res.status, 500);
+    assert.deepEqual(await res.json(), { error: 'unavailable' });
+  }
+});
+
+test('provider timeout: the person can resend after the cooldown and sign in', async () => {
+  let call = 0;
+  const w = await makeWorld({ mailerBehavior: () => (++call === 1 ? 'uncertain' : 'accepted') });
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  await w.service.drain();
+  assert.equal(w.mailer.attempts.length, 1);
+  w.advance(61_000);
+  await browser.resend({ challengeId: created.challengeId, address: OWNER });
+  await w.service.drain();
+  assert.equal(w.mailer.attempts.length, 2, 'a person-driven resend, not an automatic retry');
+  const code = w.mailer.lastCode();
+  const ok = await browser.verify({ challengeId: created.challengeId, code, address: OWNER });
+  assert.ok((await ok.json()).proof);
+});
