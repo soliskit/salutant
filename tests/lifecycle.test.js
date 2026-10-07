@@ -146,9 +146,20 @@ test('no plain code or address is stored; purge removes expired challenges', asy
   const dump = JSON.stringify([...w.store.records]);
   assert.ok(!dump.includes(r.code), 'no plain code in storage');
   assert.ok(!dump.includes(OWNER), 'no plain address in storage');
-  w.advance(10 * 60_000 + 24 * 3_600_000 + 1);
+  w.advance(10 * 60_000 + 3_600_000 + 1); // expiry plus the one-hour purge lag
   w.service.purge();
   assert.equal(w.store.keysWithPrefix('challenge:').length, 0);
+});
+
+test('idempotency records are purged with the address-state window', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  await browser.postChallenge({ address: OWNER, stateId: start.stateId, idempotencyKey: 'purge-me' });
+  assert.equal(w.store.keysWithPrefix('idem:').length, 1);
+  w.advance(24 * 3_600_000 + 1);
+  w.service.purge();
+  assert.equal(w.store.keysWithPrefix('idem:').length, 0);
 });
 
 test('an unlisted address gets the same response shape and no mail', async () => {
