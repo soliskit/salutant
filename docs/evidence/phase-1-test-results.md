@@ -60,8 +60,10 @@ with its own test state; no production limits or data exist.
   finding 5) while remaining valid from the requesting browser, and the
   owner signs in end to end once a slot frees; 10 concurrent creates
   cannot exceed the active-challenge cap (2 live, 2 mails) or the
-  hourly send budget (3 mails, nothing written beyond); 10 concurrent
-  resends after the cooldown produce exactly one resend; resend budget
+  hourly send budget (3 mails; the 7 refused requests write the same
+  undeliverable records an unlisted acceptance writes, so nothing about
+  them is observable); 10 concurrent resends after the cooldown produce
+  exactly one resend; resend budget
   refusals are byte-identical for listed and unlisted addresses, at the
   default 3-per-hour budget and at a 1-per-hour budget (no 429 to
   reveal membership); withheld creates and resends evolve state exactly
