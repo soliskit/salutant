@@ -32,7 +32,7 @@ test('requests per address per hour: the eleventh for one address is limited', a
   assert.equal(last.status, 429);
 });
 
-test('sends per address per hour: the fourth send is refused', async () => {
+test('sends per address per hour: the fourth request is refused indistinguishably and sends no mail', async () => {
   const w = await makeWorld({ config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 } });
   const browser = new BrowserSession(w);
   for (let i = 0; i < 3; i++) {
@@ -43,9 +43,31 @@ test('sends per address per hour: the fourth send is refused', async () => {
   }
   const start = await w.app.startSignIn(null);
   const res = await browser.postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': '192.0.2.9' } });
-  assert.equal(res.status, 429);
+  // R3: over the send budget the listed address gets the same generic
+  // 200 an unlisted address always gets - a 429 would reveal membership.
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).status, 'ok');
   await w.service.drain();
   assert.equal(w.mailer.outbox.length, 3);
+});
+
+test('an unlisted address and an over-budget listed address return the same response', async () => {
+  const w = await makeWorld({ config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 } });
+  // Spend the listed address's hourly send budget.
+  for (let i = 0; i < 3; i++) {
+    const start = await w.app.startSignIn(null);
+    await new BrowserSession(w).postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': `192.0.2.${i}` } });
+    w.advance(61_000);
+  }
+  const probe = async (address, ip) => {
+    const start = await w.app.startSignIn(null);
+    const res = await new BrowserSession(w).postChallenge({ address, stateId: start.stateId, headers: { 'cf-connecting-ip': ip } });
+    const body = JSON.stringify(await res.json()).replace(/"(requestId|challengeId)":"[^"]+"/g, '"$1":"x"');
+    return `${res.status}:${body}`;
+  };
+  const listedOverBudget = await probe(OWNER, '192.0.2.250');
+  const unlisted = await probe(STRANGER, '192.0.2.251');
+  assert.equal(listedOverBudget, unlisted, 'limit response must not reveal membership');
 });
 
 test('oversize bodies are refused', async () => {
@@ -91,7 +113,7 @@ test('address-linked state expires within 24 hours; the monthly count does not',
   assert.equal(w.store.keysWithPrefix('counter:sendmonth:').length, 1, 'monthly total survives');
 });
 
-test('R8 attack: a stranger fills the owner\'s slots; the owner is delayed but the real code works and the delay ends', async () => {
+test('R8 attack, honest owner path: slot-filling delays the owner, and the mailed code is unusable outside the attacker browser', async () => {
   const w = await makeWorld({ allowlist: [OWNER] });
   const ownerBrowser = new BrowserSession(w);
   const attackBrowser = new BrowserSession(w);
@@ -108,16 +130,64 @@ test('R8 attack: a stranger fills the owner\'s slots; the owner is delayed but t
   assert.equal((await refused.json()).status, 'ok');
   await w.service.drain();
   assert.equal(w.mailer.outbox.length, 2, 'no third mail');
-  // The attacker's codes were never invalidated: the owner can still
-  // sign in with the real code from the first challenge.
+  // Honest owner path: the mailed code from the attacker's challenge is
+  // NOT usable from the owner's own browser. The binding cookie that
+  // verify requires lives only in the attacker's browser (R2). The code
+  // is not invalidated - it still verifies from the browser that
+  // requested it - but that browser is the attacker's, so the plan's
+  // "owner delayed only" claim holds only because the owner can start a
+  // fresh challenge once a slot frees, NOT because the mailed code can
+  // be used. Recorded as a phase 1 finding.
   const code = w.mailer.outbox[0].text.match(/\d{6}/)[0];
   const c1 = w.store.transact((s) => s.getRef([...s.keysWithPrefix('challenge:')][0]));
-  const ok = await attackBrowser.verify({ challengeId: c1.id, code, address: OWNER, omitCookies: false });
-  assert.ok((await ok.json()).proof, 'the real code still works');
-  // The delay ends when the attacker's challenges expire.
+  const ownerTry = await ownerBrowser.verify({ challengeId: c1.id, code, address: OWNER });
+  assert.deepEqual(await ownerTry.json(), { error: 'invalid_or_expired_code' },
+    'binding: the mailed code does not work outside the requesting browser');
+  const attackerTry = await attackBrowser.verify({ challengeId: c1.id, code, address: OWNER });
+  assert.ok((await attackerTry.json()).proof, 'the code itself was never invalidated');
+  // The delay ends when the attacker's challenges expire: the owner's
+  // own challenge then completes end to end from the owner's browser.
   w.advance(10 * 60_000 + 1);
-  const s4 = await w.app.startSignIn(null);
-  const after = await ownerBrowser.postChallenge({ address: OWNER, stateId: s4.stateId, headers: { 'cf-connecting-ip': '198.51.100.7' } });
+  const r = await honestSignIn(w, { browser: ownerBrowser });
+  assert.ok(r.verified.proof, 'the owner signs in once slots free');
+  assert.equal(r.complete.status, 200);
+});
+
+test('10 concurrent creates cannot exceed the active-challenge cap', async () => {
+  const w = await makeWorld();
+  const start = await w.app.startSignIn(null);
+  await Promise.all(Array.from({ length: 10 }, (_, i) =>
+    new BrowserSession(w).postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': `192.0.2.${i}` } })));
   await w.service.drain();
-  assert.equal(w.mailer.outbox.length, 3, 'the owner can sign in again once slots free');
+  const live = w.store.keysWithPrefix('challenge:')
+    .map((k) => w.store.transact((s) => s.getRef(k)))
+    .filter((c) => c.state === 'open');
+  assert.equal(live.length, 2, 'cap 2 active challenges holds under concurrency');
+  assert.equal(w.mailer.outbox.length, 2, 'no extra mails');
+});
+
+test('10 concurrent creates cannot exceed the hourly send budget', async () => {
+  const w = await makeWorld({ config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 } });
+  const start = await w.app.startSignIn(null);
+  await Promise.all(Array.from({ length: 10 }, (_, i) =>
+    new BrowserSession(w).postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': `192.0.2.${i}` } })));
+  await w.service.drain();
+  assert.equal(w.mailer.outbox.length, 3, 'cap 3 sends per hour holds under concurrency');
+  assert.equal(w.store.keysWithPrefix('challenge:').length, 3, 'refused requests wrote nothing');
+});
+
+test('10 concurrent resends after the cooldown produce exactly one resend', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  await w.service.drain();
+  w.advance(61_000);
+  const results = await Promise.all(Array.from({ length: 10 }, () =>
+    browser.resend({ challengeId: created.challengeId, address: OWNER })));
+  await w.service.drain();
+  const okCount = results.filter((r) => r.status === 200).length;
+  assert.equal(okCount, 1, 'exactly one resend passes the cooldown gate');
+  assert.equal(results.filter((r) => r.status === 429).length, 9);
+  assert.equal(w.mailer.outbox.length, 2, 'one original mail plus one resend');
 });
