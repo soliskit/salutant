@@ -28,10 +28,12 @@ One row per requirement. Each row has the check, the failure condition, and the 
 
 ## Phase 1 exit evidence
 
-- **Mock service and stub app** Pending. Links to the exact commit.
-- **Concurrency, replay, restore, header and timing tests** Pending. Results listed against the requirement numbers above.
-- **Findings on production mechanisms** Pending. Epoch mechanism, callback return path, key cache, purge accounting.
-- **Measured values and open decisions** Pending. Returned to the owner for review. Phase 1 then stops.
+- **Mock service and stub app** Merged local/mock prototype via [PR 59](https://github.com/soliskit/salutant/pull/59), merge commit `8bd88447aa47af3c5421b2f23166cdc7b532f5fa`. No real mail, deployment or accounts. The PR body is historical, not the current test count.
+- **Concurrency, replay, restore, header and timing tests** The [committed local test report](https://github.com/soliskit/salutant/blob/main/docs/evidence/phase-1-test-results.md) records 71 tests passing at `b9f9b61ff189b98115ff2cb46d1f7bd164681949`, with requirement-group and timing results. This is reported run evidence, not a new execution or proof for current main. The [mock service at the named commit](https://github.com/soliskit/salutant/blob/b9f9b61ff189b98115ff2cb46d1f7bd164681949/src/service.js) is available. Per-requirement rows above remain Pending where their full checks exceed this bounded evidence.
+- **Findings on production mechanisms** [Written local findings](https://github.com/soliskit/salutant/blob/main/docs/findings/phase-1-findings.md) cover epoch, callback, key cache and purge. Cloud behavior and real Safari remain open. That findings file records no exact independent run binding; it is not independently verified by this record.
+- **Measured values and open decisions** Local timing and CPU samples are recorded in the test report above. Emergency key-window acceptance and real-platform measurements remain open. Local CPU results do not prove the Workers CPU limit.
+
+**Current-tree limit.** [PR 63](https://github.com/soliskit/salutant/pull/63) changed the altered-state test after the original report and merged at `519b9aca72fe8256771fc18c0c189ceff2421dfc`. Its body reports local 71-test validation against `f09b26fb`, but no exact run receipt is bound here. The original report is not current-head test evidence.
 
 ## Reviews
 
