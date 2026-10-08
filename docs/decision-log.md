@@ -4,7 +4,7 @@
 
 ## How this log works
 
-Each entry records a choice the owner made: the decision, its effect and its status. Message IDs, times and verbatim quotes are not kept here, because this repo is public and discloses only what is necessary. The proof of each decision is kept in the owner's private record. Work does not reopen a settled entry. A change is a new entry that says which entry it replaces. Recommendations the owner has not approved are listed separately at the end. The Playbook is three files: Charter, Build Plan and Specification. This log and the Evidence Record live with the code.
+Each entry records a choice the owner made: the decision, its effect and its status. Message IDs, times and verbatim quotes are not kept here, because this repo is public and discloses only what is necessary. The proof of each decision is kept in the owner's private record. Work does not reopen a settled entry. A change is a new entry that says which entry it replaces. Recommendations the owner has not approved are listed separately at the end. The current Playbook has three tabs: Charter, Roadmap and How It Works. This log and the Evidence Record live with the code.
 
 
 ## Settled choices
