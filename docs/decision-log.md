@@ -42,10 +42,18 @@ Each entry records a choice the owner made: the decision, its effect and its sta
 
 - **Emergency key staleness** The owner must decide whether to accept or shorten the proposed [10 minutes] end-to-end window after an emergency key revoke. Failing closed is a requirement and is not the owner's agreement to the window. Not approved.
 - **Final contract values** Every bracketed value in the Specification returns for the owner's approval with the plan.
-- **Epoch mechanism** Chosen and tested in Phase 1; reported back.
-- **Callback return path** Two options, decided by Phase 1 test; reported back.
-- **Timing tolerance** Measured in Phase 1; the owner reviews the measured values before any launch.
+- **Cloud epoch mechanism** The local findings report a passing injected-source restore rehearsal. A Worker environment variable is a candidate only; propagation to all running copies and stale reads still need cloud testing.
+- **Real-browser callback behavior** The local findings and test report record option 2 script exchange and first-party completion passing mock tests. Real Safari behavior remains unverified.
+- **Production timing and owner review** The committed report records local timing passing the written protocol. Production timing and Workers CPU remain unmeasured; the owner reviews the measured values before any launch.
 - **Phase approval** Approval of the Build Plan covers Phase 1 (local code and mocks) only. Historical: a separate code go-ahead was required, and was later given for Phase 1 only (see the entry Phase 1 code started). Merge and every later phase are not covered and need their own authorization.
+
+## Local findings already reported
+
+These are summaries of reported local results, not new owner decisions, a new test execution or authorization for a later phase. Sources: [local findings](findings/phase-1-findings.md) and [committed test report](evidence/phase-1-test-results.md). The test report names commit `b9f9b61ff189b98115ff2cb46d1f7bd164681949`; this log does not independently bind a run to that commit or establish current-main test results.
+
+- **Epoch design** Finding 1 reports that every challenge, issuance, proof and app session carries the epoch, earlier epochs are rejected and an unreadable injected epoch source fails closed. The R14/R12/R15 test-report section records a restore rehearsal staying closed until an owner epoch raise, then rejecting pre-raise codes and proofs. Cloud propagation and restore behavior remain open above.
+- **Callback return path** Finding 2 reports option 2 was built and passed the mock login-CSRF check: bounded script exchange to the exact app callback, followed by top-level completion using the app's first-party SameSite=Lax pre-auth cookie. Option 1 was rejected by protocol analysis and was never built. The R16 test-report section records first-party cookie checks and mock login-CSRF rejection; the service challenge-binding cookie remains SameSite=Strict. Real Safari behavior remains open above.
+- **Timing evidence** The test report's R3 timing section records passes in all three local runs with a 20 ms tolerance and 50 ms hard maximum. Its separate R11 full-sign-in CPU sample records a 2.90 ms median and 65.40 ms cold-run maximum; it does not prove the Workers 10 ms free CPU limit. Production measurements and owner review remain open above.
 
 ## Recommendations not approved
 
