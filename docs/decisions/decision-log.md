@@ -11,7 +11,8 @@ decision 2).
 
 1. **Replace this repo's contents.** The old Swift form-message app goes.
    Its history stays in git. (Owner decision before phase 1.)
-2. **Mail path.** A dedicated Gmail account created just for this
+2. **Mail path (superseded by S27 in `docs/decision-log.md`).**
+   Historical choice: a dedicated Gmail account created just for this
    service's sending, for now; Resend's free plan sending from a
    subdomain of the owner's domain as the fallback. Whether Google's
    terms and sending limits allow automated sign-in email is
@@ -20,7 +21,10 @@ decision 2).
    vault link, never in chat), and any send are later, separately
    approved phases. Phase 1 uses a mock adapter and is unaffected.
    (Owner decision 7 October 2026; changed twice same day - first
-   "Resend first", then "iCloud first if possible", now this.)
+   "Resend first", then "iCloud first if possible", then the Gmail path.)
+   Current path under S27: Resend from mail.soliskit.com; iCloud stays
+   dropped. Account setup, credentials and real sends still need
+   separate authorization. Phase 1 remains local and mocked.
 3. **Who can sign in.** An approved list only, starting with the owner's
    address. People are added only by the owner's say-so.
 4. **One app or many.** One service that can serve many apps. The first
@@ -69,7 +73,7 @@ repo is the home of the email service; failure is closed.
 5. **Key staleness number.** One end-to-end bound, proposed as
    [10 minutes]. The owner's call: accept or shorten.
 6. **Later phases.** This approval covers phase 1 (local and mocks)
-   only. Cloud tests, real delivery (including the Google terms and
-   sending-limits research gate for the dedicated Gmail account,
-   decision 2), the owner-only live trial, and launch each need their
+   only. Cloud tests, real delivery through the S27 Resend path
+   (provider limits and delivery still unproven), the owner-only live
+   trial, and launch each need their
    own authorization after measured values are reviewed.
