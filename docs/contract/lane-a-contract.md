@@ -141,8 +141,9 @@ because a static header file does not cover generated responses.
 
 ## Sending rule (provider-neutral)
 
-The mail path is decided by decision 2: a dedicated Gmail account for
-now, Resend on a subdomain as fallback. Whatever the provider:
+The current mail path is Resend from mail.soliskit.com (S27 in
+`docs/decision-log.md`), replacing decision 2's dedicated Gmail path.
+The adapter remains provider-neutral. Whatever the provider:
 
 - The sender is a no-reply address on a dedicated sending subdomain of
   the owner domain, never a personal mailbox, never an address someone

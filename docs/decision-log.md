@@ -18,7 +18,7 @@ Each entry records a choice the owner made: the decision, its effect and its sta
 - **S7 1 Replace the repo's contents** Effect: the old Swift form-message app goes; its history stays in git; at that time nothing changed until the build go-ahead. Status: Settled; the Phase 1 go-ahead was later given (see the entry Phase 1 code started).
 - **S8 Mail path, first choice** Effect: the Resend free plan sending from a subdomain of the owner's own domain. Replaced by S9. Status: Replaced.
 - **S9 2a Mail path, second choice** Effect: iCloud first, Resend fallback. Apple's terms explicitly restrict automated access in the quoted interference clause, and application to this service was unresolved. Status: Replaced by entry 2b.
-- **S10 2b Mail path, current** Effect: a dedicated Gmail account is the selected sender for this service, for now; iCloud dropped; Resend on a subdomain stays the fallback. Account creation, any credential and any send are later phases, each authorized separately. Google terms and limits for automated sending are researched first. The mail adapter stays provider-neutral. Status: Settled for now; changed twice.
+- **S10 2b Mail path, third choice** Effect: a dedicated Gmail account is the selected sender for this service, for now; iCloud dropped; Resend on a subdomain stays the fallback. Account creation, any credential and any send are later phases, each authorized separately. Google terms and limits for automated sending are researched first. The mail adapter stays provider-neutral. Replaced by S27. Status: Replaced.
 - **S11 Phase 1 plan approved** Effect: the Phase 1 plan is adopted for Phase 1 only: code on a branch in the salutant repo, using fakes. No accounts, no domain setup, no real emails, no launch. This approval is not the go-ahead to write code. Status: Settled.
 - **S12 Phase 1 code started** Effect: local and mock work started on a branch with a pull request; nothing merges without the owner. It approves no accounts, real mail, cloud tests, connecting an app, merge, release or later phases. Status: Settled.
 - **S13 Browser binding kept** Effect: browser binding of each sign-in challenge stays in the Phase 1 design. The challenge is bound to the browser that asked, by a random value held in that browser, and the emailed code works only when entered in that browser. An intercepted email alone is insufficient to complete the browser-bound sign-in. The cost: asking on one device and entering the code on another fails and must be retried. Design choice only; it approves no merge, account, real mail, cloud work or later phase. The Specification wording on browser binding was aligned with this entry after the decision; this entry governs the decision status. This log does not adopt any other unresolved Specification value. Status: Settled.
@@ -36,6 +36,8 @@ Each entry records a choice the owner made: the decision, its effect and its sta
 - **S25 Playbook for the project** Effect: Salutant gets the Playbook first (named Blueprint when chosen, renamed Playbook on 7 October). Delete only fully superseded documents after replacement content is reviewed and committed to git. Status: Settled; deletions pending review.
 - **S26 Playbook** Effect: the three files Charter, Build Plan and Specification together are called the Playbook (named Blueprint when chosen, renamed Playbook on 7 October), and it is the standard set for every software project. Status: Settled.
 
+- **S27 Mail path, current** Effect: sign-in mail goes through Resend from mail.soliskit.com, replacing the dedicated Gmail account in S10; iCloud stays dropped. Account creation, domain setup, credentials and real sends remain later-phase work, each authorized separately. The mail adapter stays provider-neutral. Provider limits and delivery remain to be checked before real sends. Status: Settled for the mail path; real sending unproven.
+
 ## Open decisions
 
 - **Emergency key staleness** The owner must decide whether to accept or shorten the proposed [10 minutes] end-to-end window after an emergency key revoke. Failing closed is a requirement and is not the owner's agreement to the window. Not approved.
@@ -43,7 +45,6 @@ Each entry records a choice the owner made: the decision, its effect and its sta
 - **Epoch mechanism** Chosen and tested in Phase 1; reported back.
 - **Callback return path** Two options, decided by Phase 1 test; reported back.
 - **Timing tolerance** Measured in Phase 1; the owner reviews the measured values before any launch.
-- **Gmail sending** Whether Google allows automated sending from the dedicated account, with which credential type. Researched before any account creation, credential or send.
 - **Phase approval** Approval of the Build Plan covers Phase 1 (local code and mocks) only. Historical: a separate code go-ahead was required, and was later given for Phase 1 only (see the entry Phase 1 code started). Merge and every later phase are not covered and need their own authorization.
 
 ## Recommendations not approved

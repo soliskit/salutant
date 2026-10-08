@@ -1,8 +1,8 @@
 # Mail adapter contract, v1
 
 Lane B. The service never talks to a mail provider directly. It talks to
-an adapter with this interface, so the provider (a dedicated Gmail
-account for now, Resend on a subdomain as fallback - decision 2) can
+an adapter with this interface, so the provider (Resend from
+mail.soliskit.com - S27 in `docs/decision-log.md`, replacing decision 2) can
 change without touching service code. Phase 1 ships only the mock
 implementation; no account, DNS, credential or real send exists.
 
