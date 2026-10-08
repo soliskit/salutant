@@ -142,7 +142,9 @@ shapes, non-example email addresses). All clean at the head commit.
 
 - Real Safari run (needs deployed hosts).
 - Workers CPU and Durable Object semantics (cloud phase).
-- Real mail delivery and the provider gate for decision 2 (Google
-  terms and sending limits research for the dedicated Gmail account;
-  Resend fallback).
+- Real mail delivery and the then-current provider gate for decision 2
+  (Google terms and sending limits research for the dedicated Gmail
+  account; Resend fallback). Historical plan at the time of this local
+  mock run, now superseded by S27 in `docs/decision-log.md`. No real
+  Gmail or Resend delivery was tested.
 - The owner's review of the emergency-revoke window (open decision).
