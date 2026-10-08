@@ -1,10 +1,10 @@
 # Salutant Evidence Record
 
-**Status.** Historical: empty by design until Phase 1 ran. Reviewer verdicts are as relayed by the coordinator, not read from the reviewer.
+**Status.** Bounded reported local Phase 1 evidence is linked below. Per-requirement results and real-platform checks remain Pending; this record does not bind an independent exact-head review verdict.
 
 ## How this record works
 
-One row per requirement. Each row has the check, the failure condition, and the result. Historical: nothing had been run when this was written, so each result below starts as Pending. This is a historical status from before the Phase 1 merge recorded in S15. Current evidence is not linked in this record, and a merge alone does not show that tests passed. Real-platform results are still open. A result is filled in only with a link to the evidence: a test run at an exact commit, a saved response, or a reviewer verdict. The Playbook is three files: Charter, Build Plan and Specification. This record and the Decision Log belong in the repo next to the code, and stay until they are committed.
+One row per requirement. Each row has the check, the failure condition, and the result. The Phase 1 exit section links bounded reported local evidence; a merge alone does not show that tests passed. Real-platform results are still open. A result is filled in only with a link to the evidence: a test run at an exact commit, a saved response, or a reviewer verdict. The current Playbook has three tabs: Charter, Roadmap and How It Works. These records live with the code.
 
 
 ## Requirements and results
@@ -37,10 +37,9 @@ One row per requirement. Each row has the check, the failure condition, and the 
 
 ## Reviews
 
-- **Build Plan, earlier revision** PASS for the local and mock Phase 1 scope, as relayed by the coordinator from the independent reviewer. Reviewer notes: Google quota wording and later reviewed gates for account creation, authentication, retention and delivery.
-- **Build Plan, revision before the latest fixes** PASS WITH REVISIONS, as relayed by the coordinator. The revisions are applied in the next revision and need a re-check.
-- **Specification, Decision Log, Evidence Record** PASS WITH REVISIONS, as relayed by the coordinator. The revisions are applied and need a re-check.
-- **Phase 1 code** Historical status; current evidence not linked in this record. Independent review of the exact head commit, after tests.
+- **Roadmap and local/mock scope** Review comments have been received. This record does not bind an independent review verdict to the current Roadmap bytes or establish later-phase approval.
+- **How It Works, Decision Log, Evidence Record** Review comments have been received. This record does not bind an independent exact-current-bytes verdict for these documents.
+- **Phase 1 code** Reported local evidence is linked above; this record does not bind an independent exact-head review verdict.
 
 ## Later phases
 
