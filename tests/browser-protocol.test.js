@@ -43,8 +43,11 @@ test('the verify response returns only the registered callback, and completion s
 test('altered state is rejected at the exchange', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
-  const res = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state.slice(0, -1) + 'Z' }, SERVICE_ORIGIN);
+  const state = r.verified.state;
+  const alteredState = state.slice(0, -1) + (state.endsWith('Z') ? 'Y' : 'Z');
+  const res = await w.app.handleExchange({ proof: r.verified.proof, state: alteredState }, SERVICE_ORIGIN);
   assert.notEqual(res.status, 200);
+  assert.notEqual(alteredState, state);
 });
 
 test('the exchange answers CORS for the service origin exactly, and nothing else', async () => {
