@@ -41,11 +41,11 @@ Each entry records a choice the owner made: the decision, its effect and its sta
 ## Open decisions
 
 - **Emergency key staleness** The owner must decide whether to accept or shorten the proposed [10 minutes] end-to-end window after an emergency key revoke. Failing closed is a requirement and is not the owner's agreement to the window. Not approved.
-- **Final contract values** Every bracketed value in the Specification returns for the owner's approval with the plan.
+- **Final contract values** Every bracketed value in How It Works returns for the owner's approval with the plan.
 - **Cloud epoch mechanism** The local findings report a passing injected-source restore rehearsal. A Worker environment variable is a candidate only; propagation to all running copies and stale reads still need cloud testing.
 - **Real-browser callback behavior** The local findings and test report record option 2 script exchange and first-party completion passing mock tests. Real Safari behavior remains unverified.
 - **Production timing and owner review** The committed report records local timing passing the written protocol. Production timing and Workers CPU remain unmeasured; the owner reviews the measured values before any launch.
-- **Phase approval** Approval of the Build Plan covers Phase 1 (local code and mocks) only. Historical: a separate code go-ahead was required, and was later given for Phase 1 only (see the entry Phase 1 code started). Merge and every later phase are not covered and need their own authorization.
+- **Phase approval** Approval of the Roadmap covers Phase 1 (local code and mocks) only. Historical: a separate code go-ahead was required, and was later given for Phase 1 only (see the entry Phase 1 code started). Merge and every later phase are not covered and need their own authorization.
 
 ## Local findings already reported
 
