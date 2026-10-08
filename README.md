@@ -36,5 +36,6 @@ runner.
 - Reported: someone else said so; not re-read.
 - Unproven: nobody has shown it.
 
-Phase 1 forbids merge, deployment, real sends, and any account setup.
-Each later phase needs its own owner authorization.
+Phase 1 is merged. It covers local code and mocks only, not deployment,
+real sends or account setup. Each later phase needs its own owner
+authorization.
