@@ -1,10 +1,10 @@
 # Salutant Evidence Record
 
-**Status.** Historical: empty by design until Phase 1 ran. Reviewer verdicts are as relayed by the coordinator, not read from the reviewer.
+**Status.** Bounded reported local Phase 1 evidence is linked below. Per-requirement results and real-platform checks remain Pending; this record does not bind an independent exact-head review verdict.
 
 ## How this record works
 
-One row per requirement. Each row has the check, the failure condition, and the result. Historical: nothing had been run when this was written, so each result below starts as Pending. This is a historical status from before the Phase 1 merge recorded in S15. Current evidence is not linked in this record, and a merge alone does not show that tests passed. Real-platform results are still open. A result is filled in only with a link to the evidence: a test run at an exact commit, a saved response, or a reviewer verdict. The Playbook is three files: Charter, Build Plan and Specification. This record and the Decision Log belong in the repo next to the code, and stay until they are committed.
+One row per requirement. Each row has the check, the failure condition, and the result. The Phase 1 exit section links bounded reported local evidence; a merge alone does not show that tests passed. Real-platform results are still open. A result is filled in only with a link to the evidence: a test run at an exact commit, a saved response, or a reviewer verdict. The current Playbook has three tabs: Charter, Roadmap and How It Works. These records live with the code.
 
 
 ## Requirements and results
@@ -28,17 +28,18 @@ One row per requirement. Each row has the check, the failure condition, and the 
 
 ## Phase 1 exit evidence
 
-- **Mock service and stub app** Pending. Links to the exact commit.
-- **Concurrency, replay, restore, header and timing tests** Pending. Results listed against the requirement numbers above.
-- **Findings on production mechanisms** Pending. Epoch mechanism, callback return path, key cache, purge accounting.
-- **Measured values and open decisions** Pending. Returned to the owner for review. Phase 1 then stops.
+- **Mock service and stub app** Merged local/mock prototype via [PR 59](https://github.com/soliskit/salutant/pull/59), merge commit `8bd88447aa47af3c5421b2f23166cdc7b532f5fa`. No real mail, deployment or accounts. The PR body is historical, not the current test count.
+- **Concurrency, replay, restore, header and timing tests** The [committed local test report](https://github.com/soliskit/salutant/blob/main/docs/evidence/phase-1-test-results.md) records 71 tests passing at `b9f9b61ff189b98115ff2cb46d1f7bd164681949`, with requirement-group and timing results. This is reported run evidence, not a new execution or proof for current main. The [mock service at the named commit](https://github.com/soliskit/salutant/blob/b9f9b61ff189b98115ff2cb46d1f7bd164681949/src/service.js) is available. Per-requirement rows above remain Pending where their full checks exceed this bounded evidence.
+- **Findings on production mechanisms** [Written local findings](https://github.com/soliskit/salutant/blob/main/docs/findings/phase-1-findings.md) cover epoch, callback, key cache and purge. Cloud behavior and real Safari remain open. That findings file records no exact independent run binding; it is not independently verified by this record.
+- **Measured values and open decisions** Local timing and CPU samples are recorded in the test report above. Emergency key-window acceptance and real-platform measurements remain open. Local CPU results do not prove the Workers CPU limit.
+
+**Current-tree limit.** [PR 63](https://github.com/soliskit/salutant/pull/63) changed the altered-state test after the original report and merged at `519b9aca72fe8256771fc18c0c189ceff2421dfc`. Its body reports local 71-test validation against `f09b26fb`, but no exact run receipt is bound here. The original report is not current-head test evidence.
 
 ## Reviews
 
-- **Build Plan, earlier revision** PASS for the local and mock Phase 1 scope, as relayed by the coordinator from the independent reviewer. Reviewer notes: Google quota wording and later reviewed gates for account creation, authentication, retention and delivery.
-- **Build Plan, revision before the latest fixes** PASS WITH REVISIONS, as relayed by the coordinator. The revisions are applied in the next revision and need a re-check.
-- **Specification, Decision Log, Evidence Record** PASS WITH REVISIONS, as relayed by the coordinator. The revisions are applied and need a re-check.
-- **Phase 1 code** Historical status; current evidence not linked in this record. Independent review of the exact head commit, after tests.
+- **Roadmap and local/mock scope** Review comments have been received. This record does not bind an independent review verdict to the current Roadmap bytes or establish later-phase approval.
+- **How It Works, Decision Log, Evidence Record** Review comments have been received. This record does not bind an independent exact-current-bytes verdict for these documents.
+- **Phase 1 code** Reported local evidence is linked above; this record does not bind an independent exact-head review verdict.
 
 ## Later phases
 
