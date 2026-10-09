@@ -38,6 +38,13 @@ Each entry records a choice the owner made: the decision, its effect and its sta
 
 - **S27 Mail path, current** Effect: sign-in mail goes through Resend from mail.soliskit.com, replacing the dedicated Gmail account in S10; iCloud stays dropped. Account creation, domain setup, credentials and real sends remain later-phase work, each authorized separately. The mail adapter stays provider-neutral. Provider limits and delivery remain to be checked before real sends. Status: Settled for the mail path; real sending unproven.
 
+- **S28 Emergency revoke window** Effect: after an emergency signing-key revoke, apps stop trusting the old key within at most 10 minutes. The owner accepts this as a hard maximum for the owner-only trial, on the condition that cloud tests prove it. This sets the safety limit only; it is not a go-live, and it settles the emergency key staleness question below. Status: Settled as a limit; cloud proof pending.
+- **S29 Six-digit code format** Effect: the sign-in code is six digits, with limits on wrong guesses. This settles the code format left open in S3 and approves the recommendation listed below. Format only; it approves no real emails and no go-live. Status: Settled.
+- **S30 Code lifetime** Effect: a sign-in code expires after 30 minutes, works once and only in the browser that asked for it. Lifetime value only; this replaces the proposed [10 minutes] value. Status: Settled.
+- **S31 Wrong-guess limit** Effect: five wrong guesses cancel a sign-in code; signing in then needs a new code. Per-code limit only. Status: Settled.
+- **S32 Resend wait** Effect: a resend can be asked for only after a one-minute wait; a resend replaces the old code for that attempt. Wait only. Status: Settled.
+- **S33 Two unfinished attempts** Effect: at most two unfinished sign-in attempts for the owner's address at once. A slot frees when its code is used, cancelled by five wrong guesses or expires. An outsider who fills both slots can delay the owner by up to 30 minutes; the owner accepts that for the owner-only trial, replacing the up-to-an-hour delay accepted in S22. Status: Settled.
+
 ## Carried over from the removed duplicate log
 
 These two entries come from `docs/decisions/decision-log.md`, removed as a duplicate. They are historical records, not new decisions. Source: that file in git history before the removal. Status for both: Settled.
@@ -47,7 +54,6 @@ These two entries come from `docs/decisions/decision-log.md`, removed as a dupli
 
 ## Open decisions
 
-- **Emergency key staleness** The owner must decide whether to accept or shorten the proposed [10 minutes] end-to-end window after an emergency key revoke. Failing closed is a requirement and is not the owner's agreement to the window. Not approved.
 - **Final contract values** Every bracketed value in How It Works returns for the owner's approval with the plan.
 - **Cloud epoch mechanism** The local findings report a passing injected-source restore rehearsal. A Worker environment variable is a candidate only; propagation to all running copies and stale reads still need cloud testing.
 - **Real-browser callback behavior** The local findings and test report record option 2 script exchange and first-party completion passing mock tests. Real Safari behavior remains unverified.
@@ -64,5 +70,4 @@ These are summaries of reported local results, not new owner decisions, a new te
 
 ## Recommendations not approved
 
-- **Six-digit code** A recommendation. Not in the owner's words.
 - **Bot check before opening to others** The owner accepted that it is added before opening (S22); its design is not chosen.
