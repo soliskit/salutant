@@ -1,7 +1,9 @@
 # Lane A contract, v1
 
-The contract the phase 1 code is written against. Everything in brackets
-is a proposal; final values return to the owner with measured results.
+The contract the phase 1 code is written against. The owner settled the
+sign-in values on October 9, 2026 (S28-S39 in `docs/decision-log.md`); they
+are written without brackets below. Values still in brackets remain
+proposals; final values return to the owner with measured results.
 Host names are recorded when the hosts exist, since none exist yet.
 Requirement numbers (R1-R16) refer to the approved plan.
 
@@ -115,8 +117,9 @@ session.
 
 Ed25519 (EdDSA), the one pinned algorithm. The private key is a service
 secret. Public keys are published at the key endpoint with their key ids
-and cached by apps for at most [5 minutes]; with the [5 minute] endpoint
-cache the end-to-end bound is [10 minutes]. Codes come from the secure
+and cached by apps for at most 5 minutes; with the 5-minute endpoint
+cache the end-to-end bound is 10 minutes, settled as a hard maximum for
+the owner-only trial, conditional on cloud proof (S28). Codes come from the secure
 random function and are compared with a timing-safe comparison.
 
 ## Security headers
@@ -158,13 +161,19 @@ The adapter remains provider-neutral. Whatever the provider:
 
 ## Proposed values
 
-Code expiry [10 minutes]. Wrong tries [5]. Active challenges per address
-[2]. Sends per address [3 per hour]. Requests per address [10 per hour].
-Requests per source [10 per hour]. Resend cooldown [60 seconds]. Sends
-overall [50 per day, 1,500 per month]. Body limit [2 KB]. Proof lifetime
-[5 minutes]. Clock skew [60 seconds]. Key cache [5 minutes at the app,
-5 at the endpoint, 10 end to end]. CPU margin [20 percent]. App log
-retention [14 days]. Address-linked state [24 hours].
+Code expiry 30 minutes (S30). Wrong tries 5 (S31). Active challenges per
+address 2 (S33). Sends per address 3 per 30 minutes, including resends
+(S34). Requests per address 10 per hour (S36). Requests per source 10 per
+hour (S36). Resend cooldown one minute (S32). Sends overall at most 90
+percent of the mail provider's current free allowance: 90 per day and
+2,700 per month at the free plan of 100 per day and 3,000 per month,
+checked October 9, 2026 (S35). Body limit [2 KB]. Proof lifetime 5
+minutes (S37). Clock skew one minute (S38). Key cache 5 minutes at the
+app, 5 at the endpoint, 10 end to end, settled as a hard maximum for the
+owner-only trial, conditional on cloud proof (S28). CPU margin
+[20 percent]. App log retention 14 days; logs never contain email
+addresses, codes or proofs (S39). Address-linked state deleted within
+24 hours; single-use protection still needed is not removed early (S39).
 
 ## Timing measurement protocol
 
@@ -185,12 +194,13 @@ owner before launch.
 ## Key staleness bound
 
 One end-to-end number: after an emergency revoke, an app may accept an
-old key for at most [10 minutes] in total, counting the endpoint cache
-([5 minutes] on the key response) and the app cache together; the app
-cache setting is therefore [5 minutes] and the endpoint cache
-[5 minutes], and no layer may hold a key longer than its own setting. An
+old key for at most 10 minutes in total, counting the endpoint cache
+(5 minutes on the key response) and the app cache together; the app
+cache setting is therefore 5 minutes and the endpoint cache
+5 minutes, and no layer may hold a key longer than its own setting. An
 app that cannot refresh after its cache ends rejects every proof (fails
-closed). This is a proposal for owner review, not approved.
+closed). Settled as a hard maximum for the owner-only trial, conditional
+on cloud proof (S28).
 
 ## Cost and limits check
 
