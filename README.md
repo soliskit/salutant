@@ -6,13 +6,14 @@ out. Nothing else.
 
 This repository currently holds **phase 1: a local, fully mocked prototype**.
 The service, a stub app, and the test suite run on any machine with
-Node.js 20 or later. No real emails are sent, no accounts or credentials
+Node.js 20 or later (CI runs Node 22). No real emails are sent, no accounts or credentials
 are used, and nothing is deployed. The earlier Swift form-message app was
 replaced by owner decision; its history is preserved in git.
 
 ## Layout
 
-- `docs/decisions/` - owner decisions this work is built on.
+- `docs/decision-log.md` - owner decisions this work is built on.
+- `docs/evidence-record.md` - one row per requirement, with its check and result.
 - `docs/contract/` - the lane A contract the code is written against.
 - `docs/mail/` - the mock mail adapter contract and provider research.
 - `docs/evidence/` - recorded test results.

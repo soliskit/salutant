@@ -7,7 +7,7 @@ Requirement numbers (R1-R16) refer to the approved plan.
 
 ## Repo layout (settled here, per lane A ownership)
 
-- `docs/decisions/` - lane A. Owner decision log.
+- `docs/decision-log.md` - lane A. Owner decision log.
 - `docs/contract/` - lane A. This contract.
 - `docs/mail/` - lane B. Mock mail adapter contract, provider research.
 - `src/`, `tests/` - lane C. Mock service, stub app, tests.

@@ -38,6 +38,13 @@ Each entry records a choice the owner made: the decision, its effect and its sta
 
 - **S27 Mail path, current** Effect: sign-in mail goes through Resend from mail.soliskit.com, replacing the dedicated Gmail account in S10; iCloud stays dropped. Account creation, domain setup, credentials and real sends remain later-phase work, each authorized separately. The mail adapter stays provider-neutral. Provider limits and delivery remain to be checked before real sends. Status: Settled for the mail path; real sending unproven.
 
+## Carried over from the removed duplicate log
+
+These two entries come from `docs/decisions/decision-log.md`, removed as a duplicate. They are historical records, not new decisions. Source: that file in git history before the removal. Status for both: Settled.
+
+- **One app or many** One service that can serve many apps. The first connected app is the owner's video-call app. Historical record; the owner decision of 7 October 2026, as recorded in the removed log.
+- **Browser binding stays** A sign-in code verifies only from the browser that requested it, so a phished or observed code is useless elsewhere. The accepted cost: under a slot-filling attack a code mailed from an attacker's challenge cannot be used in the owner's own browser - the owner is delayed until a slot frees, never locked out (finding 5). (Owner decision 7 October 2026, answering the phase 1 finding-5 question: "Keep it".) Historical record; S13 above is the entry that governs the browser binding decision.
+
 ## Open decisions
 
 - **Emergency key staleness** The owner must decide whether to accept or shorten the proposed [10 minutes] end-to-end window after an emergency key revoke. Failing closed is a requirement and is not the owner's agreement to the window. Not approved.
