@@ -44,6 +44,7 @@ Each entry records a choice the owner made: the decision, its effect and its sta
 - **S31 Wrong-guess limit** Effect: five wrong guesses cancel a sign-in code; signing in then needs a new code. Per-code limit only. Status: Settled.
 - **S32 Resend wait** Effect: a resend can be asked for only after a one-minute wait; a resend replaces the old code for that attempt. Wait only. Status: Settled.
 - **S33 Two unfinished attempts** Effect: at most two unfinished sign-in attempts for the owner's address at once. A slot frees when its code is used, cancelled by five wrong guesses or expires. An outsider who fills both slots can delay the owner by up to 30 minutes; the owner accepts that for the owner-only trial, replacing the up-to-an-hour delay accepted in S22. Status: Settled.
+- **S34 Three emails per 30 minutes** Effect: at most three sign-in emails to one address per 30 minutes, including resends; once used up, the address waits for the window to reset. An outsider can use up the allowance and delay the owner; the owner accepts that for the owner-only trial. This entry claims no provider quota. Status: Settled.
 
 ## Carried over from the removed duplicate log
 
