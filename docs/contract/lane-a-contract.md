@@ -1,4 +1,4 @@
-# Lane A contract, v1
+# Sign-in contract
 
 The contract the phase 1 code is written against. The owner settled the
 sign-in values on October 9, 2026 (S28-S39 in `docs/decision-log.md`); they
@@ -6,6 +6,7 @@ are written without brackets below. Values still in brackets remain
 proposals; final values return to the owner with measured results. The
 phase 1 code was written and tested against the earlier proposal values;
 the settled values are not yet implemented or measured.
+The prototype still uses a 10-minute code, three sends per address per hour, and total limits of 50 per day and 1,500
 Host names are recorded when the hosts exist, since none exist yet.
 Requirement numbers (R1-R16) refer to the approved plan.
 
@@ -17,7 +18,7 @@ Requirement numbers (R1-R16) refer to the approved plan.
 - `src/`, `tests/` - lane C. Mock service, stub app, tests.
 - `docs/evidence/` - lane D1. Recorded results.
 - `docs/findings/` - lane C/D1. Mechanism findings.
-- No CI in phase 1; CI is a separate owner decision.
+- The Test workflow runs the local mock tests on pushes and pull requests. It does not authorize deployment, real 
 
 ## Storage
 
