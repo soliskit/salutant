@@ -40,3 +40,13 @@ runner.
 Phase 1 is merged. It covers local code and mocks only, not deployment,
 real sends or account setup. Each later phase needs its own owner
 authorization.
+
+## Current local sign-in limits
+
+Codes last 30 minutes. Each address can receive three emails in any rolling
+30-minute window, including resends. The separate ten-requests-per-hour
+limit stays hourly. Total mock sends stop at 90 per UTC day and 2,700 per
+UTC month. Email expiry text comes from the lifetime setting; a resend
+keeps the original expiry. Local tests cover these values and boundaries.
+Before real sending, recheck the provider's current free allowance and
+other mail on the account. No real sending or launch is included here.
