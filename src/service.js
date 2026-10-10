@@ -234,7 +234,7 @@ export class SalutantService {
         .length;
       if (openCount >= this.config.activeChallengesPerAddress) return 'withheld_cap';
       const overBudget =
-        readCounter(s, `sendaddr:${addressHash}`, sendWindow(now)) >= this.config.sendsPerAddressPer30Minutes ||
+        readRecentSends(s, addressHash, now) >= this.config.sendsPerAddressPer30Minutes ||
         readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay ||
         readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth;
       if (overBudget) {
@@ -269,7 +269,7 @@ export class SalutantService {
         requestId, challengeId, addressHash, createdAtMs: now, epoch, outcome: 'pending',
       });
       if (listed) {
-        bump(s, `sendaddr:${addressHash}`, sendWindow(now), this.config.addressStateTtlMs, now);
+        recordSend(s, addressHash, this.config.addressStateTtlMs, now);
         bump(s, 'sendday', dayWindow(now), 2 * 24 * 3_600_000, now);
         bump(s, 'sendmonth', monthWindow(now), 32 * 24 * 3_600_000, now);
       }
@@ -344,7 +344,7 @@ export class SalutantService {
       if (now - c.lastSentAtMs < this.config.resendCooldownMs) return 'cooldown';
       if (c.listed) {
         const overBudget =
-          readCounter(s, `sendaddr:${c.addressHash}`, sendWindow(now)) >= this.config.sendsPerAddressPer30Minutes ||
+          readRecentSends(s, c.addressHash, now) >= this.config.sendsPerAddressPer30Minutes ||
           readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay ||
           readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth;
         if (overBudget) {
@@ -364,7 +364,7 @@ export class SalutantService {
         requestId, challengeId: c.id, addressHash: c.addressHash, createdAtMs: now, epoch, outcome: 'pending',
       });
       if (c.listed) {
-        bump(s, `sendaddr:${c.addressHash}`, sendWindow(now), this.config.addressStateTtlMs, now);
+        recordSend(s, c.addressHash, this.config.addressStateTtlMs, now);
         bump(s, 'sendday', dayWindow(now), 2 * 24 * 3_600_000, now);
         bump(s, 'sendmonth', monthWindow(now), 32 * 24 * 3_600_000, now);
       }
@@ -574,8 +574,22 @@ function concatBytes(chunks) {
   return out;
 }
 
-// Send budgets use separate fixed UTC half-hour windows. Request limits stay hourly.
-function sendWindow(now) { return `s30:${Math.floor(now / 1_800_000)}`; }
+// Rolling send reservations cover (now - 30 minutes, now]. Creates and
+// resends check and record in the same synchronous transaction. Failed or
+// uncertain sends still consume quota; refusals never add a timestamp.
+const SEND_WINDOW_MS = 30 * 60_000;
+function recentSends(s, addressHash, now) {
+  return (s.getRef(`counter:sendaddr:${addressHash}:rolling`)?.timestamps ?? [])
+    .filter((time) => time > now - SEND_WINDOW_MS);
+}
+function readRecentSends(s, addressHash, now) {
+  return recentSends(s, addressHash, now).length;
+}
+function recordSend(s, addressHash, ttlMs, now) {
+  const timestamps = recentSends(s, addressHash, now);
+  timestamps.push(now);
+  s.set(`counter:sendaddr:${addressHash}:rolling`, { timestamps, expiresAtMs: now + ttlMs });
+}
 function hourWindow(now) { return `h:${Math.floor(now / 3_600_000)}`; }
 function dayWindow(now) { return `d:${new Date(now).toISOString().slice(0, 10)}`; }
 function monthWindow(now) { return `m:${new Date(now).toISOString().slice(0, 7)}`; }
