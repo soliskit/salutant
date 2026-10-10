@@ -43,8 +43,8 @@ authorization.
 
 ## Current local sign-in limits
 
-Codes last 30 minutes. Each address can receive three emails per fixed
-UTC half-hour window, including resends. The separate ten-requests-per-hour
+Codes last 30 minutes. Each address can receive three emails in any rolling
+30-minute window, including resends. The separate ten-requests-per-hour
 limit stays hourly. Total mock sends stop at 90 per UTC day and 2,700 per
 UTC month. Email expiry text comes from the lifetime setting; a resend
 keeps the original expiry. Local tests cover these values and boundaries.
