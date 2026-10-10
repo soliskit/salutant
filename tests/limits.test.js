@@ -333,14 +333,14 @@ test('withheld resends move the cooldown clock under tight budgets (30-minute, d
   }
 });
 
-// Current local defaults: fixed half-hour sends, independent hourly requests.
+// Current local defaults: rolling sends, independent fixed hourly requests.
 const HALF_HOUR = 30 * 60_000;
 const ALIGNED = Date.UTC(2026, 0, 1);
 async function create(w, browser, address = OWNER) {
   return (await browser.postChallenge({ address, stateId: 's'.repeat(24) })).json();
 }
 
-test('send window resets at 30 minutes for creates and resends, not requests', async () => {
+test('rolling sends age out individually at 30 minutes; requests stay hourly', async () => {
   const w = await makeWorld({ now: ALIGNED, config: { activeChallengesPerAddress: 100 } });
   const b = new BrowserSession(w);
   const c = await create(w, b);
@@ -350,38 +350,49 @@ test('send window resets at 30 minutes for creates and resends, not requests', a
   await w.service.drain();
   assert.equal(w.mailer.outbox.length, 3);
   w.setNow(ALIGNED + HALF_HOUR - 1);
-  await b.resend({ challengeId: c.challengeId, address: OWNER });
   await create(w, b);
   await w.service.drain();
-  assert.equal(w.mailer.outbox.length, 3, 'both paths share the send budget');
+  assert.equal(w.mailer.outbox.length, 3);
   w.setNow(ALIGNED + HALF_HOUR);
   const next = await create(w, b);
+  await create(w, b);
   await w.service.drain();
-  assert.equal(w.mailer.outbox.length, 4, 'new half-hour starts exactly at its boundary');
+  assert.equal(w.mailer.outbox.length, 4, 'only the first timestamp ages out');
   w.advance(60_000);
   await b.resend({ challengeId: next.challengeId, address: OWNER });
   await create(w, b);
   await w.service.drain();
-  assert.equal(w.mailer.outbox.length, 6, 'second window also shares creates and resends');
-  // Five create requests above; five more use the remaining hourly allowance.
-  for (let i = 0; i < 5; i++) assert.equal((await b.postChallenge({ address: OWNER, stateId: 's'.repeat(24) })).status, 200);
-  assert.equal((await b.postChallenge({ address: OWNER, stateId: 's'.repeat(24) })).status, 429,
-    'request limit does not reset with the send window');
+  assert.equal(w.mailer.outbox.length, 6, 'both later timestamps age out exactly');
+  // Six creates above; four more exhaust the independent hourly request cap.
+  for (let i = 0; i < 4; i++) assert.equal((await b.postChallenge({ address: OWNER, stateId: 's'.repeat(24) })).status, 200);
+  assert.equal((await b.postChallenge({ address: OWNER, stateId: 's'.repeat(24) })).status, 429);
   w.setNow(ALIGNED + 60 * 60_000);
   assert.equal((await b.postChallenge({ address: OWNER, stateId: 's'.repeat(24) })).status, 200);
 });
 
-test('concurrent creates and resends share the last slot of the new send window', async () => {
+test('rolling budget blocks a burst across a UTC half-hour boundary', async () => {
+  const w = await makeWorld({ now: ALIGNED + HALF_HOUR - 1, config: { activeChallengesPerAddress: 100 } });
+  const b = new BrowserSession(w);
+  const challenges = await Promise.all([create(w, b), create(w, b), create(w, b)]);
+  w.advance(1);
+  await Promise.all([create(w, b), create(w, b), create(w, b)]);
+  await w.service.drain();
+  assert.equal(w.mailer.outbox.length, 3, 'clock boundary gives no fresh quota');
+  w.advance(60_000);
+  await b.resend({ challengeId: challenges[0].challengeId, address: OWNER });
+  await w.service.drain();
+  assert.equal(w.mailer.outbox.length, 3, 'resends share the same rolling budget');
+});
+
+test('concurrent creates and resends share the last rolling send slot', async () => {
   const w = await makeWorld({ now: ALIGNED, config: { activeChallengesPerAddress: 100 } });
   const b = new BrowserSession(w);
-  w.setNow(ALIGNED + HALF_HOUR - 60_000);
   const c = await create(w, b);
-  w.setNow(ALIGNED + HALF_HOUR);
   await create(w, b);
-  await create(w, b);
+  w.advance(60_000);
   await Promise.all([create(w, b), b.resend({ challengeId: c.challengeId, address: OWNER })]);
   await w.service.drain();
-  assert.equal(w.mailer.outbox.length, 4, 'one previous-window send and only three new-window sends');
+  assert.equal(w.mailer.outbox.length, 3, 'only one concurrent request reserves the final slot');
 });
 
 test('default daily and monthly budgets stop at 90 and 2700 across addresses', async () => {
