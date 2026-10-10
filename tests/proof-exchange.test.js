@@ -40,7 +40,7 @@ async function tampered(w, mutate) {
 }
 
 test('wrong issuer, audience, expiry, not-before and issue time are rejected', async () => {
-  const w = await makeWorld({ config: { sendsPerAddressPerHour: 100, requestsPerAddressPerHour: 100, requestsPerSourcePerHour: 100 } });
+  const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 100, requestsPerAddressPerHour: 100, requestsPerSourcePerHour: 100 } });
   const cases = [
     (c) => { c.iss = 'https://evil.example.test'; },
     (c) => { c.aud = 'https://other.example.test'; },
