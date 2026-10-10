@@ -29,6 +29,10 @@ export const DEFAULT_CONFIG = {
   challengePurgeMs: 3_600_000, // one hour after expiry: records never live 24h (R6)
 };
 
+// How long the daily and monthly send totals are kept: two days and 32 days.
+const DAY_COUNTER_TTL_MS = 2 * 24 * 3_600_000;
+const MONTH_COUNTER_TTL_MS = 32 * 24 * 3_600_000;
+
 const GENERIC_VERIFY_ERROR = 'invalid_or_expired_code';
 
 export class SalutantService {
@@ -270,8 +274,8 @@ export class SalutantService {
       });
       if (listed) {
         recordSend(s, addressHash, this.config.addressStateTtlMs, now);
-        bump(s, 'sendday', dayWindow(now), 2 * 24 * 3_600_000, now);
-        bump(s, 'sendmonth', monthWindow(now), 32 * 24 * 3_600_000, now);
+        bump(s, 'sendday', dayWindow(now), DAY_COUNTER_TTL_MS, now);
+        bump(s, 'sendmonth', monthWindow(now), MONTH_COUNTER_TTL_MS, now);
       }
       return 'accepted';
     });
@@ -365,8 +369,8 @@ export class SalutantService {
       });
       if (c.listed) {
         recordSend(s, c.addressHash, this.config.addressStateTtlMs, now);
-        bump(s, 'sendday', dayWindow(now), 2 * 24 * 3_600_000, now);
-        bump(s, 'sendmonth', monthWindow(now), 32 * 24 * 3_600_000, now);
+        bump(s, 'sendday', dayWindow(now), DAY_COUNTER_TTL_MS, now);
+        bump(s, 'sendmonth', monthWindow(now), MONTH_COUNTER_TTL_MS, now);
       }
       return 'accepted';
     });
