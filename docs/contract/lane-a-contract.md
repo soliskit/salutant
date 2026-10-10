@@ -4,7 +4,7 @@ The contract the phase 1 code is written against. The owner settled the
 sign-in values on October 9, 2026 (S28-S39 in `docs/decision-log.md`); they
 are written without brackets below. Values still in brackets remain
 proposals; final values return to the owner with measured results. The local prototype now uses the settled 30-minute code lifetime,
-three sends per address per fixed UTC half-hour window (new emails and
+three sends per address in any rolling 30-minute window (new emails and
 resends share the counter), and total limits of 90 per UTC day and 2,700
 per UTC month. Request counters remain hourly. Email expiry text reads
 the lifetime setting and notes that resends keep the original expiry.
