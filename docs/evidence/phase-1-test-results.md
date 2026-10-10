@@ -24,11 +24,11 @@ with its own test state; no production limits or data exist.
   response shape and no mail.
 - `tests/proof-exchange.test.js` (R4): a valid proof redeems into
   exactly one session; 20 parallel redemptions give one redemption and
-  19 replay rejections; wrong issuer, audience, expiry, not-before and
+  19 replay rejections; wrong issuer, audience, expiry, not-before, and
   issue time rejected; altered body fails its signature; alg:none and
   foreign keys rejected; unknown key id rejected after one refresh;
   reused state rejected; a proof for another audience rejected; a
-  correctly signed proof missing exp, nbf, iat or jti is rejected; the
+  correctly signed proof missing exp, nbf, iat, or jti is rejected; the
   60-second exchange window runs from proof issuance, so a slow code
   step (including a resend after its 60-second cooldown) still
   exchanges, while a proof exchanged 61 seconds after issuance is
@@ -69,7 +69,7 @@ with its own test state; no production limits or data exist.
   reveal membership); withheld creates and resends evolve state exactly
   like unlisted acceptances (records, cooldown clock), so an immediate
   retry after a withheld resend meets the same 429 cooldown for both
-  classes, under the default budget and under 1-per-hour, 1-per-day and
+  classes, under the default budget and under 1-per-hour, 1-per-day, and
   1-per-month budgets;
 - `tests/headers.test.js` (R9): every route type (page known and unknown
   app, script, style, challenge, verify error, key endpoint, 404)
@@ -93,7 +93,7 @@ with its own test state; no production limits or data exist.
   emulate a browser's third-party-cookie policy - a real Safari run
   stays open for the cloud phase); all cookies first-party and
   host-only;
-  wrong, sibling and lookalike origins refused; only the registered
+  wrong, sibling, and lookalike origins refused; only the registered
   callback is returned and the completion URL carries no token; altered
   state rejected; CORS answers the service origin exactly; the required
   login-CSRF mock test passes (an attacker-owned state or proof cannot
