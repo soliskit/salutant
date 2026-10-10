@@ -31,7 +31,7 @@ test('responses for allowed and unlisted addresses differ only in the permitted 
 });
 
 test('quota-state: driving the limits leaves allowed and unlisted classes indistinguishable', async () => {
-  const w = await makeWorld({ config: { sendsPerAddressPerHour: 1000 } });
+  const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 1000 } });
   const start = await w.app.startSignIn(null);
   const run = async (address) => {
     const browser = new BrowserSession(w);
@@ -54,7 +54,7 @@ test('timing protocol: 200 interleaved requests per class, 3 runs, within tolera
   const p95s = { allowed: [], unlisted: [] };
   const gaps = [];
   for (let run = 0; run < RUNS; run++) {
-    const w = await makeWorld({ config: { sendsPerAddressPerHour: 10000, requestsPerAddressPerHour: 10000, requestsPerSourcePerHour: 10000, activeChallengesPerAddress: 10000 } });
+    const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 10000, requestsPerAddressPerHour: 10000, requestsPerSourcePerHour: 10000, activeChallengesPerAddress: 10000 } });
     const samples = { allowed: [], unlisted: [] };
     for (let i = 0; i < PER_CLASS; i++) {
       for (const [klass, address] of [['allowed', OWNER], ['unlisted', STRANGER]]) {
