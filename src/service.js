@@ -11,15 +11,15 @@ import {
 } from './crypto.js';
 
 export const DEFAULT_CONFIG = {
-  codeTtlMs: 10 * 60_000,
+  codeTtlMs: 30 * 60_000,
   maxAttempts: 5,
   activeChallengesPerAddress: 2,
-  sendsPerAddressPerHour: 3,
+  sendsPerAddressPer30Minutes: 3,
   requestsPerAddressPerHour: 10,
   requestsPerSourcePerHour: 10,
   resendCooldownMs: 60_000,
-  sendsPerDay: 50,
-  sendsPerMonth: 1500,
+  sendsPerDay: 90,
+  sendsPerMonth: 2700,
   bodyLimitBytes: 2048,
   proofTtlSeconds: 300,
   clockSkewMs: 60_000,
@@ -234,7 +234,7 @@ export class SalutantService {
         .length;
       if (openCount >= this.config.activeChallengesPerAddress) return 'withheld_cap';
       const overBudget =
-        readCounter(s, `sendaddr:${addressHash}`, hourWindow(now)) >= this.config.sendsPerAddressPerHour ||
+        readCounter(s, `sendaddr:${addressHash}`, sendWindow(now)) >= this.config.sendsPerAddressPer30Minutes ||
         readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay ||
         readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth;
       if (overBudget) {
@@ -269,7 +269,7 @@ export class SalutantService {
         requestId, challengeId, addressHash, createdAtMs: now, epoch, outcome: 'pending',
       });
       if (listed) {
-        bump(s, `sendaddr:${addressHash}`, hourWindow(now), this.config.addressStateTtlMs, now);
+        bump(s, `sendaddr:${addressHash}`, sendWindow(now), this.config.addressStateTtlMs, now);
         bump(s, 'sendday', dayWindow(now), 2 * 24 * 3_600_000, now);
         bump(s, 'sendmonth', monthWindow(now), 32 * 24 * 3_600_000, now);
       }
@@ -344,7 +344,7 @@ export class SalutantService {
       if (now - c.lastSentAtMs < this.config.resendCooldownMs) return 'cooldown';
       if (c.listed) {
         const overBudget =
-          readCounter(s, `sendaddr:${c.addressHash}`, hourWindow(now)) >= this.config.sendsPerAddressPerHour ||
+          readCounter(s, `sendaddr:${c.addressHash}`, sendWindow(now)) >= this.config.sendsPerAddressPer30Minutes ||
           readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay ||
           readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth;
         if (overBudget) {
@@ -364,7 +364,7 @@ export class SalutantService {
         requestId, challengeId: c.id, addressHash: c.addressHash, createdAtMs: now, epoch, outcome: 'pending',
       });
       if (c.listed) {
-        bump(s, `sendaddr:${c.addressHash}`, hourWindow(now), this.config.addressStateTtlMs, now);
+        bump(s, `sendaddr:${c.addressHash}`, sendWindow(now), this.config.addressStateTtlMs, now);
         bump(s, 'sendday', dayWindow(now), 2 * 24 * 3_600_000, now);
         bump(s, 'sendmonth', monthWindow(now), 32 * 24 * 3_600_000, now);
       }
@@ -400,7 +400,7 @@ export class SalutantService {
     // against the provider's send record.
     const result = await this.mailer.send({
       requestId, to: address, subject: 'Your sign-in code',
-      text: `Your sign-in code is ${code}. It expires in 10 minutes.`,
+      text: `Your sign-in code is ${code}. It expires ${this.config.codeTtlMs / 60_000} minutes after the original request.`,
     });
     this.store.transact((s) => {
       const r = s.getRef(`reservation:${requestId}`);
@@ -574,6 +574,8 @@ function concatBytes(chunks) {
   return out;
 }
 
+// Send budgets use separate fixed UTC half-hour windows. Request limits stay hourly.
+function sendWindow(now) { return `s30:${Math.floor(now / 1_800_000)}`; }
 function hourWindow(now) { return `h:${Math.floor(now / 3_600_000)}`; }
 function dayWindow(now) { return `d:${new Date(now).toISOString().slice(0, 10)}`; }
 function monthWindow(now) { return `m:${new Date(now).toISOString().slice(0, 7)}`; }
