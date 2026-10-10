@@ -1,4 +1,4 @@
-# Mail adapter contract, v1
+# Mail adapter contract
 
 Lane B. The service never talks to a mail provider directly. It talks to
 an adapter with this interface, so the provider (Resend from
