@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { makeWorld, BrowserSession, honestSignIn, OWNER, STRANGER } from './helpers.js';
 
 test('requests per source per hour: the eleventh is limited, same for both address classes', async () => {
-  const w = await makeWorld({ config: { requestsPerAddressPerHour: 1000, sendsPerAddressPerHour: 1000 } });
+  const w = await makeWorld({ config: { requestsPerAddressPerHour: 1000, sendsPerAddressPer30Minutes: 1000 } });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
   let last;
@@ -19,7 +19,7 @@ test('requests per source per hour: the eleventh is limited, same for both addre
 });
 
 test('requests per address per hour: the eleventh for one address is limited', async () => {
-  const w = await makeWorld({ config: { sendsPerAddressPerHour: 1000 } });
+  const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 1000 } });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
   let last;
@@ -32,7 +32,7 @@ test('requests per address per hour: the eleventh for one address is limited', a
   assert.equal(last.status, 429);
 });
 
-test('sends per address per hour: the fourth request is refused indistinguishably and sends no mail', async () => {
+test('sends per address per 30 minutes: the fourth request is refused indistinguishably and sends no mail', async () => {
   const w = await makeWorld({ config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 } });
   const browser = new BrowserSession(w);
   for (let i = 0; i < 3; i++) {
@@ -53,7 +53,7 @@ test('sends per address per hour: the fourth request is refused indistinguishabl
 
 test('an unlisted address and an over-budget listed address return the same response', async () => {
   const w = await makeWorld({ config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 } });
-  // Spend the listed address's hourly send budget.
+  // Spend the listed address's 30-minute send budget.
   for (let i = 0; i < 3; i++) {
     const start = await w.app.startSignIn(null);
     await new BrowserSession(w).postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': `192.0.2.${i}` } });
@@ -147,7 +147,7 @@ test('R8 attack, honest owner path: slot-filling delays the owner, and the maile
   assert.ok((await attackerTry.json()).proof, 'the code itself was never invalidated');
   // The delay ends when the attacker's challenges expire: the owner's
   // own challenge then completes end to end from the owner's browser.
-  w.advance(10 * 60_000 + 1);
+  w.advance(30 * 60_000 + 1);
   const r = await honestSignIn(w, { browser: ownerBrowser });
   assert.ok(r.verified.proof, 'the owner signs in once slots free');
   assert.equal(r.complete.status, 200);
@@ -166,13 +166,13 @@ test('10 concurrent creates cannot exceed the active-challenge cap', async () =>
   assert.equal(w.mailer.outbox.length, 2, 'no extra mails');
 });
 
-test('10 concurrent creates cannot exceed the hourly send budget', async () => {
+test('10 concurrent creates cannot exceed the 30-minute send budget', async () => {
   const w = await makeWorld({ config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 } });
   const start = await w.app.startSignIn(null);
   await Promise.all(Array.from({ length: 10 }, (_, i) =>
     new BrowserSession(w).postChallenge({ address: OWNER, stateId: start.stateId, headers: { 'cf-connecting-ip': `192.0.2.${i}` } })));
   await w.service.drain();
-  assert.equal(w.mailer.outbox.length, 3, 'cap 3 sends per hour holds under concurrency');
+  assert.equal(w.mailer.outbox.length, 3, 'cap 3 sends per 30 minutes holds under concurrency');
   // Refused requests do the same storage work as unlisted acceptances
   // (R3), but none of their reservations is ever delivered.
   const delivered = w.store.keysWithPrefix('reservation:')
@@ -261,15 +261,15 @@ test('resend budget refusals are identical for listed and unlisted addresses', a
   };
   const listed = await seq(listedBrowser, lc.challengeId);
   const unlisted = await seq(unlistedBrowser, uc.challengeId);
-  // The listed address exhausts its 3 sends/hour on the third resend;
+  // The listed address exhausts its 3 sends/30 minutes on the third resend;
   // the unlisted address never bumps a counter. Both sequences must
   // read identically (R3).
   assert.deepEqual(listed, unlisted, 'resend refusals must not reveal membership');
   assert.equal(w.mailer.outbox.length, 3, 'the withheld resend sent no mail');
 });
 
-test('resend budget refusal with sendsPerAddressPerHour=1 matches the unlisted response', async () => {
-  const w = await makeWorld({ config: { sendsPerAddressPerHour: 1 } });
+test('resend budget refusal with sendsPerAddressPer30Minutes=1 matches the unlisted response', async () => {
+  const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 1 } });
   const start = await w.app.startSignIn(null);
   const listedBrowser = new BrowserSession(w);
   const unlistedBrowser = new BrowserSession(w);
@@ -296,7 +296,7 @@ test('after a withheld resend, an immediate retry meets the same cooldown for bo
   const uc = await (await unlistedBrowser.postChallenge({ address: STRANGER, stateId: start.stateId, headers: { 'cf-connecting-ip': '192.0.2.2' } })).json();
   await w.service.drain();
   // Three spaced resends each: the third listed resend is withheld
-  // (hourly budget 3 spent), the unlisted ones are all accepted.
+  // (30-minute budget 3 spent), the unlisted ones are all accepted.
   for (let i = 0; i < 3; i++) {
     w.advance(61_000);
     await listedBrowser.resend({ challengeId: lc.challengeId, address: OWNER });
@@ -310,8 +310,8 @@ test('after a withheld resend, an immediate retry meets the same cooldown for bo
   assert.deepEqual(await unlistedRetry.json(), { error: 'cooldown' });
 });
 
-test('withheld resends move the cooldown clock under tight budgets (hourly, daily, monthly)', async () => {
-  for (const config of [{ sendsPerAddressPerHour: 1 }, { sendsPerDay: 1 }, { sendsPerMonth: 1 }]) {
+test('withheld resends move the cooldown clock under tight budgets (30-minute, daily, monthly)', async () => {
+  for (const config of [{ sendsPerAddressPer30Minutes: 1 }, { sendsPerDay: 1 }, { sendsPerMonth: 1 }]) {
     const w = await makeWorld({ config });
     const start = await w.app.startSignIn(null);
     const listedBrowser = new BrowserSession(w);
@@ -330,5 +330,101 @@ test('withheld resends move the cooldown clock under tight budgets (hourly, dail
     assert.equal(listedRetry.status, unlistedRetry.status, `immediate retry under ${JSON.stringify(config)}`);
     assert.equal(listedRetry.status, 429);
     assert.deepEqual(await listedRetry.json(), { error: 'cooldown' });
+  }
+});
+
+// Current local defaults: fixed half-hour sends, independent hourly requests.
+const HALF_HOUR = 30 * 60_000;
+const ALIGNED = Date.UTC(2026, 0, 1);
+async function create(w, browser, address = OWNER) {
+  return (await browser.postChallenge({ address, stateId: 's'.repeat(24) })).json();
+}
+
+test('send window resets at 30 minutes for creates and resends, not requests', async () => {
+  const w = await makeWorld({ now: ALIGNED, config: { activeChallengesPerAddress: 100 } });
+  const b = new BrowserSession(w);
+  const c = await create(w, b);
+  w.advance(60_000);
+  await b.resend({ challengeId: c.challengeId, address: OWNER });
+  await create(w, b);
+  await w.service.drain();
+  assert.equal(w.mailer.outbox.length, 3);
+  w.setNow(ALIGNED + HALF_HOUR - 1);
+  await b.resend({ challengeId: c.challengeId, address: OWNER });
+  await create(w, b);
+  await w.service.drain();
+  assert.equal(w.mailer.outbox.length, 3, 'both paths share the send budget');
+  w.setNow(ALIGNED + HALF_HOUR);
+  const next = await create(w, b);
+  await w.service.drain();
+  assert.equal(w.mailer.outbox.length, 4, 'new half-hour starts exactly at its boundary');
+  w.advance(60_000);
+  await b.resend({ challengeId: next.challengeId, address: OWNER });
+  await create(w, b);
+  await w.service.drain();
+  assert.equal(w.mailer.outbox.length, 6, 'second window also shares creates and resends');
+  // Five create requests above; five more use the remaining hourly allowance.
+  for (let i = 0; i < 5; i++) assert.equal((await b.postChallenge({ address: OWNER, stateId: 's'.repeat(24) })).status, 200);
+  assert.equal((await b.postChallenge({ address: OWNER, stateId: 's'.repeat(24) })).status, 429,
+    'request limit does not reset with the send window');
+  w.setNow(ALIGNED + 60 * 60_000);
+  assert.equal((await b.postChallenge({ address: OWNER, stateId: 's'.repeat(24) })).status, 200);
+});
+
+test('concurrent creates and resends share the last slot of the new send window', async () => {
+  const w = await makeWorld({ now: ALIGNED, config: { activeChallengesPerAddress: 100 } });
+  const b = new BrowserSession(w);
+  w.setNow(ALIGNED + HALF_HOUR - 60_000);
+  const c = await create(w, b);
+  w.setNow(ALIGNED + HALF_HOUR);
+  await create(w, b);
+  await create(w, b);
+  await Promise.all([create(w, b), b.resend({ challengeId: c.challengeId, address: OWNER })]);
+  await w.service.drain();
+  assert.equal(w.mailer.outbox.length, 4, 'one previous-window send and only three new-window sends');
+});
+
+test('default daily and monthly budgets stop at 90 and 2700 across addresses', async () => {
+  const addresses = Array.from({ length: 91 }, (_, i) => `owner${i}@example.test`);
+  for (const kind of ['day', 'month']) {
+    const w = await makeWorld({ now: ALIGNED, allowlist: addresses, config: { requestsPerSourcePerHour: 10000 } });
+    const b = new BrowserSession(w);
+    if (kind === 'month') {
+      w.store.transact((s) => s.set('counter:sendmonth:m:2026-01', { count: 2699, expiresAtMs: ALIGNED + 32 * 24 * 3_600_000 }));
+    }
+    for (const address of addresses) await create(w, b, address);
+    await w.service.drain();
+    assert.equal(w.mailer.outbox.length, kind === 'day' ? 90 : 1);
+    const totalKey = kind === 'day' ? 'counter:sendday:d:2026-01-01' : 'counter:sendmonth:m:2026-01';
+    assert.equal(w.store.transact((s) => s.getRef(totalKey)).count, kind === 'day' ? 90 : 2700);
+  }
+});
+
+test('default code works just before 30 minutes but expires at the boundary', async () => {
+  for (const elapsed of [HALF_HOUR - 1, HALF_HOUR]) {
+    const w = await makeWorld({ now: ALIGNED });
+    const b = new BrowserSession(w);
+    const c = await create(w, b);
+    await w.service.drain();
+    w.advance(elapsed);
+    const result = await (await b.verify({ challengeId: c.challengeId, address: OWNER, code: w.mailer.lastCode() })).json();
+    if (elapsed < HALF_HOUR) assert.ok(result.proof);
+    else assert.deepEqual(result, { error: 'invalid_or_expired_code' });
+  }
+});
+
+test('email expiry text follows the configured lifetime on creates and resends', async () => {
+  for (const minutes of [30, 7]) {
+    const w = await makeWorld({ now: ALIGNED, config: { codeTtlMs: minutes * 60_000 } });
+    const b = new BrowserSession(w);
+    const c = await create(w, b);
+    w.advance(60_000);
+    await b.resend({ challengeId: c.challengeId, address: OWNER });
+    await w.service.drain();
+    assert.equal(w.mailer.outbox.length, 2);
+    for (const message of w.mailer.outbox) assert.match(message.text,
+      new RegExp(`It expires ${minutes} minutes after the original request\\.`));
+    assert.equal(w.store.transact((s) => s.getRef(`challenge:${c.challengeId}`)).expiresAtMs, ALIGNED + minutes * 60_000,
+      'resend does not extend the original expiry');
   }
 });
