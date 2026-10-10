@@ -113,6 +113,27 @@ test('address-linked state expires within 24 hours; the monthly count does not',
   assert.equal(w.store.keysWithPrefix('counter:sendmonth:').length, 1, 'monthly total survives');
 });
 
+test('send totals keep the same lifetime whether the send was a new code or a resend', async () => {
+  // Start 30 seconds before the end of a UTC month so the resend opens a new day and month record.
+  const start = Date.UTC(2026, 0, 31, 23, 59, 30);
+  const w = await makeWorld({ now: start });
+  const b = new BrowserSession(w);
+  const c = await create(w, b);
+  const lifetimes = () => ({
+    day: w.store.keysWithPrefix('counter:sendday:').map((k) => w.store.transact((s) => s.getRef(k)).expiresAtMs).sort(),
+    month: w.store.keysWithPrefix('counter:sendmonth:').map((k) => w.store.transact((s) => s.getRef(k)).expiresAtMs).sort(),
+  });
+  const day = 24 * 3_600_000;
+  assert.deepEqual(lifetimes(), { day: [start + 2 * day], month: [start + 32 * day] });
+  w.advance(60_000);
+  const resendAt = w.getNow();
+  await b.resend({ challengeId: c.challengeId, address: OWNER });
+  assert.deepEqual(lifetimes(), {
+    day: [start + 2 * day, resendAt + 2 * day],
+    month: [start + 32 * day, resendAt + 32 * day],
+  });
+});
+
 test('R8 attack, honest owner path: slot-filling delays the owner, and the mailed code is unusable outside the attacker browser', async () => {
   const w = await makeWorld({ allowlist: [OWNER] });
   const ownerBrowser = new BrowserSession(w);
