@@ -31,7 +31,7 @@ test('an expired code fails', async () => {
   const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
   await w.service.drain();
   const code = w.mailer.lastCode();
-  w.advance(10 * 60_000 + 1);
+  w.advance(30 * 60_000 + 1);
   const res = await browser.verify({ challengeId: created.challengeId, code, address: OWNER });
   assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' });
 });
@@ -146,7 +146,7 @@ test('no plain code or address is stored; purge removes expired challenges', asy
   const dump = JSON.stringify([...w.store.records]);
   assert.ok(!dump.includes(r.code), 'no plain code in storage');
   assert.ok(!dump.includes(OWNER), 'no plain address in storage');
-  w.advance(10 * 60_000 + 3_600_000 + 1); // expiry plus the one-hour purge lag
+  w.advance(30 * 60_000 + 3_600_000 + 1); // expiry plus the one-hour purge lag
   w.service.purge();
   assert.equal(w.store.keysWithPrefix('challenge:').length, 0);
 });
