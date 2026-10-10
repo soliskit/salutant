@@ -23,7 +23,7 @@ Requirement numbers (R1-R16) refer to the approved plan.
 
 Challenge and issuance records live in one SQLite-backed Durable Object
 per the proposal; the app owns its own redemption record. Atomicity comes
-from synchronous transactions: a check, update and consume with no await
+from synchronous transactions: a check, update, and consume with no await
 between them. One object does not serialize async external operations:
 while a mail call or other await is pending, another request can run, so
 no state change may span an await. Past a free cap, operations fail with
@@ -34,7 +34,7 @@ an error, which the service treats as a failure and signs nobody in
 
 OPEN, not filled. Requirement: a number the service reads and never
 writes, which only the account owner can raise, kept outside the Durable
-Object storage, carried by every record, proof and session; earlier-epoch
+Object storage, carried by every record, proof, and session; earlier-epoch
 items are rejected; if it cannot be read the service stays closed; after
 any restore it stays closed until the owner raises it. Candidate
 (unverified): a Worker environment variable the owner changes in the
@@ -106,8 +106,8 @@ A state cookie does not travel on a cross-site POST under SameSite Lax or
 Strict, and SameSite None would weaken it, so the cookie is not the
 transport; whether the server-side record is enough to bind the browser
 session is a prototype finding. The app checks the signature, key id,
-epoch, audience (its own origin), expiry, state and proof id, then
-creates its session. No tokens, codes or proofs in URLs, referrers or
+epoch, audience (its own origin), expiry, state, and proof id, then
+creates its session. No tokens, codes, or proofs in URLs, referrers, or
 logs. On epoch change or emergency revoke the app drops sessions issued
 before the new epoch and its cached keys.
 
@@ -137,7 +137,7 @@ Every response the service generates carries:
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: no-referrer`
 - `Strict-Transport-Security: max-age=31536000`
-- `Permissions-Policy` denying camera, microphone and geolocation
+- `Permissions-Policy` denying camera, microphone, and geolocation
 - `Cross-Origin-Opener-Policy: same-origin`
 - `Cache-Control: no-store` on sign-in and proof responses
 
@@ -174,7 +174,7 @@ minutes (S37). Clock skew one minute (S38). Key cache [5 minutes
 at the app, 5 at the endpoint]; 10 minutes end to end, settled as a hard
 maximum for the owner-only trial, conditional on cloud proof (S28). CPU margin
 [20 percent]. App log retention 14 days; logs never contain email
-addresses, codes or proofs (S39). Expired sign-in attempts and
+addresses, codes, or proofs (S39). Expired sign-in attempts and
 address-linked limits deleted within 24 hours; single-use protection
 still needed is not removed early (S39).
 
