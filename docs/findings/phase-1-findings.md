@@ -44,7 +44,7 @@ analysis and never built. Result:
 Consequences for the contract: the code page's CSP sets
 `connect-src 'self' <exact app origin>` per request and
 `form-action 'none'`; the exchange window is 60 seconds and one-time.
-No proof, code or token appears in any URL, referrer or log (asserted by
+No proof, code, or token appears in any URL, referrer, or log (asserted by
 tests). Third-party cookies are never used, so Safari with cross-site
 tracking prevention works by construction; a real Safari run remains
 open for the cloud phase.
