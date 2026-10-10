@@ -439,3 +439,39 @@ test('email expiry text follows the configured lifetime on creates and resends',
       'resend does not extend the original expiry');
   }
 });
+
+test('failed and uncertain sends reserve quota until the exact rolling expiry', async () => {
+  for (const mailerBehavior of ['failed', 'uncertain']) {
+    const w = await makeWorld({ now: ALIGNED, mailerBehavior, config: { activeChallengesPerAddress: 100 } });
+    const b = new BrowserSession(w);
+    for (let i = 0; i < 3; i++) await create(w, b);
+    await w.service.drain();
+    assert.equal(w.mailer.attempts.length, 3);
+    assert.equal(w.mailer.outbox.length, 0);
+    await create(w, b);
+    w.setNow(ALIGNED + HALF_HOUR - 1);
+    await create(w, b);
+    await w.service.drain();
+    assert.equal(w.mailer.attempts.length, 3, `${mailerBehavior} reservations still hold quota`);
+    w.setNow(ALIGNED + HALF_HOUR);
+    await create(w, b);
+    await w.service.drain();
+    assert.equal(w.mailer.attempts.length, 4, `${mailerBehavior} reservation expires at exactly 30 minutes`);
+  }
+});
+
+test('rolling timestamp storage stays bounded across repeated windows', async () => {
+  const w = await makeWorld({ now: ALIGNED, config: { activeChallengesPerAddress: 100 } });
+  const b = new BrowserSession(w);
+  for (let window = 0; window < 12; window++) {
+    w.setNow(ALIGNED + window * HALF_HOUR);
+    for (let i = 0; i < 4; i++) await create(w, b);
+    await w.service.drain();
+    const keys = w.store.keysWithPrefix('counter:sendaddr:');
+    assert.equal(keys.length, 1, 'one rolling record per address, no growing bucket history');
+    const record = w.store.transact((s) => s.get(keys[0]));
+    assert.deepEqual(record.timestamps, Array(3).fill(w.getNow()),
+      'only three current reservations; stale timestamps pruned and refusals add nothing');
+    assert.equal(w.mailer.attempts.length, (window + 1) * 3);
+  }
+});
