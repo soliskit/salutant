@@ -3,10 +3,15 @@
 The contract the phase 1 code is written against. The owner settled the
 sign-in values on October 9, 2026 (S28-S39 in `docs/decision-log.md`); they
 are written without brackets below. Values still in brackets remain
-proposals; final values return to the owner with measured results. The
-phase 1 code was written and tested against the earlier proposal values;
-the settled values are not yet implemented or measured.
-The prototype still uses a 10-minute code, three sends per address per hour, and total limits of 50 per day and 1,500 per month. Its email text also says 10 minutes. These must match the current choices before this prototype is used for real sign-in.
+proposals; final values return to the owner with measured results. The local prototype now uses the settled 30-minute code lifetime,
+three sends per address per fixed UTC half-hour window (new emails and
+resends share the counter), and total limits of 90 per UTC day and 2,700
+per UTC month. Request counters remain hourly. Email expiry text reads
+the lifetime setting and notes that resends keep the original expiry.
+These values are covered by local tests, not real-platform measurements.
+Before real sending, recheck the provider's current free allowance and
+other mail using the account; these prototype limits are not a guarantee
+of available provider quota.
 Host names are recorded when the hosts exist, since none exist yet.
 Requirement numbers (R1-R16) refer to the approved plan.
 
