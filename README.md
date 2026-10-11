@@ -1,14 +1,16 @@
 # Salutant
 
 Salutant proves that a person controls an email address. You enter your
-address, we send a code, you enter it, and the app gets a short-lived
-signed proof. That is all it does, and that is the point. A sign-in that
-does one thing is a sign-in you can check.
+address, we send a code, you enter it, and the app gets a proof: a
+short-lived statement that you control that address, signed by Salutant
+so the app can check it. That is all it does, and that is the point. A
+sign-in that does one thing is a sign-in you can check.
 
-Today this repo holds phase 1: a local prototype with every outside
-piece mocked. It runs on any machine with Node.js 20 or later. CI runs
-Node 22. It sends no real email, uses no accounts or credentials, and
-deploys nothing. We start local to catch mistakes before real email or a launch.
+Today this repo holds phase 1, a local prototype with every outside
+piece mocked (replaced by a stand-in). It runs on any machine with
+Node.js 20 or later, sends no real email, uses no accounts or
+credentials, and deploys nothing. Phase 1 is merged. Deployment, real
+sends and account setup each need their own go-ahead.
 
 ## Layout
 
@@ -16,10 +18,10 @@ deploys nothing. We start local to catch mistakes before real email or a launch.
 - `docs/evidence-record.md` has one row per requirement, with its result
   and a link to its test.
 - `docs/mail/` describes the mock mail adapter.
-- `docs/findings/` records what the prototype showed about restoring
-  saved data safely, returning sign-in results to an app, refreshing
-  signing keys, and deleting old records, with timing and processor-time
-  measurements.
+- `docs/findings/` records the six Phase 1 findings: restoring saved
+  data safely, getting the sign-in result to the app, refreshing signing
+  keys, deleting old records, tying a code to one browser, and timing and
+  processor time.
 - `src/` holds the mock service and the stub app.
 - `tests/` holds the test suite, named by requirement.
 
@@ -37,9 +39,6 @@ built-in test runner.
 - Verified: someone read the source and recorded when.
 - Reported: someone else said so, and nobody re-read it.
 - Unproven: nobody has shown it.
-
-Phase 1 is merged. It covers local code and mocks only. Deployment, real
-sends and account setup each need their own go-ahead.
 
 ## Limits and behavior
 
