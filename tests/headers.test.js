@@ -51,7 +51,7 @@ test('a proof response carries no-store and the page limits connect-src to the o
   assert.equal(r.verify.headers.get('cache-control'), 'no-store');
   const csp = r.page.headers.get('content-security-policy');
   assert.ok(csp.includes(`connect-src 'self' ${APP_ORIGIN}`), 'connect-src is exact');
-  assert.ok(csp.includes("form-action 'none'"), 'no form posting (option 2)');
+  assert.ok(csp.includes("form-action 'none'"), 'no form posting');
   const unknown = await r.browser.getPage('https://app.example.test.evil.test', 'x'.repeat(24));
   assert.equal(unknown.status, 400, 'lookalike origin is not served the page');
 });
