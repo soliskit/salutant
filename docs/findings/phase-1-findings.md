@@ -57,11 +57,11 @@ accepted window: an app whose cache was warm before the revoke still
 accepted an old-key proof; once its cache ended and refresh failed, it
 rejected everything (failed closed).
 
-Finding for the open decision: the 10 minute end-to-end bound
-(endpoint cache [5] + app cache [5]) is implementable as specified.
-Whether the owner accepts that emergency window is still his call
-(decision log S28: the owner accepted it, cloud proof pending). A shorter app cache would shrink the window
-at the cost of more key-endpoint traffic.
+Finding: the 10 minute end-to-end bound (endpoint cache [5] + app
+cache [5]) is implementable as specified. The owner accepted it as a hard
+maximum for the owner-only trial (decision log S28), with cloud proof
+pending. A shorter app cache would shrink the window at the cost of more
+key-endpoint traffic.
 
 ## 4. Purge (R13, R6, E10)
 
@@ -100,6 +100,9 @@ binding exists to stop. The owner decided this trade-off on 7 October
 2026: keep the binding (decision log S13).
 
 ## 6. Timing and CPU (R3, R11)
+
+These samples are from an older run, taken October 7, 2026 on Node 22 at
+tree b9f9b61. They have not been rerun on current main.
 
 Timing protocol (R3), measured: 200 interleaved requests per class, 3 runs,
 local harness.
