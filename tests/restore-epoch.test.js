@@ -20,7 +20,7 @@ test('restore rehearsal: without an epoch raise the service stays closed; after 
   assert.ok((await used.json()).proof);
   w.store.restoreFrom(snapshot);
 
-  // Operational rule (contract: Epoch and restore boundary): a restore
+  // Operational rule: a restore
   // does not resume service. The epoch stays unreadable until the owner
   // raises it; the service stays closed.
   w.epoch.available = false;
