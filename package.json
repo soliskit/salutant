@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Email sign-in proofs. Phase 1: local mock service, stub app, and tests. No real sends, no credentials, no network calls.",
+  "description": "Email sign-in proofs: a code to your inbox, a signed proof to the app. Phase 1 is local and mocked, with no real sends, no credentials and no network calls.",
   "engines": { "node": ">=20" },
   "scripts": {
     "test": "node --test tests/*.test.js"
