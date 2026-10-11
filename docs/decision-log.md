@@ -1,10 +1,10 @@
 # Salutant Decision Log
 
-**Status.** Entries record the decision, its effect, and its status. Where a choice changed, the old entry stays and says what replaced it. This log is a supporting record kept in the repo next to the code.
+**What this is.** The choices behind Salutant: what was decided, what it means, and where it stands. When a choice changes, the old entry stays and says what replaced it. The log is a supporting record kept in the repo next to the code.
 
 ## How this log works
 
-Each entry records a choice the owner made: the decision, its effect, and its status. Message IDs, times, and verbatim quotes are not kept here, because this repo is public and discloses only what is necessary. The proof of each decision is kept in the owner's private record. Work does not reopen a settled entry. A change is a new entry that says which entry it replaces. Recommendations the owner has not approved are listed separately at the end. The current Playbook has three tabs: Charter, Roadmap, and How It Works. This log and the Evidence Record live with the code.
+Each entry is a choice the owner made, with its effect and its status. The log keeps no message IDs, times or verbatim quotes, because this repo is public and shares only what it must. The proof of each decision lives in the owner's private record. Work does not reopen a settled entry. A change is a new entry that names the entry it replaces. Recommendations the owner has not approved are listed at the end. The current Playbook has three tabs: Charter, Roadmap, and How It Works. This log and the Evidence Record live with the code.
 
 ## Settled choices
 
@@ -14,7 +14,7 @@ Each entry records a choice the owner made: the decision, its effect, and its st
 - **S4 Separate repo** Salutant has its own repo. Status: Settled.
 - **S5 Documentation-only merges** Effect: documentation-only merges are pre-approved for all software projects. It does not cover code, tests, CI, or releases. Status: Settled, scope documentation only.
 - **S6 Plan template for all software projects** Effect: every software project gets a plan in the same form. Status: Settled.
-- **S7 1 Replace the repo's contents** Effect: the old Swift form-message app goes; its history stays in git; at that time nothing changed until the build go-ahead. Status: Settled; the Phase 1 go-ahead was later given (see the entry Phase 1 code started).
+- **S7 1 Replace the repo's contents** Effect: the repo's old contents go, and their history stays in git. At that time nothing changed until the build go-ahead. Status: Settled; the Phase 1 go-ahead was later given (see the entry Phase 1 code started).
 - **S11 Phase 1 plan approved** Effect: the Phase 1 plan is adopted for Phase 1 only: code on a branch in the salutant repo, using fakes. No accounts, no domain setup, no real emails, no launch. This approval is not the go-ahead to write code. Status: Settled.
 - **S12 Phase 1 code started** Effect: local and mock work started on a branch with a pull request; nothing merges without the owner. It approves no accounts, real mail, cloud tests, connecting an app, merge, release, or later phases. Status: Settled.
 - **S13 Browser binding kept** Effect: browser binding of each sign-in challenge stays in the Phase 1 design. The challenge is bound to the browser that asked, by a random value held in that browser, and the emailed code works only when entered in that browser. An intercepted email alone is insufficient to complete the browser-bound sign-in. The cost: asking on one device and entering the code on another fails and must be retried. Design choice only; it approves no merge, account, real mail, cloud work, or later phase. The Specification wording on browser binding was aligned with this entry after the decision; this entry governs the decision status. This log does not adopt any other unresolved Specification value. Status: Settled.
@@ -45,7 +45,7 @@ Each entry records a choice the owner made: the decision, its effect, and its st
 
 ## Open decisions
 
-Open items are kept in one place: the Open items list in the Playbook (How It Works tab).
+The Open items list in the Playbook (How It Works tab) holds every open item.
 
 ## Recommendations not approved
 
