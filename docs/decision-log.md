@@ -4,7 +4,7 @@
 
 ## How this log works
 
-Each entry is a choice the owner made, with its effect and its status. The log keeps no message IDs, times or verbatim quotes, because this repo is public and shares only what it must. The proof of each decision lives in the owner's private record. Work does not reopen a settled entry. A change is a new entry that names the entry it replaces. Recommendations not yet adopted are listed at the end. The current Playbook has three tabs: Charter, Roadmap, and How It Works. This log and the Evidence Record live with the code.
+Each entry is a choice the owner made, with its effect and its status. The log keeps no message IDs, times or verbatim quotes, because this repo is public and shares only what it must. The proof of each decision lives in the owner's private record. Work does not reopen a settled entry. A change is a new entry that names the entry it replaces. Recommendations not yet adopted are listed at the end. The current Playbook has three tabs: Charter, Roadmap, and How It Works. This log and the Evidence Record live with the code. Two terms: a proof is the signed message that says an address was checked, and the epoch is a number only the owner can raise after a restore, to reopen the service.
 
 ## Settled choices
 
