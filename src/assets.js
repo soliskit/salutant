@@ -2,7 +2,9 @@
 // the service). Script and style are separate files because the CSP is
 // script-src 'self' with no inline code (see the header rules in headers.js).
 // The page has two stages: ask for the email address, then ask for the
-// code. The challenge id lives only in page memory, never in the URL.
+// code. The challenge id lives only in page memory and stays out of the
+// page's own address. The verify request carries it in its path, with
+// the code and address in the body.
 
 export const PAGE_HTML = `<!doctype html>
 <html lang="en">
