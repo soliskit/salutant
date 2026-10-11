@@ -1,8 +1,8 @@
 # Mail adapter contract
 
-Lane B. The service never talks to a mail provider directly. It talks to
+The service never talks to a mail provider directly. It talks to
 an adapter with this interface, so the provider (Resend from
-mail.soliskit.com - S27 in `docs/decision-log.md`, replacing decision 2) can
+mail.soliskit.com - S27 in `docs/decision-log.md`, replacing the earlier Gmail path) can
 change without touching service code. Phase 1 ships only the mock
 implementation; no account, DNS, credential, or real send exists.
 
@@ -16,7 +16,7 @@ reconcile(requestId) -> Promise<ReconcileResult>
 - `requestId`: required. One per send request, chosen by the service and
   stored in the durable reservation before the adapter is called.
 - `to`: the recipient address. In the owner-only trial this is always
-  the owner's own address (decision 8).
+  the owner's own address (S21 in `docs/decision-log.md`).
 - `subject`: generic, for example "Your sign-in code". Never contains
   the code (R13).
 - `text`: the body. The code appears only in the body.

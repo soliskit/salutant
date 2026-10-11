@@ -1,6 +1,6 @@
 # Phase 1 findings: the four proposed production mechanisms
 
-Lane C/D1. What the local prototype showed. Local results do not prove
+What the local prototype showed. Local results do not prove
 cloud behavior; each finding says what the cloud phase must recheck.
 
 ## 1. Epoch (R14)
@@ -11,7 +11,7 @@ anything from an earlier epoch; the service reads the epoch from an
 injected source and fails closed when it cannot read it.
 
 Finding: the design is enforceable end to end, and the rehearsed restore
-went exactly as the contract says: restore keeps the service closed, an
+went exactly as the Playbook says: restore keeps the service closed, an
 owner epoch raise reopens it, and pre-raise codes and proofs are dead.
 
 Still open (the candidate mechanism): a Worker environment variable
@@ -41,7 +41,7 @@ analysis and never built. Result:
   Attacker-owned state or proofs cannot log a victim into the attacker's
   session, because the verified state is bound to the attacker's cookie.
 
-Consequences for the contract: the code page's CSP sets
+Consequences for the Playbook: the code page's CSP sets
 `connect-src 'self' <exact app origin>` per request and
 `form-action 'none'`; the exchange window is 60 seconds and one-time.
 No proof, code, or token appears in any URL, referrer, or log (asserted by
@@ -57,11 +57,11 @@ accepted window: an app whose cache was warm before the revoke still
 accepted an old-key proof; once its cache ended and refresh failed, it
 rejected everything (failed closed).
 
-Finding for the open decision: the [10 minute] end-to-end bound
-(endpoint cache [5] + app cache [5]) is implementable as specified.
-Whether the owner accepts that emergency window is still his call
-(decision log, open item 1). A shorter app cache would shrink the window
-at the cost of more key-endpoint traffic.
+Finding: the 10 minute end-to-end bound (endpoint cache [5] + app
+cache [5]) is implementable as specified. The owner accepted it as a hard
+maximum for the owner-only trial (decision log S28), with cloud proof
+pending. A shorter app cache would shrink the window at the cost of more
+key-endpoint traffic.
 
 ## 4. Purge (R13, R6, E10)
 
@@ -77,7 +77,7 @@ compute request and each `setAlarm` is a row written (E10), so one
 alarm per object per day is cheap, while one alarm per challenge is not.
 Recommended: a single daily alarm per object. Point-in-time recovery
 keeps deleted rows restorable for 30 days regardless; this is stated in
-the contract, and the epoch rule (finding 1) is what makes a restored
+the Playbook, and the epoch rule (finding 1) is what makes a restored
 copy safe.
 
 ## 5. Browser binding versus the slot-filling claim (R2, R8)
@@ -97,12 +97,36 @@ attacker-created challenge is never usable by the owner. The
 alternative (dropping the browser binding) would let a phished or
 observed code verify from any browser, which is the attack R2's
 binding exists to stop. The owner decided this trade-off on 7 October
-2026: keep the binding (decision log, settled item 10).
+2026: keep the binding (decision log S13).
+
+## 6. Timing and CPU (R3, R11)
+
+These samples are from an older run, taken October 7, 2026 on Node 22 at
+tree b9f9b61. They have not been rerun on current main.
+
+Timing protocol (R3), measured: 200 interleaved requests per class, 3 runs,
+local harness.
+
+- Median per class per run: allowed 0.463 / 0.428 / 0.415 ms; unlisted
+  0.462 / 0.426 / 0.403 ms.
+- Median gap per run: 0.001 / 0.001 / 0.012 ms. P95 gap per run:
+  0.529 / 0.037 / 0.111 ms.
+- Same-class run-to-run difference: 0.059 ms. Tolerance: 20 ms (the larger
+  of 20 ms and the run-to-run difference). Hard maximum: 50 ms. Result: pass
+  in all three runs.
+
+CPU sample (R11), local only: `node scripts/bench.js` (20 runs,
+`process.cpuUsage` around a full sign-in: challenge, mail mock, verify,
+Ed25519 sign, app verify, session issue). Median 2.90 ms CPU, min 2.09 ms,
+max 65.40 ms (the cold first run, dominated by one-time key generation and
+imports). The key endpoint answered in 0.21 ms CPU. These are local numbers
+and say nothing about production hardware or the Workers 10 ms free CPU
+limit; that is a cloud-phase measurement.
 
 ## What local testing does not prove
 
 - The Workers 10 ms CPU limit (R11). Local CPU for a full sign-in
-  measured well under that on the test machine (see the evidence doc),
+  measured well under that on the test machine (see finding 6),
   but the Workers CPU model differs. Recheck in the cloud phase.
 - Real Durable Object transaction semantics under traffic.
 - Real restore behavior of Durable Object point-in-time recovery.

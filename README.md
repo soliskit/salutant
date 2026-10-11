@@ -13,12 +13,10 @@ replaced by owner decision; its history is preserved in git.
 ## Layout
 
 - `docs/decision-log.md` - owner decisions this work is built on.
-- `docs/evidence-record.md` - one row per requirement, with its check and result.
-- `docs/contract/` - the lane A contract the code is written against.
-- `docs/mail/` - the mock mail adapter contract and provider research.
-- `docs/evidence/` - recorded test results.
+- `docs/evidence-record.md` - one row per requirement, with its result and test link.
+- `docs/mail/` - the mock mail adapter contract.
 - `docs/findings/` - what the prototype showed about the proposed
-  production mechanisms (epoch, callback, key cache, purge).
+  production mechanisms (epoch, callback, key cache, purge), with timing and CPU numbers.
 - `src/` - the mock service and the stub app.
 - `tests/` - the test suite, named by requirement.
 
@@ -41,12 +39,7 @@ Phase 1 is merged. It covers local code and mocks only, not deployment,
 real sends or account setup. Each later phase needs its own owner
 authorization.
 
-## Current local sign-in limits
+## Limits and behavior
 
-Codes last 30 minutes. Each address can receive three emails in any rolling
-30-minute window, including resends. The separate ten-requests-per-hour
-limit stays hourly. Total mock sends stop at 90 per UTC day and 2,700 per
-UTC month. Email expiry text comes from the lifetime setting; a resend
-keeps the original expiry. Local tests cover these values and boundaries.
-Before real sending, recheck the provider's current free allowance and
-other mail on the account. No real sending or launch is included here.
+The limits and values (code lifetime, send and request limits, mail budget)
+are in the Playbook, How It Works tab. Local tests cover them.
