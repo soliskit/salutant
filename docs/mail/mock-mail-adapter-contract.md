@@ -31,8 +31,8 @@ reconcile(requestId) -> Promise<ReconcileResult>
   counts against the budget, and the request is reconciled against the
   provider's send record. The person sees a plain message to check email
   or try again after the cooldown.
-- `{ outcome: "failed" }` - the provider refused. Counts as a failure:
-  no proof, a plain message, service stays closed on repeated failure.
+- `{ outcome: "failed" }` - the provider refused. The failed send cannot
+  produce a proof. The person can retry after the cooldown.
 
 ## ReconcileResult semantics
 
@@ -56,6 +56,7 @@ to settle uncertain sends without resending.
 
 ## Mock implementation
 
-`src/mail-mock.js`. Records every call in an outbox the tests can read,
-supports injected behaviors (`ok`, `uncertain`, `failed`), and records
-reconciliations. It performs no network I/O.
+`src/mail-mock.js`. Records every send call in `attempts` and accepted
+messages in an outbox the tests can read. Supports injected outcomes
+(`accepted`, `uncertain`, `failed`) and records reconciliations. It
+performs no network I/O.
