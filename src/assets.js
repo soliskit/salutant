@@ -1,6 +1,6 @@
 // The code-entry page and its assets (decision 5: the page is served by
 // the service). Script and style are separate files because the CSP is
-// script-src 'self' with no inline code (Playbook: Response headers).
+// script-src 'self' with no inline code (see the header rules in headers.js).
 // The page has two stages: ask for the email address, then ask for the
 // code. The challenge id lives only in page memory, never in the URL.
 
@@ -36,9 +36,9 @@ export const PAGE_HTML = `<!doctype html>
 // Stage 1 posts the address to the service, which mails a code and sets
 // a host-only SameSite=Strict cookie binding the challenge to this
 // browser. Stage 2 checks the code and carries the signed proof to the
-// app through a bounded exchange (Playbook: Browser and callback
-// protocol, option 2). The proof travels only in a request body, never in a URL, and the
-// final navigation carries no token at all.
+// app through a bounded exchange. The proof travels only in a request
+// body, never in a URL, and the final navigation carries no token at
+// all.
 export const PAGE_JS = `(() => {
   const params = new URLSearchParams(location.search);
   const appOrigin = params.get('app') || '';
