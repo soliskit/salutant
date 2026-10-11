@@ -1,4 +1,4 @@
-// Security headers (R9, contract: Security headers). Every response the
+// Security headers (R9, Playbook: Response headers). Every response the
 // service generates goes through respond() so success, error, redirect,
 // 404 and callback responses all carry the full set. These are set in
 // code because a static header file does not cover generated responses.
