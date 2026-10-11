@@ -11,7 +11,7 @@ Each entry records a choice the owner made: the decision, its effect, and its st
 - **S1 Free is required** Effect: no paid plan or feature; a free limit stops the service and never bills. Status: Settled.
 - **S2 Hosting order** GitHub when possible, then Cloudflare, then Vercel, for every software project. Status: Settled.
 - **S3 Build our own email sign-in** Effect: Salutant exists. The six-digit code form is a recommendation, not the owner's words, and stays a proposal until approved. Status: Settled for the idea; the code format is settled by S29.
-- **S4 Separate repo** Salutant has its own repo and does not pollute another project's repo. It did not approve replacing the repo's contents; decision S7 did. Status: Settled.
+- **S4 Separate repo** Salutant has its own repo. Status: Settled.
 - **S5 Documentation-only merges** Effect: documentation-only merges are pre-approved for all software projects. It does not cover code, tests, CI, or releases. Status: Settled, scope documentation only.
 - **S6 Plan template for all software projects** Effect: every software project gets a plan in the same form. Status: Settled.
 - **S7 1 Replace the repo's contents** Effect: the old Swift form-message app goes; its history stays in git; at that time nothing changed until the build go-ahead. Status: Settled; the Phase 1 go-ahead was later given (see the entry Phase 1 code started).
