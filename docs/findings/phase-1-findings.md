@@ -5,12 +5,24 @@ cloud behavior, so each finding says what the cloud phase must recheck.
 
 ## 1. Epoch (R14)
 
+This section covers restoring saved data safely. A restore can bring back
+old state, such as codes already used, so the service must refuse
+anything older than the restore. The local restore test showed it does.
+
+Terms, one line each. The epoch is a number the owner raises after a
+restore to reopen the service. A challenge is one pending sign-in
+attempt. An issuance is one signed proof handed to an app. A proof is
+the signed message that says an address was checked. An injected source
+is a stand-in value the tests supply instead of a real setting. Failing
+closed means that when something is broken or unreadable, nobody signs
+in.
+
 The prototype's mechanism: every challenge, issuance, proof and app
 session carries the epoch. The service and the app reject anything from
 an earlier epoch. The service reads the epoch from an injected source
 and fails closed when it cannot read it.
 
-Finding: the design holds end to end. The rehearsed restore went exactly
+Finding: the local restore test enforced the epoch rule end to end. The rehearsed restore went exactly
 as the Playbook says. A restore keeps the service closed, an owner epoch
 raise reopens it, and pre-raise codes and proofs are dead.
 
@@ -22,6 +34,20 @@ a cloud test that changes the value and measures propagation. Until that
 test passes, restore stays fail-closed by policy.
 
 ## 2. Callback protocol (R16)
+
+This section covers how a verified sign-in goes back to the app without
+letting an attacker log a victim into the attacker's session. The local
+tests showed the bounded script exchange does that and the form POST
+does not.
+
+Terms, one line each. The callback is the app address the proof is sent
+to. Login CSRF is an attack that completes an attacker's sign-in in a
+victim's browser. The pending state is the app's server-side note that a
+sign-in is waiting to finish. The pre-auth cookie is a cookie set before
+sign-in that ties the browser to that sign-in. CSP (content security
+policy) is a browser rule that limits where a page may connect. The
+bounded script exchange is a short script on the code page that sends
+the proof to the app's callback in one limited request.
 
 We built and tested the bounded script exchange. We rejected the form
 POST after protocol analysis, without building it. Result:
@@ -66,7 +92,7 @@ key-endpoint traffic.
 ## 4. Purge (R13, R6, E10)
 
 The prototype purges expired challenges and issuances one hour after
-expiry (so no record lives anywhere near 24 hours), purges idempotency
+expiry (so no expired challenge or issuance lives anywhere near 24 hours), purges idempotency
 records and address-linked counter state within 24 hours, and keeps
 the plain daily and monthly totals to the end of their periods
 (tested).
@@ -125,9 +151,10 @@ limit; that is a cloud-phase measurement.
 
 ## What local testing does not prove
 
-- The Workers 10 ms CPU limit (R11). Local CPU for a full sign-in
-  measured well under that on the test machine (see finding 6),
-  but the Workers CPU model differs. Recheck in the cloud phase.
+- The Workers 10 ms CPU limit (R11). The local median was 2.90 ms,
+  but the cold first run reached 65.40 ms. These numbers do not prove
+  compliance with that limit (see finding 6, an older run), and the
+  Workers CPU model differs. Recheck in the cloud phase.
 - Real Durable Object transaction semantics under traffic.
 - Real restore behavior of Durable Object point-in-time recovery.
 - Safari, for real.
