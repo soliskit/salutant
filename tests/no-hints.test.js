@@ -1,6 +1,6 @@
 // R3 no hints: identical responses and timing classes for allowed and
-// unlisted addresses. The measurement protocol is the Playbook's
-// Timing protocol section, run only in this local harness with its own state.
+// unlisted addresses. Timing is measured only in this local
+// harness, with its own state.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
