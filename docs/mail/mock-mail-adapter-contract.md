@@ -8,29 +8,35 @@ DNS record, credential or real send exists.
 
 ## Interface
 
+R numbers are requirements in `docs/evidence-record.md`. S numbers are
+decisions in `docs/decision-log.md`.
+
 ```
 send({ requestId, to, subject, text }) -> Promise<SendResult>
 reconcile(requestId) -> Promise<ReconcileResult>
 ```
 
 - `requestId`: required. One per send request, chosen by the service and
-  stored in the durable reservation before the adapter is called.
+  stored in a reservation (a saved record of the send and its counters)
+  before the adapter is called.
 - `to`: the recipient address. In the owner-only trial this is always
   the owner's own address (S21 in `docs/decision-log.md`).
 - `subject`: generic, for example "Your sign-in code". Never contains
-  the code (R13).
+  the code (requirement R13).
 - `text`: the body. The code appears only in the body.
 
 ## SendResult semantics
 
 - `{ outcome: "accepted", providerId }` - the provider took the message.
-  Acceptance is not delivery and never produces a proof (R5).
+  Acceptance is not delivery. It never produces a proof, the signed
+  statement that the address was checked (requirement R5).
 - `{ outcome: "uncertain" }` - the result is unknown (timeout, network
   reset). The send may or may not have happened. The service never
   retries an uncertain send automatically; the reservation stays and
   counts against the budget, and the request is reconciled against the
-  provider's send record. The person sees a plain message to check email
-  or try again after the cooldown.
+  provider's send record. The request returns the same generic response
+  without waiting for the send result. The local page does not yet offer
+  a cooldown message or resend control.
 - `{ outcome: "failed" }` - the provider refused. The failed send cannot
   produce a proof. The person can retry after the cooldown.
 
@@ -42,16 +48,15 @@ to settle uncertain sends without resending.
 
 ## Rules the service relies on
 
-1. The adapter is the only place provider credentials exist. The mock
-   has none.
+1. The adapter is the only place provider credentials exist.
 2. Sending is at least once in effect. The service does not ask the
    adapter for exactly-once.
-3. A double-click is one request. The service dedupes by idempotency key
+3. Requests with the same idempotency key (a client-chosen ID that
+   marks a repeat) reuse one response and one send. The service dedupes
    before it writes a reservation, so the adapter never sees the same
-   request id twice.
-4. The response to the person never waits on the adapter (R3), so mail
-   provider latency cannot show in response time.
-5. The adapter adds no tracking: no open pixels, no click tracking, no
+   request id twice. The local page does not yet supply that key, so its
+   double-click protection is unproven.
+4. The adapter adds no tracking: no open pixels, no click tracking, no
    rewritten links.
 
 ## Mock implementation
