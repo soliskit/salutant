@@ -423,7 +423,7 @@ export class SalutantService {
   //
   // One synchronous transaction does the whole state change: load,
   // check, compare, and either consume or count a wrong try, with no wait in between.
-  // All failures give one generic error (R2).
+  // A rejected challenge or code gives one generic error (R2).
   async _verify(request, challengeId) {
     const epoch = await this._epochOrClosed();
     const { tooBig, bad, body } = await this._jsonBody(request);
