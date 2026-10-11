@@ -8,7 +8,7 @@ does one thing is a sign-in you can check.
 Today this repo holds phase 1: a local prototype with every outside
 piece mocked. It runs on any machine with Node.js 20 or later. CI runs
 Node 22. It sends no real email, uses no accounts or credentials, and
-deploys nothing. We start local so mistakes cost nothing.
+deploys nothing. We start local to catch mistakes before real email or a launch.
 
 ## Layout
 
@@ -16,9 +16,10 @@ deploys nothing. We start local so mistakes cost nothing.
 - `docs/evidence-record.md` has one row per requirement, with its result
   and a link to its test.
 - `docs/mail/` describes the mock mail adapter.
-- `docs/findings/` records what the prototype showed about the proposed
-  production mechanisms (epoch, callback, key cache, purge), with timing
-  and CPU numbers.
+- `docs/findings/` records what the prototype showed about restoring
+  saved data safely, returning sign-in results to an app, refreshing
+  signing keys, and deleting old records, with timing and processor-time
+  measurements.
 - `src/` holds the mock service and the stub app.
 - `tests/` holds the test suite, named by requirement.
 
