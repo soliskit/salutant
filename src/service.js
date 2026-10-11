@@ -1,4 +1,4 @@
-// Salutant mock service. Implements the Playbook's How It Works tab
+// Salutant mock service. Runs the whole sign-in logic
 // against injected fakes: storage,
 // mail, keys, clock and epoch are all provided, so phase 1 uses no real
 // credentials and sends nothing. Failure is closed (R5): any internal
@@ -259,8 +259,8 @@ export class SalutantService {
         });
         return 'withheld_send_limit';
       }
-      // Durable reservation in the same step (R5, Playbook:
-      // Atomicity). Only after it exists may the adapter run. The
+      // Durable reservation, written in the same step as the
+      // check (R5). Only after it exists may the adapter run. The
       // record carries the epoch (R14) and only keyed hashes of the
       // address (R2, R6); the address itself is never stored.
       s.set(`challenge:${challengeId}`, {
@@ -422,8 +422,8 @@ export class SalutantService {
   // POST /v1/challenges/{id}/verify   body: { code, address }
   //
   // One synchronous transaction does the whole state change: load,
-  // check, compare, and either consume or count a wrong try (Playbook:
-  // Atomicity). All failures give one generic error (R2).
+  // check, compare, and either consume or count a wrong try, with no wait in between.
+  // All failures give one generic error (R2).
   async _verify(request, challengeId) {
     const epoch = await this._epochOrClosed();
     const { tooBig, bad, body } = await this._jsonBody(request);
@@ -524,8 +524,7 @@ export class SalutantService {
   }
 
   // Housekeeping used by tests and by the future alarm-driven purge.
-  // Deleting storage does not erase point-in-time recovery (Playbook:
-  // Limits and values); the epoch rule is what keeps a restored
+  // Deleting storage does not erase point-in-time recovery; the epoch rule is what keeps a restored
   // copy safe (R14).
   purge(now = this.clock()) {
     this.store.transact((s) => {
