@@ -1,5 +1,4 @@
 // R16 browser protocol and the required cross-site login-CSRF mock test
-// (Playbook: Browser and callback protocol).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeWorld, BrowserSession, honestSignIn, OWNER, ATTACKER, SERVICE_ORIGIN, APP_ORIGIN } from './helpers.js';
