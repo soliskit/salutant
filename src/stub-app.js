@@ -1,4 +1,4 @@
-// Stub app (contract: Records and app test harness). Stands in for a
+// Stub app (Playbook: Test hooks for Phase 1). Stands in for a
 // connected app: it registers an exact origin and callback, starts
 // sign-ins, redeems proofs against its own store, and owns sessions and
 // the replay record. Salutant never sees sessions; this app never sees
@@ -137,8 +137,8 @@ export class StubApp {
 
     // Replay protection and the state binding are one atomic step: the
     // proof id is checked against the redemption record and recorded,
-    // and the pending state is marked verified, together (contract:
-    // Records and app test harness).
+    // and the pending state is marked verified, together (Playbook:
+    // Test hooks for Phase 1).
     const verdict = this.store.transact((s) => {
       if (s.getRef(`redemption:${claims.jti}`)) return 'replayed';
       const pending = s.getRef(`state:${state}`);
