@@ -1,4 +1,4 @@
-// Stub app (contract: Records and app test harness). Stands in for a
+// Stub app. Stands in for a
 // connected app: it registers an exact origin and callback, starts
 // sign-ins, redeems proofs against its own store, and owns sessions and
 // the replay record. Salutant never sees sessions; this app never sees
@@ -85,7 +85,7 @@ export class StubApp {
     return cache;
   }
 
-  // Step 2: bounded exchange (callback protocol, option 2). The code
+  // Step 2: bounded exchange. The code
   // page's script POSTs the proof here cross-origin. This endpoint
   // verifies everything and binds the verified address to the pending
   // state, but creates no session: a cross-site POST carries no
@@ -137,8 +137,7 @@ export class StubApp {
 
     // Replay protection and the state binding are one atomic step: the
     // proof id is checked against the redemption record and recorded,
-    // and the pending state is marked verified, together (contract:
-    // Records and app test harness).
+    // and the pending state is marked verified, together.
     const verdict = this.store.transact((s) => {
       if (s.getRef(`redemption:${claims.jti}`)) return 'replayed';
       const pending = s.getRef(`state:${state}`);
