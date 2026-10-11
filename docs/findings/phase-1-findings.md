@@ -23,9 +23,8 @@ test passes, restore stays fail-closed by policy.
 
 ## 2. Callback protocol (R16)
 
-Two designs were tried. The bounded script exchange was built and
-tested. The form POST was rejected by protocol analysis and never
-built. Result:
+We built and tested the bounded script exchange. We rejected the form
+POST after protocol analysis, without building it. Result:
 
 - The form POST of the proof to the app callback fails login CSRF by
   construction: a cross-site POST carries no SameSite=Lax or
@@ -50,25 +49,25 @@ tests). Third-party cookies are never used, so Safari with cross-site
 tracking prevention works by construction; a real Safari run remains
 open for the cloud phase.
 
-## 3. Key cache and the staleness bound (R12)
+## 3. Key cache and how long an old key stays trusted (R12)
 
 The rehearsed routine rotation kept an old-key proof valid during the
 overlap and removed it after. The rehearsed emergency revoke showed the
-accepted window: an app whose cache was warm before the revoke still
+allowed window: an app whose cache was warm before the revoke still
 accepted an old-key proof; once its cache ended and refresh failed, it
 rejected everything (failed closed).
 
-Finding: the 10 minute end-to-end bound (endpoint cache [5] + app
-cache [5]) is implementable as specified. The owner accepted it as a hard
-maximum for the owner-only trial (decision log S28), with cloud proof
-pending. A shorter app cache would shrink the window at the cost of more
+Finding: the 10 minute end-to-end bound (endpoint cache of 5 minutes
+plus app cache of 5 minutes) is implementable as specified. The bound is
+a hard maximum for the owner-only trial (decision log S28), with cloud
+proof pending. A shorter app cache would shrink the window at the cost of more
 key-endpoint traffic.
 
 ## 4. Purge (R13, R6, E10)
 
 The prototype purges expired challenges and issuances one hour after
 expiry (so no record lives anywhere near 24 hours), purges idempotency
-records and address-linked counter state within [24 hours], and keeps
+records and address-linked counter state within 24 hours, and keeps
 the plain daily and monthly totals to the end of their periods
 (tested).
 
@@ -97,8 +96,8 @@ not locked out, and codes are never invalidated; but a code from an
 attacker-created challenge is never usable by the owner. The
 alternative (dropping the browser binding) would let a phished or
 observed code verify from any browser, which is the attack R2's
-binding exists to stop. The owner decided this trade-off on 7 October
-2026: keep the binding (decision log S13).
+binding exists to stop. The binding stays (decision log S13, 7 October
+2026).
 
 ## 6. Timing and CPU (R3, R11)
 
