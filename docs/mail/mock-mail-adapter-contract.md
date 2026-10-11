@@ -1,10 +1,10 @@
 # Mail adapter contract
 
-The service never talks to a mail provider directly. It talks to
-an adapter with this interface, so the provider (Resend from
-mail.soliskit.com - S27 in `docs/decision-log.md`, replacing the earlier Gmail path) can
-change without touching service code. Phase 1 ships only the mock
-implementation; no account, DNS, credential, or real send exists.
+The service never talks to a mail provider directly. It talks to an
+adapter with the interface below. That keeps the provider replaceable:
+Resend from mail.soliskit.com (S27 in `docs/decision-log.md`) can change
+without touching service code. Phase 1 ships only the mock. No account,
+DNS record, credential or real send exists.
 
 ## Interface
 
@@ -46,8 +46,8 @@ to settle uncertain sends without resending.
    has none.
 2. Sending is at least once in effect. The service does not ask the
    adapter for exactly-once.
-3. A double-click is one request: the service dedupes by idempotency key
-   before a reservation is written, so the adapter never sees the same
+3. A double-click is one request. The service dedupes by idempotency key
+   before it writes a reservation, so the adapter never sees the same
    request id twice.
 4. The response to the person never waits on the adapter (R3), so mail
    provider latency cannot show in response time.
