@@ -1,5 +1,5 @@
 // In-memory store modeling one SQLite-backed Durable Object for the
-// local prototype (Playbook: Storage).
+// local prototype (one object, synchronous changes).
 //
 // Atomicity model: every state change is a synchronous function run to
 // completion (a "transaction"). JavaScript runs synchronous code without
