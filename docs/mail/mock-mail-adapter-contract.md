@@ -1,15 +1,14 @@
-# Mail adapter contract
+# Mail Adapter Contract
 
-The service never talks to a mail provider directly. It talks to an
-adapter with the interface below. That keeps the provider replaceable:
-Resend from mail.soliskit.com (S27 in `docs/decision-log.md`) can change
-without touching service code. Phase 1 ships only the mock. No account,
-DNS record, credential or real send exists.
+The adapter sends mail and resolves uncertain sends. It keeps the service
+interface unchanged when providers change. The selected path is Resend from
+mail.soliskit.com ([S27](../decision-log.md)). Phase 1 uses only the mock:
+no provider account, domain setup, credential, or real send.
 
 ## Interface
 
-R numbers are requirements in `docs/evidence-record.md`. S numbers are
-decisions in `docs/decision-log.md`.
+R numbers identify [requirements](../evidence-record.md). S numbers identify
+[decisions](../decision-log.md).
 
 ```
 send({ requestId, to, subject, text }) -> Promise<SendResult>
@@ -25,7 +24,7 @@ reconcile(requestId) -> Promise<ReconcileResult>
   the code (requirement R13).
 - `text`: the body. The code appears only in the body.
 
-## SendResult semantics
+## Send results
 
 - `{ outcome: "accepted", providerId }` - the provider took the message.
   Acceptance is not delivery. It never produces a proof, the signed
@@ -40,22 +39,26 @@ reconcile(requestId) -> Promise<ReconcileResult>
 - `{ outcome: "failed" }` - the provider refused. The failed send cannot
   produce a proof. The person can retry after the cooldown.
 
-## ReconcileResult semantics
+## Reconciliation results
 
 `reconcile(requestId)` reads the provider's own send record for that
 request id and returns `{ state: "sent" | "absent" | "unknown" }`. Used
 to settle uncertain sends without resending.
 
-## Rules the service relies on
+## Adapter rules
 
 1. The adapter is the only place provider credentials exist.
-2. Sending is at least once in effect. The service does not ask the
-   adapter for exactly-once.
-3. Requests with the same idempotency key (a client-chosen ID that
-   marks a repeat) reuse one response and one send. The service dedupes
-   before it writes a reservation, so the adapter never sees the same
-   request id twice. The local page does not yet supply that key, so its
-   double-click protection is unproven.
+2. The adapter gives no exactly-once guarantee. This service never
+   retries an uncertain send automatically. A duplicate email is possible
+   only if a later authorized attempt retries the send. Reusing the
+   client key below does not start another send.
+3. A client can mark a repeated request with an idempotency key. Reusing
+   that key returns the first response without sending another email.
+   The service handles repeats before saving the send reservation.
+   This client key is separate from `requestId`, which the service gives
+   the adapter for one send. The adapter never sees that request ID twice.
+   The local page supplies no client key yet, so its double-click
+   protection is unproven.
 4. The adapter adds no tracking: no open pixels, no click tracking, no
    rewritten links.
 
