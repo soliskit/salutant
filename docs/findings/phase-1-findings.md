@@ -1,31 +1,30 @@
-# Phase 1 findings
+# Phase 1 Findings
 
-This is what the local prototype showed. Local results do not prove
-cloud behavior, so each finding says what the cloud phase must recheck.
-There are six findings.
+Six local results and the cloud checks they still need.
 
-## 1. Epoch (R14)
+The prototype tested restore safety, sign-in exchange, key refresh,
+record cleanup, browser binding, and timing. These local results do not
+establish cloud or real-browser behavior.
+
+## 1. Restore safety (R14)
 
 Result: in the local restore rehearsal, a code that came back from a
 restore was rejected once the owner raised the epoch. The service did
 not notice the restore on its own. The test set the epoch as unreadable
 by hand to simulate the closed state.
 
-Terms: the epoch is a number the owner raises after a restore. A
-challenge is one pending sign-in attempt. An issuance is one signed
-proof handed to an app. A proof is the signed message that says an
-address was checked. An injected source is a stand-in value the tests
-supply instead of a real setting. Failing closed means that when
-something is broken or unreadable, nobody signs in.
+The epoch is a number the owner raises after a restore. Every pending
+sign-in attempt (challenge), issued proof, and app session carries it.
+A proof is the signed message that says an address was checked. Tests
+use a stand-in setting. If that setting cannot be read, nobody signs in.
 
-The prototype's mechanism: every challenge, issuance, proof and app
-session carries the epoch. The service and the app reject anything from
-an earlier epoch. The service reads the epoch from an injected source
-and fails closed when it cannot read it.
+The service and app reject items from an earlier epoch. The prototype
+reads this value from the stand-in source and rejects sign-ins when it
+cannot read it.
 
 Finding: the rehearsal rejected a restored used code after an explicit
 epoch raise. A separate test rejected an older-epoch proof and session,
-with the app's session cleanup invoked by hand in that test. Not each
+with the app's session cleanup invoked by hand in that test. Not every
 case is tested: a restored used proof, a revoked key id and a cleared
 lockout are gaps. The rehearsed restore went exactly as the Playbook
 says. A restore keeps the service closed, an owner epoch raise reopens
@@ -38,34 +37,31 @@ can be read after the change. The prototype cannot answer this. It needs
 a cloud test that changes the value and measures propagation. Until that
 test passes, restore stays fail-closed by policy.
 
-## 2. Callback protocol (R16)
+## 2. Returning the sign-in result to the app (R16)
 
-Result: the bounded script exchange passed the local attack test. Protocol
-analysis ruled out the form POST; we did not build or test it.
+Result: the local test refused an attacker's attempt to sign a victim into
+the attacker's account. It used a short script to return the sign-in proof
+to the app. A form submission was ruled out by analysis, not built or tested.
 
-Terms: the callback is the app address the proof is sent to. Login CSRF
-is an attack that completes an attacker's sign-in in a victim's
-browser. The pending state is the app's server-side note that a sign-in
-is waiting to finish. The pre-auth cookie is a cookie set before
-sign-in that ties the browser to that sign-in. CSP (content security
-policy) is a browser rule that limits where a page may connect. The
-bounded script exchange is a short script on the code page that sends
-the proof to the app's callback in one limited request.
+The callback is the app address that receives the proof. Login CSRF
+(cross-site request forgery) signs a victim into an attacker's account.
+A pre-auth cookie ties the requesting browser to the waiting sign-in.
+SameSite is the cookie setting that limits which cross-site requests
+carry it. CSP (content security policy) limits where a page may connect.
+The script sends the proof to the exact app callback in one limited request.
 
-- The form POST of the proof to the app callback fails login CSRF by
-  construction: a cross-site POST carries no SameSite=Lax or
-  Strict cookie, so the app cannot bind the callback to the browser
-  that started the sign-in. An attacker's verified state could be
-  completed in a victim's browser. Rejected without an implementation.
-- The bounded script exchange passes the required login-CSRF mock
-  test. The code page POSTs the proof cross-origin to the app's exact
-  callback. The app verifies it and binds the verified address to its
-  server-side pending state, but creates no session yet. The browser
-  then navigates top-level to the app's completion URL, which carries no
-  token. The SameSite=Lax pre-auth cookie travels on that navigation and
-  binds the browser. Attacker-owned state or proofs cannot log a victim
-  into the attacker's session, because the verified state is bound to
-  the attacker's cookie.
+The selected exchange returns the result to the same app and browser that
+started sign-in. A script sends the proof to the exact app callback. The
+app checks it and keeps the verified address with the waiting sign-in,
+but does not create a session yet. The browser then opens the app's
+completion page with no token in the URL. Its pre-auth cookie binds the
+browser to that sign-in.
+
+A form submission is unsafe here: a cross-site POST does not carry a
+SameSite=Lax or Strict cookie. Without that cookie, the app cannot tie the
+callback to the browser that started sign-in, so an attacker's sign-in
+could finish in a victim's browser. This approach was rejected without
+being built. The selected script exchange passed the local attack test.
 
 Consequences for the Playbook: the code page's CSP sets
 `connect-src 'self' <exact app origin>` per request and
@@ -75,7 +71,7 @@ tests). Third-party cookies are never used, so Safari with cross-site
 tracking prevention works by construction; a real Safari run remains
 open for the cloud phase.
 
-## 3. Key cache and how long an old key stays trusted (R12)
+## 3. How long a revoked signing key stays trusted (R12)
 
 Result: after an emergency key revoke, an app can keep trusting the old
 key for up to 10 minutes, and the prototype stays inside that bound.
@@ -98,10 +94,10 @@ The bound is a hard maximum for the owner-only trial (decision log S28),
 with cloud proof pending. A shorter app cache would shrink the window at
 the cost of more key-endpoint traffic.
 
-## 4. Purge (R13, R6, E10)
+## 4. Deleting expired records (R13, R6, E10)
 
 Result: the purge is a housekeeping call that deletes what is eligible
-when it runs. It is not an automatic one-hour deadline.
+when it runs. It does not run automatically or guarantee a one-hour deadline.
 
 Terms: an idempotency record is a saved note that stops a double-click
 from becoming two requests. A Durable Object is Cloudflare's small
@@ -109,46 +105,36 @@ stateful server with its own private storage. An alarm is a timer that
 wakes it.
 
 When the purge runs, it deletes expired challenges and issuances once an
-hour has passed since they expired (so no expired challenge or issuance
-lives anywhere near 24 hours). It also deletes idempotency records and
+hour has passed since they expired. It also deletes idempotency records and
 address-linked counter state within 24 hours. The plain daily and monthly
 send totals are kept for two days and 32 days after they are created,
 not to the end of their periods (tested).
 
-Finding for production: on Durable Objects the purge should be
-alarm-driven, and the cost model matters: an alarm invocation is a
-compute request and each `setAlarm` is a row written (E10), so one
-alarm per object per day is cheap, while one alarm per challenge is not.
-Recommended: a single daily alarm per object. A once-daily alarm would
-not delete expired challenges within an hour of their expiry. Point-in-time
+Production proposal: give each Durable Object, a stored set of service
+records, one daily alarm that runs the cleanup. Each alarm uses a compute
+request and each `setAlarm` writes a row (E10). One alarm per stored set
+uses fewer operations than one for every sign-in attempt. A daily alarm
+would not delete every expired attempt within an hour. Point-in-time
 recovery keeps deleted rows restorable for 30 days regardless; this is
 stated in the Playbook, and the epoch rule (finding 1) is what makes a
 restored copy safe.
 
-## 5. Browser binding versus the slot-filling claim (R2, R8)
+## 5. Codes stay tied to the requesting browser (R2, R8)
 
-Result: an attacker who fills the open sign-in slots (a slot-filling
-attack) can delay the owner, and the owner's mailed code fails in the
-owner's own browser for that attacker-created challenge.
+Result: an attacker can occupy both unfinished sign-in attempts. A code
+from one of those attempts works only in the attacker's requesting browser,
+not the owner's. The owner must wait for an attempt to free up, then start
+a new one.
 
-The plan claimed that under a slot-filling attack "the real code is
-never invalidated; the owner is delayed only." The owner-path
-test shows what the code does: the mailed code is never
-invalidated, but it is bound to the browser that requested the
-challenge (R2), and in a slot-filling attack that browser is the
-attacker's. From the owner's own browser the mailed code fails with the
-generic error. The owner recovers only by starting a fresh challenge
-once a slot frees.
-
-So the claim survives only in a narrowed form: the owner is delayed,
-not locked out, and codes are never invalidated; but a code from an
-attacker-created challenge is never usable by the owner. The
+The earlier plan said "the real code is never invalidated; the owner is
+delayed only." The test supports a narrower claim: the code is not
+cancelled, but the owner cannot use it. The
 alternative (dropping the browser binding) would let a phished or
 observed code verify from any browser, which is the attack R2's
 binding exists to stop. The binding stays (decision log S13, 7 October
 2026).
 
-## 6. Timing and CPU (R3, R11)
+## 6. Response timing and processor use (R3, R11)
 
 Result: in an older local run, responses for allowed and unlisted addresses
 looked the same in timing, and a full sign-in used little processor time
@@ -189,4 +175,4 @@ limit; that is a cloud-phase measurement.
   Workers CPU model differs. Recheck in the cloud phase.
 - Real Durable Object transaction semantics under traffic.
 - Real restore behavior of Durable Object point-in-time recovery.
-- Safari, for real.
+- Behavior in real Safari.
