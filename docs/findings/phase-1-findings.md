@@ -26,9 +26,8 @@ Finding: the rehearsal rejected a restored used code after an explicit
 epoch raise. A separate test rejected an older-epoch proof and session,
 with the app's session cleanup invoked by hand in that test. Not every
 case is tested: a restored used proof, a revoked key id and a cleared
-lockout are gaps. The rehearsed restore went exactly as the Playbook
-says. A restore keeps the service closed, an owner epoch raise reopens
-it, and pre-raise codes and proofs are dead.
+lockout are gaps. The rehearsal simulated a closed service after restore and an explicit
+owner epoch raise. It does not prove automatic restore detection.
 
 Still open, for the candidate mechanism (a Worker environment variable
 the owner changes in the Cloudflare account): we do not yet know how
@@ -63,13 +62,12 @@ callback to the browser that started sign-in, so an attacker's sign-in
 could finish in a victim's browser. This approach was rejected without
 being built. The selected script exchange passed the local attack test.
 
-Consequences for the Playbook: the code page's CSP sets
+Consequences for [Requirements](../requirements.md): the code page's CSP sets
 `connect-src 'self' <exact app origin>` per request and
 `form-action 'none'`; the exchange window is 60 seconds and one-time.
 No proof, code, or token appears in any URL, referrer, or log (asserted by
-tests). Third-party cookies are never used, so Safari with cross-site
-tracking prevention works by construction; a real Safari run remains
-open for the cloud phase.
+tests). The design uses no third-party cookies. A real Safari run with cross-site
+tracking prevention remains open for the cloud phase.
 
 ## 3. How long a revoked signing key stays trusted (R12)
 
@@ -114,10 +112,16 @@ Production proposal: give each Durable Object, a stored set of service
 records, one daily alarm that runs the cleanup. Each alarm uses a compute
 request and each `setAlarm` writes a row (E10). One alarm per stored set
 uses fewer operations than one for every sign-in attempt. A daily alarm
-would not delete every expired attempt within an hour. Point-in-time
-recovery keeps deleted rows restorable for 30 days regardless; this is
-stated in the Playbook, and the epoch rule (finding 1) is what makes a
-restored copy safe.
+would not delete every expired attempt within an hour. Provider recovery terms live in [E10](../evidence-record.md#platform-notes-and-their-evidence-limits).
+The epoch rule (finding 1) is the planned protection for restored data.
+
+### Service log cleanup
+
+The local service appends events to an in-memory array in
+[src/service.js](../../src/service.js), in the constructor and log method.
+Neither method nor the purge method ages out those entries. The approved
+service-log retention in S39 is therefore not implemented by this local
+array. This source check was made October 12, 2026; it is not a cloud result.
 
 ## 5. Codes stay tied to the requesting browser (R2, R8)
 
@@ -146,7 +150,8 @@ time a request uses. Ed25519 is the signature algorithm that signs the
 proofs.
 
 These samples are from an older run, taken October 7, 2026 on Node 22 at
-tree b9f9b61. They have not been rerun on current main.
+tree b9f9b61. That historical identifier is retained as reported and is not
+a current-main reference. These measurements have not been rerun on current main.
 
 Timing protocol (R3), measured: 200 interleaved requests per class, 3 runs,
 local harness.
@@ -164,14 +169,13 @@ CPU sample (R11), local only: `node scripts/bench.js` (20 runs,
 Ed25519 sign, app verify, session issue). Median 2.90 ms CPU, min 2.09 ms,
 max 65.40 ms (the cold first run, dominated by one-time key generation and
 imports). The key endpoint answered in 0.21 ms CPU. These are local numbers
-and say nothing about production hardware or the Workers 10 ms free CPU
-limit; that is a cloud-phase measurement.
+and say nothing about production hardware or the Workers free CPU
+limit recorded in E2; that is a cloud-phase measurement.
 
 ## What local testing does not prove
 
-- The Workers 10 ms CPU limit (R11). The local median was 2.90 ms,
-  but the cold first run reached 65.40 ms. These numbers do not prove
-  compliance with that limit (see finding 6, an older run), and the
+- The Workers CPU limit (R11), recorded in E2. The older samples in finding 6 do not prove
+  compliance with that limit, and the
   Workers CPU model differs. Recheck in the cloud phase.
 - Real Durable Object transaction semantics under traffic.
 - Real restore behavior of Durable Object point-in-time recovery.
