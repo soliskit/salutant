@@ -6,7 +6,7 @@ When a choice changes, a later entry names what it replaces. The earlier entry s
 
 ## How this log works
 
-Each entry states the choice, its effect, and its status. Decision evidence stays private; this public log records only what the project needs. The private Playbook holds the plan in Charter, Roadmap, and How It Works.
+Each entry states the choice, its effect, and its status. Decision evidence stays private; this public log records only what the project needs. The private Playbook holds the Charter and Roadmap. [Requirements](requirements.md) owns the sign-in contract and open technical choices.
 
 A proof is the signed message that says an address was checked. The epoch is a number only the owner can raise after a restore to reopen the service.
 
@@ -16,7 +16,7 @@ A proof is the signed message that says an address was checked. The epoch is a n
 - **S2 Hosting order** Salutant hosts on GitHub when possible, then Cloudflare, then Vercel. Status: Settled.
 - **S3 Build our own email sign-in** Effect: Salutant exists. The six-digit format was a recommendation, not the owner's words, until S29 settled it. Status: Settled for the idea; format settled by S29.
 - **S4 Separate repo** Salutant has its own repo. Status: Settled.
-- **S5 Documentation-only merges** Effect: documentation-only merges are allowed in this repo. This does not cover code, tests, CI, or releases. Status: Settled, scope documentation only.
+- **S5 Documentation-only merges** Effect: documentation-only merges are allowed in this repo, not code, tests, CI, or releases. Status: Settled, scope documentation only.
 - **S6 Plan template** Effect: Salutant's plan uses the standard template. Status: Settled.
 - **S7 Replace the repo's contents** Effect: the repo's old contents go, and their history stays in git. At that time nothing changed until the build go-ahead. Status: Settled; the Phase 1 go-ahead was later given (see S12).
 - **S11 Phase 1 plan adopted** Effect: the Phase 1 plan is adopted for Phase 1 only: code on a branch in the salutant repo, using fakes. It allows no accounts, no domain setup, no real emails and no launch. Adopting the plan is not the go-ahead to write code. Status: Settled.
@@ -30,7 +30,7 @@ A proof is the signed message that says an address was checked. The epoch is a n
 - **S20 Runtime and storage** Effect: a Cloudflare Worker (a small program that Cloudflare runs for us) with its built-in free storage for codes and limits; the restore safety switch (the epoch) is a separate setting only the owner can change. How the owner sets the epoch, and how quickly every running copy receives it, remain Open. Status: Settled; epoch mechanism Open.
 - **S21 Trial recipients** Effect: trial emails go only to the owner's own address. Status: Settled.
 - **S22 Lockout residual** Effect: someone who knows the owner's address can delay the owner for up to an hour at a time. This is a known limit for the owner-only trial; a bot check is added before Salutant opens to anyone else. The up-to-an-hour delay is replaced by S33; the bot-check condition stands. Status: Settled.
-- **S23 Playbook** Effect: the Playbook is Salutant's one plan: Charter, Roadmap and How It Works. The older drafts were deleted. Status: Settled.
+- **S23 Playbook** Effect: the Playbook became Salutant's one plan, originally with Charter, Roadmap, and How It Works. The older drafts were deleted. The October 11 documentation decision moved technical behavior to the repo; the Playbook now holds Charter and Roadmap. Status: Settled.
 
 - **S27 Mail path, current** Effect: sign-in mail goes through Resend from mail.soliskit.com, replacing the earlier dedicated Gmail account; iCloud stays dropped. Account creation, domain setup, credentials, and real sends remain later-phase work, each authorized separately. The mail adapter stays independent of any one mail provider. Provider limits and delivery remain to be checked before real sends. Status: Settled for the mail path; real sending unproven.
 
@@ -41,16 +41,13 @@ A proof is the signed message that says an address was checked. The epoch is a n
 - **S32 Resend wait** Effect: a resend can be asked for only after a one-minute wait; a resend replaces the old code for that attempt. Wait only. Status: Settled.
 - **S33 Two unfinished attempts** Effect: at most two unfinished sign-in attempts for the owner's address at once. A slot frees when its code is used, cancelled by five wrong guesses, or expires. An outsider who fills both slots can delay the owner by up to 30 minutes. This is a known limit for the owner-only trial, and it replaces the up-to-an-hour delay in S22. Status: Settled.
 - **S34 Three emails per 30 minutes** Effect: at most three sign-in emails to one address per 30 minutes, including resends; once used up, the address waits for the window to reset. An outsider can use up the allowance and delay the owner. This is a known limit for the owner-only trial. This entry claims no provider quota. Status: Settled.
-- **S35 Ninety percent of the free mail allowance** Effect: sign-in mail uses at most 90% of the mail provider's current free allowance (90 emails a day and 2,700 a month at the provider's free plan of 100 a day and 3,000 a month, checked 9 October 2026); the service stops rather than pays. Other mail on the same account reduces the allowance. The three-per-address limit in S34 stays. Policy only; no account and no real mail is authorized. Status: Settled.
+- **S35 Ninety percent of the free mail allowance** Effect: sign-in mail uses at most 90% of the mail provider's current free allowance (current provider amounts and the check date live in E5 of the [Evidence Record](evidence-record.md#platform-notes-and-their-evidence-limits)); the service stops rather than pays. Other mail on the same account reduces the allowance. The three-per-address limit in S34 stays. Policy only; no account and no real mail is authorized. Status: Settled.
 - **S36 Ten requests per hour** Effect: at most 10 sign-in requests per hour for one email address and 10 per hour for one internet address; extra requests wait until the window resets. This limit is separate from the email-send allowance in S35. A shared internet address can block a real retry. This is a known limit for the owner-only trial, to revisit before opening to others. Policy only. Status: Settled.
 - **S37 Five-minute proof** Effect: the one-time sign-in proof expires after five minutes and works once; an expired proof does not sign the owner out, and the app manages the session separately. Allowing for small clock differences stays a separate proposal. Status: Settled.
 - **S38 One-minute clock tolerance** Effect: a one-minute clock difference is allowed when checking the five-minute proof, so a proof may be accepted up to one minute past expiry, about six minutes in total. This does not change the email code lifetime (S30) or the key-revoke limit (S28). It settles the clock-difference allowance left as a proposal in S37. Status: Settled.
-- **S39 Record keeping** Effect: expired sign-in attempts and address-linked limits are deleted within 24 hours; the service's own basic event logs are kept 14 days; logs never contain email addresses, codes, or proofs. This covers the service's own records only, not the mail provider's 30-day copy or cloud backups. Single-use protection that is still needed is not removed early. Status: Settled.
+- **S39 Record keeping** Effect: expired sign-in attempts and address-linked limits are deleted within 24 hours; the service's own basic event logs are kept 14 days; logs never contain email addresses, codes, or proofs. This covers the service's own records only, not the mail provider's copy or cloud backups; provider retention lives in E5 of the Evidence Record. Single-use protection that is still needed is not removed early. Status: Settled.
 
 ## Open decisions
 
-The Open items list in the Playbook (How It Works tab) holds every open item.
+The [Requirements open items](requirements.md#open-items) owns the unresolved technical choices.
 
-## Design still open
-
-- **Bot check.** S22 requires one before opening to others. Its design is not chosen.
