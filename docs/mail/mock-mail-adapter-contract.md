@@ -37,7 +37,7 @@ reconcile(requestId) -> Promise<ReconcileResult>
   without waiting for the send result. The local page does not yet offer
   a cooldown message or resend control.
 - `{ outcome: "failed" }` - the provider refused. The failed send cannot
-  produce a proof. The person can retry after the cooldown.
+  produce a proof. A later request follows the approved cooldown in [S32](../decision-log.md#settled-choices).
 
 ## Reconciliation results
 
@@ -59,7 +59,7 @@ to settle uncertain sends without resending.
    the adapter for one send. The adapter never sees that request ID twice.
    The local page supplies no client key yet, so its double-click
    protection is unproven.
-4. The adapter adds no tracking: no open pixels, no click tracking, no
+4. Do not send from a personal mailbox. The adapter adds no tracking: no open pixels, no click tracking, no
    rewritten links.
 
 ## Mock implementation
