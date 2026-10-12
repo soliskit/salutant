@@ -51,3 +51,4 @@ A proof is the signed message that says an address was checked. The epoch is a n
 
 The [Requirements open items](requirements.md#open-items) owns the unresolved technical choices.
 
+
