@@ -1,29 +1,33 @@
 # Salutant Decision Log
 
-**What this is.** The choices behind Salutant: what was decided, what it means, and where it stands. When a choice changes, the old entry stays and says what replaced it. The log is a supporting record kept in the repo next to the code.
+The project choices, their limits, and the decisions still open.
+
+When a choice changes, a later entry names what it replaces. The earlier entry stays as history. The [Evidence Record](evidence-record.md) tracks the checks.
 
 ## How this log works
 
-Each entry is a choice the owner made, with its effect and its status. The log keeps no message IDs, times or verbatim quotes, because this repo is public and shares only what it must. The proof of each decision lives in the owner's private record. Work does not reopen a settled entry. A change is a new entry that names the entry it replaces. Recommendations not yet adopted are listed at the end. The current Playbook has three tabs: Charter, Roadmap, and How It Works. This log and the Evidence Record live with the code. Two terms: a proof is the signed message that says an address was checked, and the epoch is a number only the owner can raise after a restore, to reopen the service.
+Each entry states the choice, its effect, and its status. Decision evidence stays private; this public log records only what the project needs. The private Playbook holds the plan in Charter, Roadmap, and How It Works.
+
+A proof is the signed message that says an address was checked. The epoch is a number only the owner can raise after a restore to reopen the service.
 
 ## Settled choices
 
 - **S1 Free is required** Effect: no paid plan or feature. A free limit stops the service and never bills. Status: Settled.
 - **S2 Hosting order** Salutant hosts on GitHub when possible, then Cloudflare, then Vercel. Status: Settled.
-- **S3 Build our own email sign-in** Effect: Salutant exists. The six-digit code form is a recommendation, not the owner's words, and stays a proposal until adopted. Status: Settled for the idea; the code format is settled by S29.
+- **S3 Build our own email sign-in** Effect: Salutant exists. The six-digit format was a recommendation, not the owner's words, until S29 settled it. Status: Settled for the idea; format settled by S29.
 - **S4 Separate repo** Salutant has its own repo. Status: Settled.
 - **S5 Documentation-only merges** Effect: documentation-only merges are allowed in this repo. This does not cover code, tests, CI, or releases. Status: Settled, scope documentation only.
 - **S6 Plan template** Effect: Salutant's plan uses the standard template. Status: Settled.
 - **S7 Replace the repo's contents** Effect: the repo's old contents go, and their history stays in git. At that time nothing changed until the build go-ahead. Status: Settled; the Phase 1 go-ahead was later given (see S12).
 - **S11 Phase 1 plan adopted** Effect: the Phase 1 plan is adopted for Phase 1 only: code on a branch in the salutant repo, using fakes. It allows no accounts, no domain setup, no real emails and no launch. Adopting the plan is not the go-ahead to write code. Status: Settled.
 - **S12 Phase 1 code started** Effect: local and mock work (mock means tests use stand-in services instead of real ones) started on a branch with a pull request, and nothing merges without the owner. It does not cover accounts, real mail, cloud tests, connecting an app, merge, release, or later phases. Status: Settled.
-- **S13 Browser binding kept** Effect: each sign-in challenge stays bound to the browser that asked (browser binding), in the Phase 1 design. A random value held in that browser does the binding, and the emailed code works only when entered there. An intercepted email alone cannot complete the sign-in. The cost: the code fails if entered on another device. It must be entered in the browser that asked for it. This is a design choice only. It covers no merge, account, real mail, cloud work, or later phase. The original spec wording on browser binding was aligned with this entry after the decision, and this entry governs the decision status. This log adopts no other unresolved spec value. Status: Settled.
+- **S13 Browser binding kept** Effect: each sign-in challenge stays bound to the browser that asked (browser binding), in the Phase 1 design. A random value held in that browser does the binding, and the emailed code works only when entered there. An intercepted email alone cannot complete the sign-in. The cost: a code entered on another device fails. This is a design choice only. It covers no merge, account, real mail, cloud work, or later phase. The original spec wording on browser binding was aligned with this entry after the decision, and this entry governs the decision status. This log adopts no other unresolved spec value. Status: Settled.
 - **S14 Phase 1 pull request merged** Effect: the Phase 1 local and mock pull request (pull request 59) was merged to main at its reviewed head. Scope: Phase 1 local and mock code only. Accounts, real mail, cloud work, deployment, connecting an app, release and any later phase are not covered; each still needs its own authorization. Status: Done.
 - **S16 Who can sign in** Effect: only an approved list can sign in. It starts with the owner's address, and people are added only on the owner's say-so. Status: Settled.
 - **S17 One app or many** Effect: one service that can serve many apps; a first app is connected first. Status: Settled.
 - **S18 Where the code page lives** Effect: the code-entry page is on Cloudflare; public pages are on GitHub Pages. The claim that GitHub Pages cannot block framing was a statement in the question and is supported only by sampled-header evidence. Status: Settled.
 - **S19 Lost mailbox** Effect: no shortcut in the sign-in; the owner fixes it by changing the approved address in the service settings, using the owner's own account access. Status: Settled.
-- **S20 Runtime and storage** Effect: a Cloudflare Worker (a small program that Cloudflare runs for us) with its built-in free storage for codes and limits; the restore safety switch (the epoch) is a separate setting only the owner can change. The mechanism for the epoch is Open. Status: Settled; epoch mechanism Open.
+- **S20 Runtime and storage** Effect: a Cloudflare Worker (a small program that Cloudflare runs for us) with its built-in free storage for codes and limits; the restore safety switch (the epoch) is a separate setting only the owner can change. How the owner sets the epoch, and how quickly every running copy receives it, remain Open. Status: Settled; epoch mechanism Open.
 - **S21 Trial recipients** Effect: trial emails go only to the owner's own address. Status: Settled.
 - **S22 Lockout residual** Effect: someone who knows the owner's address can delay the owner for up to an hour at a time. This is a known limit for the owner-only trial; a bot check is added before Salutant opens to anyone else. The up-to-an-hour delay is replaced by S33; the bot-check condition stands. Status: Settled.
 - **S23 Playbook** Effect: the Playbook is Salutant's one plan: Charter, Roadmap and How It Works. The older drafts were deleted. Status: Settled.
@@ -47,6 +51,6 @@ Each entry is a choice the owner made, with its effect and its status. The log k
 
 The Open items list in the Playbook (How It Works tab) holds every open item.
 
-## Recommendations not yet adopted
+## Design still open
 
-- **Bot check before opening to others** S22 adds it before opening; its design is not chosen.
+- **Bot check.** S22 requires one before opening to others. Its design is not chosen.

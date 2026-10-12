@@ -1,13 +1,14 @@
 # Salutant
 
-Salutant proves that a person controls an email address. You enter your
-address, we send a code, you enter it, and the app gets a proof: a
-short-lived statement that you control that address, signed by Salutant
-so the app can check it. That is all it does, and that is the point. A
-sign-in that does one thing is a sign-in you can check.
+Email sign-in: a code to the inbox, a signed proof to the app.
 
-Today this repo holds phase 1, a local prototype with every outside
-piece mocked (replaced by a stand-in). It runs on any machine with
+Salutant proves control of an email address and gives the app a short-lived,
+signed proof. The person
+requests a code and enters it in the same browser. The app checks the proof
+before completing sign-in. Salutant does not manage the app's account or session.
+
+This repo holds Phase 1: a local prototype that replaces outside services
+with stand-ins. It runs on any machine with
 Node.js 20 or later, sends no real email, uses no accounts or
 credentials, and deploys nothing. Phase 1 is merged. Deployment, real
 sends and account setup each need their own go-ahead.
@@ -34,7 +35,7 @@ npm test
 There are no dependencies. The mock uses only Web Crypto and Node's
 built-in test runner.
 
-## Status words
+## Reading the evidence
 
 - Verified: someone read the source and recorded when.
 - Reported: someone else said so, and nobody re-read it.
@@ -42,5 +43,7 @@ built-in test runner.
 
 ## Limits and behavior
 
-Code lifetime, send and request limits, and the mail budget are set in
-the Playbook, on the How It Works tab. Local tests cover each one.
+The [Decision Log](docs/decision-log.md) records code lifetime, request
+limits, and the mail-budget policy. The [Evidence Record](docs/evidence-record.md)
+links local checks and names what still needs cloud testing. The private
+Playbook holds the full plan.
