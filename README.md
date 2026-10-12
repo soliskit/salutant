@@ -11,10 +11,11 @@ This repo holds Phase 1: a local prototype that replaces outside services
 with stand-ins. It runs on any machine with
 Node.js 20 or later, sends no real email, uses no accounts or
 credentials, and deploys nothing. Phase 1 is merged. Deployment, real
-sends and account setup each need their own go-ahead.
+sends, and account setup each need their own go-ahead.
 
 ## Layout
 
+- [Requirements](docs/requirements.md) defines behavior and acceptance checks.
 - `docs/decision-log.md` holds the decisions this work is built on.
 - `docs/evidence-record.md` has one row per requirement, with its result
   and a link to its test.
@@ -34,12 +35,6 @@ npm test
 
 There are no dependencies. The mock uses only Web Crypto and Node's
 built-in test runner.
-
-## Reading the evidence
-
-- Verified: someone read the source and recorded when.
-- Reported: someone else said so, and nobody re-read it.
-- Unproven: nobody has shown it.
 
 ## Limits and behavior
 
