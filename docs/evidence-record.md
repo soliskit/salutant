@@ -1,10 +1,14 @@
 # Salutant Evidence Record
 
-**Status.** Local test results link to their tests. Missing tests and limits of local evidence are marked below. Real-platform checks are still Pending. This record does not link an independent review to one exact commit.
+Local checks and the evidence still needed from real services.
+
+The rows link to tests, not to new test runs. Missing checks and local limits remain explicit. Real-platform results are Pending; the independent review is not tied to a specific commit in this record.
 
 ## How this record works
 
-Each requirement gets one row with its local result and its real-platform result. The Playbook defines the checks and their limits. The Phase 1 exit section links bounded local evidence that others reported. A merge alone does not show that tests passed. Real-platform results are still open. A result is filled in only with a link to the evidence: a test run at an exact commit, a saved response, or a reviewer verdict. The Playbook has three tabs: Charter, Roadmap, and How It Works. These records live with the code. Terms: a proof is the signed message that says an address was checked, a challenge is one pending sign-in attempt, and the epoch is a number the owner raises after a restore to reopen the service.
+Each requirement has a local result and a real-platform result. The private Playbook defines the checks and limits. A completed result needs evidence: a test run at an exact commit, a saved response, or a reviewer verdict. A merge alone does not show that tests passed.
+
+A proof is a signed address-check result. A challenge is one pending sign-in attempt. The epoch is the number the owner raises after a restore to reopen the service.
 
 ## Requirements and results
 
@@ -28,11 +32,11 @@ Each requirement gets one row with its local result and its real-platform result
 ## Phase 1 exit evidence
 
 - **Mock service and stub app** Local and mock prototype, merged in [PR 59](https://github.com/soliskit/salutant/pull/59). It uses no real mail, deployment or accounts. The PR body is historical and does not give the current test count.
-- **Concurrency, replay, restore, header, and timing tests** CI runs `npm test` on every push ([test.yml](../.github/workflows/test.yml)): 80 tests today, covering concurrency, replay, restore, headers, timing and failure injection. The timing and CPU numbers in [findings](findings/phase-1-findings.md) item 6 come from an older run (October 7, Node 22, tree b9f9b61), not from this current run.
-- **Findings on production mechanisms** [Written local findings](https://github.com/soliskit/salutant/blob/main/docs/findings/phase-1-findings.md) cover the restore epoch, the callback, the key cache and the purge. Cloud behavior and real Safari are still open. The findings file does not link an independent test run to one exact commit, so this record does not independently verify those findings.
+- **Concurrency, replay, restore, header, and timing tests** CI runs `npm test` on every push ([test.yml](../.github/workflows/test.yml)): The recorded suite has 80 tests covering concurrency, replay, restore, headers, timing, and failure injection. This rewrite does not report a new run. The timing and CPU numbers in [findings](findings/phase-1-findings.md) item 6 come from an older run (October 7, Node 22, tree b9f9b61), not from this current run.
+- **Findings on production mechanisms** [Written local findings](https://github.com/soliskit/salutant/blob/main/docs/findings/phase-1-findings.md) cover the restore epoch, the callback, the key cache and the purge. Cloud behavior and real Safari are still open. The findings have no linked independent test run at a specific commit. This record does not independently verify them.
 - **Measured values and open decisions** Local timing and CPU samples are in the findings file, item 6. The emergency key window is 10 minutes (S28), pending cloud proof. Real-platform measurements are still open. Local CPU results do not prove the Workers CPU limit.
 
-## Platform facts the behavior relies on
+## Platform notes and their evidence limits
 
 - **E1 Free request cap** Workers Free: 100,000 requests per day. Verified. Date checked: not recorded. developers.cloudflare.com/workers/platform/limits
 - **E2 Free CPU cap** Workers Free: 10 ms CPU per HTTP request. Verified, same page. Date checked: not recorded. Reported, not verified: time spent waiting on network calls does not count.
