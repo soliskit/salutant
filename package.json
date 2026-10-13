@@ -2,6 +2,7 @@
   "name": "salutant",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Email sign-in proofs: a code to your inbox, a signed proof to the app. Phase 1 is local and mocked, with no real sends, no credentials and no network calls.",
   "engines": { "node": ">=20" },
