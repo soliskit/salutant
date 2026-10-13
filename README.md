@@ -42,3 +42,7 @@ The [Decision Log](docs/decision-log.md) records code lifetime, request
 limits, and the mail-budget policy. The [Evidence Record](docs/evidence-record.md)
 links local checks and names what still needs cloud testing. The private
 Playbook holds the full plan.
+
+## License
+
+[MIT](LICENSE)
