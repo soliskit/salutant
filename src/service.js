@@ -12,7 +12,7 @@ import {
 
 export const DEFAULT_CONFIG = {
   codeTtlMs: 30 * 60_000,
-  maxAttempts: 5,
+  maxAttempts: 3,
   activeChallengesPerAddress: 2,
   sendsPerAddressPer30Minutes: 3,
   requestsPerAddressPerHour: 10,
