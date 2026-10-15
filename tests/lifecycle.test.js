@@ -36,18 +36,18 @@ test('an expired code fails', async () => {
   assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' });
 });
 
-test('five wrong tries end the challenge; a correct sixth try fails', async () => {
+test('three wrong tries end the challenge; a correct fourth try fails', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
   const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
   await w.service.drain();
   const code = w.mailer.lastCode();
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 3; i++) {
     await browser.verify({ challengeId: created.challengeId, code: '000000', address: OWNER });
   }
-  const sixth = await browser.verify({ challengeId: created.challengeId, code, address: OWNER });
-  assert.deepEqual(await sixth.json(), { error: 'invalid_or_expired_code' });
+  const fourth = await browser.verify({ challengeId: created.challengeId, code, address: OWNER });
+  assert.deepEqual(await fourth.json(), { error: 'invalid_or_expired_code' });
 });
 
 test('many simultaneous submits of one correct code give exactly one success', async () => {
