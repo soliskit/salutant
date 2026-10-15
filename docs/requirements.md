@@ -68,7 +68,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 ## Keys and epoch (R12, R14, R15)
 
 - **Signing key** Create outside the repository. Store as a service secret. Identify it with a key ID.
-- **App key cache** Apps cache public keys for at most [5 minutes]. The endpoint cache is [5 minutes]; both remain candidate production settings. [S28](decision-log.md#settled-choices) owns the emergency revoke bound. No layer holds a key longer than its own setting.
+- **App key cache** Apps cache public keys for at most 5 minutes. The endpoint cache is 5 minutes. Both are adopted production settings (derivation decisions of October 15, 2026). [S28](decision-log.md#settled-choices) owns the emergency revoke bound. No layer holds a key longer than its own setting.
 - **Fail closed** After its cached key expires, an app that cannot refresh rejects every proof. Good proofs may fail during an emergency revoke. That is accepted.
 - **Routine rotation** Keep both keys available for at least the proof lifetime, clock-skew allowance, and end-to-end bound combined.
 - **Epoch rule** A number the service reads and never writes. Only the account owner can raise it. Sign-in challenges, issued proofs, and app sessions carry it. Reject earlier-epoch items. If the epoch cannot be read the service stays closed. Production must stay closed after a restore until the owner raises the epoch. The local rehearsal simulates that closed state; automatic restore detection and cloud enforcement remain unproven. Apps must read the epoch with the public keys and drop earlier sessions. The local test invokes session cleanup explicitly. Trust boundary: the Cloudflare account owner.
