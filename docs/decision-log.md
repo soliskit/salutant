@@ -45,10 +45,10 @@ A proof is the signed message that says an address was checked. The epoch is a n
 - **S36 Ten requests per hour** Effect: at most 10 sign-in requests per hour for one email address and 10 per hour for one internet address; extra requests wait until the window resets. This limit is separate from the email-send allowance in S35. A shared internet address can block a real retry. This is a known limit for the owner-only trial, to revisit before opening to others. Policy only. Status: Settled.
 - **S37 Five-minute proof** Effect: the one-time sign-in proof expires after five minutes and works once; an expired proof does not sign the owner out, and the app manages the session separately. Allowing for small clock differences stays a separate proposal. Status: Settled.
 - **S38 One-minute clock tolerance** Effect: a one-minute clock difference is allowed when checking the five-minute proof, so a proof may be accepted up to one minute past expiry, about six minutes in total. This does not change the email code lifetime (S30) or the key-revoke limit (S28). It settles the clock-difference allowance left as a proposal in S37. Status: Settled.
+- **S40 Three wrong guesses** Effect: three wrong guesses cancel a sign-in code; signing in then needs a new code. Per-code limit only. This replaces the five in S31 and the five mentioned in S33; both entries stay as history. Derivation: with six digits (S29), three guesses give an attacker about a 1-in-333,000 chance per challenge, codes expire in 30 minutes (S30), and during the owner-only trial codes reach only the owner's mailbox, so the tighter limit costs the owner little. Locked October 15, 2026 (question phonemsg-01M50P138189V11JPP1KD0YZ38, lock phonemsg-01M50P2ZFH15QWDNAPC0BR638F). Status: Settled.
 - **S39 Record keeping** Effect: expired sign-in attempts and address-linked limits are deleted within 24 hours; the service's own basic event logs are kept 14 days; logs never contain email addresses, codes, or proofs. This covers the service's own records only, not the mail provider's copy or cloud backups; provider retention lives in E5 of the Evidence Record. Single-use protection that is still needed is not removed early. Status: Settled.
 
 ## Open decisions
 
 The [Requirements open items](requirements.md#open-items) owns the unresolved technical choices.
-
 
