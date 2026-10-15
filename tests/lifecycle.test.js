@@ -43,11 +43,30 @@ test('three wrong tries end the challenge; a correct fourth try fails', async ()
   const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
   await w.service.drain();
   const code = w.mailer.lastCode();
+  const wrongCode = code === '000000' ? '000001' : '000000';
   for (let i = 0; i < 3; i++) {
-    await browser.verify({ challengeId: created.challengeId, code: '000000', address: OWNER });
+    const wrong = await browser.verify({ challengeId: created.challengeId, code: wrongCode, address: OWNER });
+    assert.deepEqual(await wrong.json(), { error: 'invalid_or_expired_code' }, `wrong try ${i + 1} must fail`);
   }
   const fourth = await browser.verify({ challengeId: created.challengeId, code, address: OWNER });
   assert.deepEqual(await fourth.json(), { error: 'invalid_or_expired_code' });
+});
+
+test('a correct third try still succeeds after two wrong tries', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  await w.service.drain();
+  const code = w.mailer.lastCode();
+  const wrongCode = code === '000000' ? '000001' : '000000';
+  for (let i = 0; i < 2; i++) {
+    const wrong = await browser.verify({ challengeId: created.challengeId, code: wrongCode, address: OWNER });
+    assert.deepEqual(await wrong.json(), { error: 'invalid_or_expired_code' }, `wrong try ${i + 1} must fail`);
+  }
+  const third = await browser.verify({ challengeId: created.challengeId, code, address: OWNER });
+  const body = await third.json();
+  assert.ok(body.proof, 'the correct code on the third try must issue a proof');
 });
 
 test('many simultaneous submits of one correct code give exactly one success', async () => {
