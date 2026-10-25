@@ -2,7 +2,7 @@
 
 The sign-in contract, acceptance checks, and choices still open.
 
-Bracketed values are proposals, not approved production settings. Local implementation is not cloud proof. [Decisions](decision-log.md) owns approved choices; [evidence](evidence-record.md) owns results and provider facts.
+Bracketed values are proposals, not approved production settings. Local implementation is not cloud proof. [Decisions](decisions.md) owns approved choices; [evidence](evidence-record.md) owns results and provider facts.
 
 ## Purpose and boundary
 
@@ -40,7 +40,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 
 ## Codes (R1, R2, R8)
 
-- **Format, lifetime, wrong tries, resend, and active attempts** [S29–S33](decision-log.md#settled-choices) owns the approved values. [S13](decision-log.md#settled-choices) owns browser binding. [S39](decision-log.md#settled-choices) owns the cleanup deadline.
+- **Format, lifetime, wrong tries, resend, and active attempts** [S29–S33](decisions.md#settled-choices) owns the approved values. [S13](decisions.md#settled-choices) owns browser binding. [S39](decisions.md#settled-choices) owns the cleanup deadline.
 - **Source** Generate codes with the platform's cryptographically secure random function. Compare their hashes with a timing-safe comparison. The local implementation uses Web Crypto random values and its own comparison loop; this is not proof of cloud timing behavior.
 - **Storage** Never store the code as readable text. Store only a keyed hash (HMAC), a fingerprint made from the app, purpose, challenge ID, and code. Keep its service secret outside the database.
 
@@ -58,7 +58,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 
 - **Algorithm** Use only Ed25519 (EdDSA), the selected signing algorithm. The app rejects any other algorithm or key type.
 - **Claims** Issuer, audience, minimal subject, issued-at, not-before, expiry, key id, nonce, proof id, and epoch. The nonce carries the sign-in state. Salutant shares only the address the app needs.
-- **Lifetime** [S37 and S38](decision-log.md#settled-choices) own expiry and clock tolerance. The local app also imposes a shorter exchange window; see [the callback finding](audit/phase-1-findings.md#2-returning-the-sign-in-result-to-the-app-r16).
+- **Lifetime** [S37 and S38](decisions.md#settled-choices) own expiry and clock tolerance. The local app also imposes a shorter exchange window; see [the callback finding](audit/phase-1-findings.md#2-returning-the-sign-in-result-to-the-app-r16).
 - **Nonce** Bound to the transaction that started the sign-in.
 - **App checks** Signature, key id, issuer, audience (its own origin), epoch, expiry and not-before, state, and the proof id against its redemption record in one atomic step. Then it creates its own session.
 - **Replay** The app owns the redemption record: proof id, time, and the session created. Many parallel redemptions of one valid proof give exactly one session.
@@ -68,7 +68,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 ## Keys and epoch (R12, R14, R15)
 
 - **Signing key** Create outside the repository. Store as a service secret. Identify it with a key ID.
-- **App key cache** Apps cache public keys for at most 5 minutes. The endpoint cache is 5 minutes. Both are adopted production settings (derivation decisions of October 15, 2026). [S28](decision-log.md#settled-choices) owns the emergency revoke bound. No layer holds a key longer than its own setting.
+- **App key cache** Apps cache public keys for at most 5 minutes. The endpoint cache is 5 minutes. Both are adopted production settings (derivation decisions of October 15, 2026). [S28](decisions.md#settled-choices) owns the emergency revoke bound. No layer holds a key longer than its own setting.
 - **Fail closed** After its cached key expires, an app that cannot refresh rejects every proof. Good proofs may fail during an emergency revoke. That is accepted.
 - **Routine rotation** Keep both keys available for at least the proof lifetime, clock-skew allowance, and end-to-end bound combined.
 - **Epoch rule** A number the service reads and never writes. Only the account owner can raise it. Sign-in challenges, issued proofs, and app sessions carry it. Reject earlier-epoch items. If the epoch cannot be read the service stays closed. Production must stay closed after a restore until the owner raises the epoch. The local rehearsal simulates that closed state; automatic restore detection and cloud enforcement remain unproven. Apps must read the epoch with the public keys and drop earlier sessions. The local test invokes session cleanup explicitly. Trust boundary: the Cloudflare account owner.
@@ -79,14 +79,14 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 
 ## Limits and values (R6, R8, R11, R13)
 
-- **Send and request limits** [S34–S36](decision-log.md#settled-choices) owns the approved policy. [E5](evidence-record.md#platform-notes-and-their-evidence-limits) owns current provider quotas. Local defaults are in [service.js](../src/service.js).
+- **Send and request limits** [S34–S36](decisions.md#settled-choices) owns the approved policy. [E5](evidence-record.md#platform-notes-and-their-evidence-limits) owns current provider quotas. Local defaults are in [service.js](../src/service.js).
 
 
 - **Request body** At most [2 KB].
 - **Source address** Production must read the host's trusted header, never a client-supplied value. The local prototype reads cf-connecting-ip from the supplied Request; cloud trust remains unproven.
 - **Address-linked state** Holds only a hash made with its own secret key, separate from the code key. S39 sets the cleanup deadline. The local purge deletes eligible records only when called, so it does not guarantee that deadline. Single-use protection still needed is not removed early. Daily and monthly totals contain no address. The local prototype keeps them for two days and 32 days from creation, then deletes them when purge runs.
 - **CPU margin** Each request fits the free per-request CPU limit with at least [20 percent] margin. Unproven until measured on the real platform.
-- **Service logs** [S39](decision-log.md#settled-choices) owns retention. Logs contain time, event type, outcome, and a hashed source. Never codes, proofs, or email addresses. The local log array has no timed cleanup.
+- **Service logs** [S39](decisions.md#settled-choices) owns retention. Logs contain time, event type, outcome, and a hashed source. Never codes, proofs, or email addresses. The local log array has no timed cleanup.
 - **R6 Limits** Requirement: Send, request and body limits hold under concurrent load. Check: concurrent over-limit tests, an oversize-body test, a spoofed-header test, and a check that no address-linked state outlives its purge time and that the daily and monthly totals are deleted at their set ages. Fail: any limit exceeded or bypassed, or address-linked state kept past its life.
 - **R8 Quota and lockout** Requirement: An attacker who fills the open sign-in slots can delay the owner. The attacker normally lacks the emailed code, and the owner's browser cannot use a code from a challenge the attacker created. Check: a code remains valid only in the browser that requested it. The owner cannot use a code from someone else's challenge and signs in with a new challenge once a slot frees. The attack test checks both the browser binding and that recovery path. This one experiment does not prove protection against a sustained hourly lockout; that residual risk stays for the owner-only trial. A bot check is a required addition before opening to anyone else (milestone 2).
 - **R11 Fits free compute** Requirement: A full sign-in fits the free CPU limit with margin. Check: a prototype measured on the real platform in a later phase. Fail: any path over the limit or inside the margin. Unproven until measured.
@@ -124,7 +124,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **Interface and content** The [Mail Adapter Contract](mail/mock-mail-adapter-contract.md) owns operations, result names, reservations, generic subjects, and tracking limits.
 
 - **Retention** See [provider retention](evidence-record.md#platform-notes-and-their-evidence-limits), E5. A code expiring does not delete the email from the recipient's mailbox.
-- **Provider choice** [S27](decision-log.md#settled-choices) owns the selected mail path. Recheck free-plan terms before any account, credential, or send.
+- **Provider choice** [S27](decisions.md#settled-choices) owns the selected mail path. Recheck free-plan terms before any account, credential, or send.
 - **Credentials** Use a secure vault link only. Never put credentials in chat, the repository, or logs.
 
 ## Test hooks for Phase 1
