@@ -20,7 +20,7 @@ sends, and account setup each need their own go-ahead.
 - `docs/evidence-record.md` has one row per requirement, with its result
   and a link to its test.
 - `docs/mail/` describes the mock mail adapter.
-- `docs/findings/` records the six Phase 1 findings: restoring saved
+- `docs/audit/` records the six Phase 1 findings: restoring saved
   data safely, getting the sign-in result to the app, refreshing signing
   keys, deleting old records, tying a code to one browser, and timing and
   processor time.
