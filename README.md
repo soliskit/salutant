@@ -16,7 +16,7 @@ sends, and account setup each need their own go-ahead.
 ## Layout
 
 - [Requirements](docs/requirements.md) defines behavior and acceptance checks.
-- `docs/decision-log.md` holds the decisions this work is built on.
+- `docs/decisions.md` holds the decisions this work is built on.
 - `docs/evidence-record.md` has one row per requirement, with its result
   and a link to its test.
 - `docs/mail/` describes the mock mail adapter.
@@ -38,7 +38,7 @@ built-in test runner.
 
 ## Limits and behavior
 
-The [Decision Log](docs/decision-log.md) records code lifetime, request
+The [Decision Log](docs/decisions.md) records code lifetime, request
 limits, and the mail-budget policy. The [Evidence Record](docs/evidence-record.md)
 links local checks and names what still needs cloud testing. The private
 Playbook holds the full plan.
