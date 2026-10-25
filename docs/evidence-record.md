@@ -6,7 +6,7 @@ The rows link to tests. On October 12, 2026, a local run at main 7258b0e882d07a1
 
 ## How this record works
 
-Each requirement has a local result and a real-platform result. [Requirements](requirements.md) defines the checks. [Decisions](decision-log.md) defines approved limits. A completed result needs evidence: a test run at an exact commit, a saved response, or a reviewer verdict. A merge alone does not show that tests passed.
+Each requirement has a local result and a real-platform result. [Requirements](requirements.md) defines the checks. [Decisions](decisions.md) defines approved limits. A completed result needs evidence: a test run at an exact commit, a saved response, or a reviewer verdict. A merge alone does not show that tests passed.
 
 [Requirements](requirements.md#terms) defines proof, challenge, and epoch.
 
