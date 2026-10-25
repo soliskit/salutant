@@ -2,13 +2,13 @@
 
 The adapter sends mail and resolves uncertain sends. It keeps the service
 interface unchanged when providers change. The selected path is Resend from
-mail.soliskit.com ([S27](../decision-log.md)). Phase 1 uses only the mock:
+mail.soliskit.com ([S27](../decisions.md)). Phase 1 uses only the mock:
 no provider account, domain setup, credential, or real send.
 
 ## Interface
 
 R numbers identify [requirements](../evidence-record.md). S numbers identify
-[decisions](../decision-log.md).
+[decisions](../decisions.md).
 
 ```
 send({ requestId, to, subject, text }) -> Promise<SendResult>
@@ -19,7 +19,7 @@ reconcile(requestId) -> Promise<ReconcileResult>
   stored in a reservation (a saved record of the send and its counters)
   before the adapter is called.
 - `to`: the recipient address. In the owner-only trial this is always
-  the owner's own address (S21 in `docs/decision-log.md`).
+  the owner's own address (S21 in `docs/decisions.md`).
 - `subject`: generic, for example "Your sign-in code". Never contains
   the code (requirement R13).
 - `text`: the body. The code appears only in the body.
@@ -37,7 +37,7 @@ reconcile(requestId) -> Promise<ReconcileResult>
   without waiting for the send result. The local page does not yet offer
   a cooldown message or resend control.
 - `{ outcome: "failed" }` - the provider refused. The failed send cannot
-  produce a proof. A later request follows the approved cooldown in [S32](../decision-log.md#settled-choices).
+  produce a proof. A later request follows the approved cooldown in [S32](../decisions.md#settled-choices).
 
 ## Reconciliation results
 
