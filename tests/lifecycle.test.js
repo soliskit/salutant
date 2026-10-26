@@ -192,3 +192,48 @@ test('an unlisted address gets the same response shape and no mail', async () =>
   await w.service.drain();
   assert.equal(w.mailer.outbox.length, 0, 'no mail quota used');
 });
+
+test('a request body that is not valid JSON is refused and sends nothing [R6]', async () => {
+  const w = await makeWorld();
+  const create = await w.worker.fetch(new Request('https://salutant.example.test/v1/challenges', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{not json',
+  }));
+  assert.equal(create.status, 400);
+  assert.deepEqual(await create.json(), { error: 'bad_request' });
+  const verify = await w.worker.fetch(new Request('https://salutant.example.test/v1/challenges/abc/verify', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{not json',
+  }));
+  assert.equal(verify.status, 400);
+  await w.service.drain();
+  assert.equal(w.mailer.attempts.length, 0);
+});
+
+test('a resend that cannot be honored answers like one that can, and sends nothing extra [R3]', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  await w.service.drain();
+  w.advance(61_000);
+  const honest = await browser.resend({ challengeId: created.challengeId, address: OWNER });
+  await w.service.drain();
+  const sent = w.mailer.attempts.length;
+  assert.equal(sent, 2, 'the honest resend is the only extra send');
+  const shape = async (res) => ({ status: res.status, keys: Object.keys(await res.json()).sort() });
+  const expected = await shape(honest);
+  assert.deepEqual(expected, { status: 200, keys: ['challengeId', 'requestId', 'status'] });
+  w.advance(61_000);
+  const unknownChallenge = await browser.resend({ challengeId: 'no-such-challenge', address: OWNER });
+  const noAddress = await browser.resend({ challengeId: created.challengeId, address: '' });
+  const wrongAddress = await browser.resend({ challengeId: created.challengeId, address: STRANGER });
+  for (const res of [unknownChallenge, noAddress, wrongAddress]) assert.deepEqual(await shape(res), expected);
+  // Once the challenge is used up, a resend for it also looks the same and sends nothing.
+  const code = w.mailer.lastCode();
+  const used = await browser.verify({ challengeId: created.challengeId, code, address: OWNER });
+  assert.ok((await used.json()).proof);
+  w.advance(61_000);
+  const afterUse = await browser.resend({ challengeId: created.challengeId, address: OWNER });
+  assert.deepEqual(await shape(afterUse), expected);
+  await w.service.drain();
+  assert.equal(w.mailer.attempts.length, sent, 'none of the refused resends sent mail');
+});
