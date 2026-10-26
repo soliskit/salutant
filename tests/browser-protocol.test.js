@@ -1,6 +1,11 @@
 // R16 browser protocol and the required cross-site login-CSRF mock test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import https from 'node:https';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { makeWorld, BrowserSession, honestSignIn, OWNER, ATTACKER, SERVICE_ORIGIN, APP_ORIGIN } from './helpers.js';
 
 test('end to end: address, code, proof, exchange, session - with only first-party cookies in play', async () => {
@@ -119,3 +124,85 @@ test('completion window boundary: 59,999 ms after verification succeeds; 60,000 
     assert.equal(complete.status === 200, ok, `completion at +${ms} ms`);
   }
 });
+
+// Real-browser check. Skipped unless SALUTANT_BROWSER names an engine
+// ("webkit" or "chromium"); when set, a missing Playwright, a missing
+// engine or any failed step fails the test. The page is served over
+// https from the same worker the other tests use, with a throwaway
+// certificate made in a temporary folder at run time. Only the app's
+// callback is stubbed. The service cookie goes through the real browser.
+const ENGINE = process.env.SALUTANT_BROWSER;
+test('real browser: sign-in works and the browser keeps and returns the service cookie',
+  { skip: ENGINE ? false : 'set SALUTANT_BROWSER=webkit or chromium to run' }, async () => {
+    const playwright = await import('playwright');
+    const launcher = playwright[ENGINE];
+    assert.ok(launcher, `unknown engine: ${ENGINE}`);
+    const dir = mkdtempSync(join(tmpdir(), 'salutant-cert-'));
+    const w = await makeWorld();
+    let server; let browser;
+    try {
+      execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1',
+        '-nodes', '-keyout', join(dir, 'k.pem'), '-out', join(dir, 'c.pem'), '-days', '1',
+        '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost'], { stdio: 'ignore' });
+      server = https.createServer({ key: readFileSync(join(dir, 'k.pem')), cert: readFileSync(join(dir, 'c.pem')) },
+        async (req, res) => {
+          const chunks = [];
+          for await (const c of req) chunks.push(c);
+          const hasBody = !['GET', 'HEAD'].includes(req.method);
+          const out = await w.worker.fetch(new Request(`https://localhost:${server.address().port}${req.url}`, {
+            method: req.method, headers: req.headers, body: hasBody ? Buffer.concat(chunks) : undefined,
+          }));
+          const cookies = out.headers.getSetCookie();
+          for (const [k, v] of out.headers) if (k !== 'set-cookie') res.setHeader(k, v);
+          if (cookies.length) res.setHeader('set-cookie', cookies);
+          res.statusCode = out.status;
+          res.end(Buffer.from(await out.arrayBuffer()));
+        });
+      await new Promise((r) => server.listen(0, '127.0.0.1', r));
+      const origin = `https://localhost:${server.address().port}`;
+      browser = await launcher.launch();
+      const context = await browser.newContext({ ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+      await page.route(`${APP_ORIGIN}/**`, (route) => route.fulfill({
+        status: 200, contentType: 'application/json',
+        headers: { 'access-control-allow-origin': origin },
+        body: JSON.stringify({ completeUrl: `${origin}/done` }),
+      }));
+      const problems = [];
+      page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()); });
+      await page.goto(`${origin}/?app=${encodeURIComponent(APP_ORIGIN)}&state=${'x'.repeat(24)}`);
+      await page.fill('#address', OWNER);
+      await page.click('#address-form button');
+      await page.waitForSelector('#code-form:not([hidden])');
+      await w.service.drain();
+      const cookies = await context.cookies();
+      const sb = cookies.filter((c) => c.name.startsWith('sb_'));
+      assert.equal(sb.length, 1, 'the browser kept the service cookie');
+      assert.equal(sb[0].secure, true);
+      assert.equal(sb[0].httpOnly, true);
+      assert.equal(sb[0].sameSite, 'Strict');
+      assert.ok(sb[0].path.endsWith('/verify'));
+      await page.fill('#code', w.mailer.lastCode());
+      const verified = page.waitForResponse((r) => r.url().includes('/verify'));
+      await page.click('#code-form button');
+      assert.equal((await verified).status(), 200, 'verify only succeeds if the cookie came back');
+      await page.waitForURL(`${origin}/done`);
+      assert.deepEqual(problems.filter((t) => /content security policy/i.test(t)), [], 'no policy violations');
+      // Same flow again, but the browser's cookies are dropped before
+      // the code is entered: the right code alone is refused.
+      await page.goto(`${origin}/?app=${encodeURIComponent(APP_ORIGIN)}&state=${'y'.repeat(24)}`);
+      await page.fill('#address', OWNER);
+      await page.click('#address-form button');
+      await page.waitForSelector('#code-form:not([hidden])');
+      await w.service.drain();
+      await context.clearCookies();
+      await page.fill('#code', w.mailer.lastCode());
+      await page.click('#code-form button');
+      await page.waitForFunction(() => document.getElementById('message').textContent.includes('did not work'));
+      assert.ok(page.url().startsWith(`${origin}/?app=`), 'still on the sign-in page');
+    } finally {
+      if (browser) await browser.close();
+      if (server) server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
