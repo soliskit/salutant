@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeWorld, BrowserSession, honestSignIn, OWNER, SERVICE_ORIGIN, APP_ORIGIN } from './helpers.js';
-import { generateSigningKeyPair, signProof, toBase64Url } from '../src/crypto.js';
+import { generateSigningKeyPair, signProof, toBase64Url, verifyProofSignature } from '../src/crypto.js';
 
 async function freshProof(w) {
   const r = await honestSignIn(w);
@@ -165,4 +165,19 @@ test('exchange window boundary: 59,999 ms after issuance succeeds; 60,000 and 60
     const res = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
     assert.equal(res.status === 200, ok, `exchange at +${ms} ms`);
   }
+});
+
+test('a proof whose header or signed payload cannot be read is rejected before any claim is trusted [R4]', async () => {
+  const { publicKey, privateKey } = await generateSigningKeyPair();
+  const enc = new TextEncoder();
+  const [header, payload, signature] = (await signProof({ sub: 'x' }, privateKey, 'k1')).split('.');
+  await assert.rejects(
+    () => verifyProofSignature(`${toBase64Url(enc.encode('not json'))}.${payload}.${signature}`, publicKey),
+    /malformed proof header/);
+  // A correctly signed payload that is not JSON is still refused.
+  const badPayload = toBase64Url(enc.encode('not json'));
+  const sig = new Uint8Array(await globalThis.crypto.subtle.sign({ name: 'Ed25519' }, privateKey, enc.encode(`${header}.${badPayload}`)));
+  await assert.rejects(
+    () => verifyProofSignature(`${header}.${badPayload}.${toBase64Url(sig)}`, publicKey),
+    /malformed proof payload/);
 });
