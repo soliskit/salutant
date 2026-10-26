@@ -13,12 +13,15 @@ test('restore rehearsal: without an epoch raise the service stays closed; after 
   await w.service.drain();
   const code = w.mailer.lastCode();
   const snapshot = w.store.snapshot();
+  const beforeConsume = structuredClone([...w.store.records]);
 
   // Consume the code, then simulate a point-in-time restore that brings
   // the consumed challenge back as open.
   const used = await browser.verify({ challengeId: created.challengeId, code, address: OWNER });
   assert.ok((await used.json()).proof);
   w.store.restoreFrom(snapshot);
+  assert.ok(beforeConsume.length > 0, 'records existed before the code was consumed');
+  assert.deepEqual([...w.store.records], beforeConsume, 'restore brings back exactly the snapshotted records');
 
   // Operational rule: a restore
   // does not resume service. The epoch stays unreadable until the owner
