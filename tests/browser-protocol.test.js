@@ -146,6 +146,14 @@ test('real browser: sign-in works and the browser keeps and returns the service 
         '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost'], { stdio: 'ignore' });
       server = https.createServer({ key: readFileSync(join(dir, 'k.pem')), cert: readFileSync(join(dir, 'c.pem')) },
         async (req, res) => {
+          // The app's completion page is not the service's, and the app
+          // callback is stubbed: answer it here with a plain page so the
+          // browser's own handling of a JSON document is not under test.
+          if (req.url === '/done') {
+            res.setHeader('content-type', 'text/html; charset=utf-8');
+            res.end('<!doctype html><title>done</title>');
+            return;
+          }
           const chunks = [];
           for await (const c of req) chunks.push(c);
           const hasBody = !['GET', 'HEAD'].includes(req.method);
