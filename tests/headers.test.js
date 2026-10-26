@@ -1,6 +1,8 @@
 // R9 response headers: real GET/POST requests to each route type.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import { securityHeaders, respond } from '../src/headers.js';
 import { makeWorld, BrowserSession, honestSignIn, OWNER, APP_ORIGIN } from './helpers.js';
 
 const REQUIRED = {
@@ -54,4 +56,49 @@ test('a proof response carries no-store and the page limits connect-src to the o
   assert.ok(csp.includes("form-action 'none'"), 'no form posting');
   const unknown = await r.browser.getPage('https://app.example.test.evil.test', 'x'.repeat(24));
   assert.equal(unknown.status, 400, 'lookalike origin is not served the page');
+});
+
+test('the policy header has exactly the documented directives, semicolon separated, none empty', () => {
+  const parse = (h) => h.get('content-security-policy').split(';').map((d) => d.trim());
+  const documented = ["default-src 'none'", "script-src 'self'", "style-src 'self'", "img-src 'self'",
+    "base-uri 'none'", "frame-ancestors 'none'"];
+  assert.ok(!parse(securityHeaders()).includes(''), 'no empty directive');
+  assert.deepEqual(parse(securityHeaders()).sort(),
+    [...documented, "connect-src 'self'", "form-action 'none'"].sort());
+  assert.deepEqual(parse(securityHeaders({ connectOrigin: APP_ORIGIN })).sort(),
+    [...documented, `connect-src 'self' ${APP_ORIGIN}`, "form-action 'none'"].sort());
+});
+
+test('respond: objects become JSON with a JSON content type, text and empty bodies pass through unchanged', async () => {
+  const obj = respond(200, { a: 1 });
+  assert.equal(obj.headers.get('content-type'), 'application/json; charset=utf-8');
+  assert.equal(await obj.text(), '{"a":1}');
+  const text = respond(400, 'plain text');
+  assert.equal(text.status, 400);
+  assert.equal(await text.text(), 'plain text');
+  assert.equal(text.headers.get('content-type')?.startsWith('application/json'), false);
+  const empty = respond(404, null);
+  assert.equal(empty.status, 404);
+  assert.equal(await empty.text(), '');
+  assert.equal(empty.headers.get('content-type'), null);
+});
+
+test('the page, script and style are real content with the right types', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const page = await browser.getPage(APP_ORIGIN, start.stateId);
+  const html = await page.text();
+  assert.ok(html.startsWith('<!doctype html>'), 'page is an HTML document');
+  for (const wired of ['href="/style.css"', 'src="/app.js"', 'id="address-form"', 'id="code-form"']) {
+    assert.ok(html.includes(wired), `page includes ${wired}`);
+  }
+  const js = await w.worker.fetch(new Request('https://salutant.example.test/app.js'));
+  assert.equal(js.headers.get('content-type'), 'text/javascript; charset=utf-8');
+  const source = await js.text();
+  assert.ok(source.includes('/v1/challenges'), 'script calls the sign-in endpoint');
+  assert.doesNotThrow(() => new vm.Script(source), 'script parses');
+  const css = await w.worker.fetch(new Request('https://salutant.example.test/style.css'));
+  assert.equal(css.headers.get('content-type'), 'text/css; charset=utf-8');
+  assert.match(await css.text(), /(^|\})\s*body\s*\{[^}]*font-family\s*:/, 'style sets the body font');
 });
