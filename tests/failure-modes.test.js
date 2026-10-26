@@ -1,6 +1,7 @@
 // R5 closed on failure.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { MockMailAdapter } from '../src/mail-mock.js';
 import { makeWorld, BrowserSession, OWNER } from './helpers.js';
 
 test('an uncertain send is not retried, counts against budget, and is reconciled', async () => {
@@ -134,4 +135,25 @@ test('an idempotent replay carries the binding cookie, so a fresh-browser retry 
   const created = await replay.json();
   const ok = await browser2.verify({ challengeId: created.challengeId, code, address: OWNER });
   assert.ok((await ok.json()).proof, 'the retrying browser is bound and can verify');
+});
+
+// Request id, send results and reconcile results follow docs/mail/mock-mail-adapter-contract.md;
+// the mock's provider id format and lastCode() are the mock's own conventions.
+test('mock mail adapter: request id required, accepted sends, reconcile results, last code', async () => {
+  const mail = new MockMailAdapter();
+  assert.equal(mail.lastCode(), undefined, 'no code before any send');
+  await assert.rejects(() => mail.send({ to: OWNER, subject: 's', text: 't' }), /requestId is required/);
+  assert.equal(mail.attempts.length, 0, 'a call without a request id records nothing');
+  const first = await mail.send({ requestId: 'r1', to: OWNER, subject: 's1', text: 'code 123456' });
+  const second = await mail.send({ requestId: 'r2', to: OWNER, subject: 's2', text: 'no code here' });
+  assert.deepEqual(first, { outcome: 'accepted', providerId: 'mock-1' }, 'default behavior accepts');
+  assert.deepEqual(second, { outcome: 'accepted', providerId: 'mock-2' });
+  assert.deepEqual(mail.attempts.map((a) => [a.requestId, a.outcome]), [['r1', 'accepted'], ['r2', 'accepted']]);
+  assert.deepEqual(await mail.reconcile('r2'), { state: 'sent', providerId: second.providerId });
+  assert.deepEqual(await mail.reconcile('r1'), { state: 'sent', providerId: first.providerId });
+  assert.deepEqual(await mail.reconcile('r3'), { state: 'absent' });
+  assert.deepEqual(mail.reconciliations, ['r2', 'r1', 'r3']);
+  assert.equal(mail.lastCode(), undefined, 'the last message has no six-digit code');
+  await mail.send({ requestId: 'r4', to: OWNER, subject: 's4', text: 'code 654321' });
+  assert.equal(mail.lastCode(), '654321');
 });
