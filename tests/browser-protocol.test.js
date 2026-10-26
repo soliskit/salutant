@@ -169,7 +169,7 @@ test('real browser: sign-in works and the browser keeps and returns the service 
         body: JSON.stringify({ completeUrl: `${origin}/done` }),
       }));
       const problems = [];
-      page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()); });
+      page.on('console', (m) => { if (m.type() === 'error') problems.push(`${m.text()} @ ${m.location().url}`); });
       await page.goto(`${origin}/?app=${encodeURIComponent(APP_ORIGIN)}&state=${'x'.repeat(24)}`);
       await page.fill('#address', OWNER);
       await page.click('#address-form button');
