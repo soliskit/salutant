@@ -3,7 +3,6 @@ name: "Report a bug"
 about: Report a problem with Salutant
 title: "Describe the action and the error it caused"
 labels: Bug
-assignees: ''
 
 ---
 

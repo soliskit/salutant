@@ -3,7 +3,6 @@ name: "Suggest a feature"
 about: "Suggest a change to Salutant"
 title: "Describe how this improves email sign-in"
 labels: Enhancement
-assignees: ''
 
 ---
 
