@@ -157,3 +157,32 @@ test('mock mail adapter: request id required, accepted sends, reconcile results,
   await mail.send({ requestId: 'r4', to: OWNER, subject: 's4', text: 'code 654321' });
   assert.equal(mail.lastCode(), '654321');
 });
+
+// R5: sending fails after the reservation is written. The provider is called
+// once and reports failure; repeating the same request (same idempotency key)
+// returns the same answer and sends nothing. The existing test 'a failed send
+// cannot verify' already covers the refused code; it is asserted again here
+// only so one test shows the whole sequence.
+test('after a failed send the provider is called once, and repeating the same request sends nothing', async () => {
+  let sentCode;
+  const w = await makeWorld({
+    mailerBehavior: ({ text }) => {
+      sentCode = text.match(/\b(\d{6})\b/)[1];
+      return 'failed';
+    },
+  });
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const key = 'failed-send-key-1';
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId, idempotencyKey: key })).json();
+  await w.service.drain();
+  const reservation = w.store.transact((s) => s.getRef(`reservation:${created.requestId}`));
+  assert.equal(reservation.outcome, 'failed');
+  assert.equal(w.mailer.attempts.length, 1, 'the provider was called once');
+  const res = await browser.verify({ challengeId: created.challengeId, code: sentCode, address: OWNER });
+  assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' }, 'the undelivered code is refused');
+  const replay = await new BrowserSession(w).postChallenge({ address: OWNER, stateId: start.stateId, idempotencyKey: key });
+  assert.equal((await replay.json()).requestId, created.requestId);
+  await w.service.drain();
+  assert.equal(w.mailer.attempts.length, 1, 'the replay sent nothing');
+});
