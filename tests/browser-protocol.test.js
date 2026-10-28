@@ -40,8 +40,29 @@ test('the verify response returns only the registered callback, and completion s
   const w = await makeWorld();
   const r = await honestSignIn(w);
   assert.equal(r.verified.callbackUrl, `${APP_ORIGIN}/auth/callback`);
-  assert.ok(r.exchange.body.completeUrl.startsWith(APP_ORIGIN));
+  assert.equal(r.exchange.body.completeUrl, `${APP_ORIGIN}/auth/complete`, 'exactly the registered completion address');
   assert.equal(new URL(r.exchange.body.completeUrl).search, '', 'no token in the URL');
+});
+
+test('extra fields naming an outside address do not change the registered callback', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const res = await w.worker.fetch(new Request(`${SERVICE_ORIGIN}/v1/challenges`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      address: OWNER, appOrigin: APP_ORIGIN, stateId: start.stateId,
+      callbackUrl: 'https://evil.example.test/steal', redirect: 'https://evil.example.test/', redirectUri: 'https://evil.example.test/',
+    }),
+  }));
+  browser._storeCookies(res);
+  const created = await res.json();
+  await w.service.drain();
+  const verify = await browser.verify({ challengeId: created.challengeId, code: w.mailer.lastCode(), address: OWNER });
+  const verified = await verify.json();
+  assert.equal(verified.callbackUrl, `${APP_ORIGIN}/auth/callback`, 'only the registered callback is returned');
+  assert.ok(!JSON.stringify(verified).includes('evil.example.test'), 'no outside address anywhere in the response');
 });
 
 test('altered state is rejected at the exchange', async () => {
@@ -208,6 +229,60 @@ test('real browser: sign-in works and the browser keeps and returns the service 
       await page.click('#code-form button');
       await page.waitForFunction(() => document.getElementById('message').textContent.includes('did not work'));
       assert.ok(page.url().startsWith(`${origin}/?app=`), 'still on the sign-in page');
+    } finally {
+      if (browser) await browser.close();
+      if (server) server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+// The page shows its own message when the app refuses the final step. The
+// callback is answered with a refusal; the page must say so and stay put.
+test('real browser: a refused final step shows the sign-in failed message and does not navigate',
+  { skip: ENGINE ? false : 'set SALUTANT_BROWSER=webkit or chromium to run' }, async () => {
+    const playwright = await import('playwright');
+    const launcher = playwright[ENGINE];
+    assert.ok(launcher, `unknown engine: ${ENGINE}`);
+    const dir = mkdtempSync(join(tmpdir(), 'salutant-cert-'));
+    const w = await makeWorld();
+    let server; let browser;
+    try {
+      execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1',
+        '-nodes', '-keyout', join(dir, 'k.pem'), '-out', join(dir, 'c.pem'), '-days', '1',
+        '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost'], { stdio: 'ignore' });
+      server = https.createServer({ key: readFileSync(join(dir, 'k.pem')), cert: readFileSync(join(dir, 'c.pem')) },
+        async (req, res) => {
+          const chunks = [];
+          for await (const c of req) chunks.push(c);
+          const hasBody = !['GET', 'HEAD'].includes(req.method);
+          const out = await w.worker.fetch(new Request(`https://localhost:${server.address().port}${req.url}`, {
+            method: req.method, headers: req.headers, body: hasBody ? Buffer.concat(chunks) : undefined,
+          }));
+          const cookies = out.headers.getSetCookie();
+          for (const [k, v] of out.headers) if (k !== 'set-cookie') res.setHeader(k, v);
+          if (cookies.length) res.setHeader('set-cookie', cookies);
+          res.statusCode = out.status;
+          res.end(Buffer.from(await out.arrayBuffer()));
+        });
+      await new Promise((r) => server.listen(0, '127.0.0.1', r));
+      const origin = `https://localhost:${server.address().port}`;
+      browser = await launcher.launch();
+      const context = await browser.newContext({ ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+      const cors = { 'access-control-allow-origin': origin, 'access-control-allow-headers': 'content-type' };
+      await page.route(`${APP_ORIGIN}/**`, (route) => (route.request().method() === 'OPTIONS'
+        ? route.fulfill({ status: 204, headers: cors })
+        : route.fulfill({ status: 400, contentType: 'application/json', headers: cors, body: JSON.stringify({ error: 'bad_proof' }) })));
+      const start = `${origin}/?app=${encodeURIComponent(APP_ORIGIN)}&state=${'x'.repeat(24)}`;
+      await page.goto(start);
+      await page.fill('#address', OWNER);
+      await page.click('#address-form button');
+      await page.waitForSelector('#code-form:not([hidden])');
+      await w.service.drain();
+      await page.fill('#code', w.mailer.lastCode());
+      await page.click('#code-form button');
+      await page.waitForFunction(() => document.getElementById('message').textContent === 'Sign-in failed. Please start again.');
+      assert.equal(page.url(), start, 'the page did not navigate');
     } finally {
       if (browser) await browser.close();
       if (server) server.close();
