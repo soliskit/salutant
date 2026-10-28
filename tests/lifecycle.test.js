@@ -237,3 +237,30 @@ test('a resend that cannot be honored answers like one that can, and sends nothi
   await w.service.drain();
   assert.equal(w.mailer.attempts.length, sent, 'none of the refused resends sent mail');
 });
+
+// R2: a resend and a verify of the old code at the same moment. The old and
+// new code of one challenge must never both succeed.
+test('a resend racing a verify of the old code never leaves both codes working', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  await w.service.drain();
+  const oldCode = w.mailer.lastCode();
+  const sentBefore = w.mailer.outbox.length;
+  w.advance(61_000); // past the resend cooldown
+  const [, oldTry] = await Promise.all([
+    browser.resend({ challengeId: created.challengeId, address: OWNER }),
+    browser.verify({ challengeId: created.challengeId, code: oldCode, address: OWNER }),
+  ]);
+  await w.service.drain();
+  const oldWorked = Boolean((await oldTry.json()).proof);
+  let newWorked = false;
+  if (w.mailer.outbox.length > sentBefore) {
+    const newCode = w.mailer.lastCode();
+    assert.notEqual(newCode, oldCode);
+    const newTry = await browser.verify({ challengeId: created.challengeId, code: newCode, address: OWNER });
+    newWorked = Boolean((await newTry.json()).proof);
+  }
+  assert.ok(!(oldWorked && newWorked), 'the old and new code do not both succeed');
+});
