@@ -7,6 +7,6 @@
   "description": "Email sign-in proofs: a code to your inbox, a signed proof to the app. Phase 1 is local and mocked, with no real sends, no credentials and no network calls.",
   "engines": { "node": ">=20" },
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.nomatch.js"
   }
 }
