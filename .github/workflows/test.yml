@@ -30,13 +30,13 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm test 2>&1 | tee test-output.txt
+          npm test 2>&1 | tee "$RUNNER_TEMP/test-output.txt"
       - name: Count the tests
         id: counts
         if: always()
         shell: bash
         run: |
-          count() { grep -E "^(#|ℹ) $1 [0-9]+" test-output.txt | tail -n 1 | grep -oE '[0-9]+$' || true; }
+          count() { grep -E "^(#|ℹ) $1 [0-9]+" "$RUNNER_TEMP/test-output.txt" | tail -n 1 | grep -oE '[0-9]+$' || true; }
           echo "tests=$(count tests)" >> "$GITHUB_OUTPUT"
           echo "skipped=$(count skipped)" >> "$GITHUB_OUTPUT"
 
@@ -65,13 +65,13 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          SALUTANT_BROWSER=webkit node --test tests/browser-protocol.test.js 2>&1 | tee webkit-output.txt
+          SALUTANT_BROWSER=webkit node --test tests/browser-protocol.test.js 2>&1 | tee "$RUNNER_TEMP/webkit-output.txt"
       - name: Count the WebKit tests
         id: counts
         if: always()
         shell: bash
         run: |
-          count() { grep -E "^(#|ℹ) $1 [0-9]+" webkit-output.txt | tail -n 1 | grep -oE '[0-9]+$' || true; }
+          count() { grep -E "^(#|ℹ) $1 [0-9]+" "$RUNNER_TEMP/webkit-output.txt" | tail -n 1 | grep -oE '[0-9]+$' || true; }
           echo "tests=$(count tests)" >> "$GITHUB_OUTPUT"
           echo "skipped=$(count skipped)" >> "$GITHUB_OUTPUT"
 
