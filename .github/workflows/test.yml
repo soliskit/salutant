@@ -16,6 +16,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      tests: ${{ steps.counts.outputs.tests }}
+      skipped: ${{ steps.counts.outputs.skipped }}
+      skipped_names: ${{ steps.counts.outputs.skipped_names }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -23,7 +27,20 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
-      - run: npm test
+      - name: Run the tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/test-output.txt"
+      - name: Count the tests
+        id: counts
+        if: always()
+        shell: bash
+        run: |
+          count() { grep -E "^(#|ℹ) $1 [0-9]+" "$RUNNER_TEMP/test-output.txt" | tail -n 1 | grep -oE '[0-9]+$' || true; }
+          echo "tests=$(count tests)" >> "$GITHUB_OUTPUT"
+          echo "skipped=$(count skipped)" >> "$GITHUB_OUTPUT"
+          echo "skipped_names=$(grep -E ' # SKIP' "$RUNNER_TEMP/test-output.txt" | sed -E 's/^ *ok [0-9]+ - //; s/ # SKIP.*//' | sort | paste -sd'|' -)" >> "$GITHUB_OUTPUT"
 
   webkit:
     runs-on: ubuntu-latest
@@ -33,6 +50,10 @@ jobs:
     env:
       PLAYWRIGHT_VERSION: '1.64.1'
     timeout-minutes: 15
+    outputs:
+      tests: ${{ steps.counts.outputs.tests }}
+      skipped: ${{ steps.counts.outputs.skipped }}
+      skipped_names: ${{ steps.counts.outputs.skipped_names }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,7 +64,62 @@ jobs:
       - run: npm i --no-save "playwright@${PLAYWRIGHT_VERSION}"
       - name: Check Playwright version matches the container image
         run: node -e "process.exit(require('playwright/package.json').version==='1.64.1'?0:1)"
-      - run: SALUTANT_BROWSER=webkit node --test tests/browser-protocol.test.js
+      - name: Run the WebKit protocol tests
+        shell: bash
+        run: |
+          set -o pipefail
+          SALUTANT_BROWSER=webkit node --test tests/browser-protocol.test.js 2>&1 | tee "$RUNNER_TEMP/webkit-output.txt"
+      - name: Count the WebKit tests
+        id: counts
+        if: always()
+        shell: bash
+        run: |
+          count() { grep -E "^(#|ℹ) $1 [0-9]+" "$RUNNER_TEMP/webkit-output.txt" | tail -n 1 | grep -oE '[0-9]+$' || true; }
+          echo "tests=$(count tests)" >> "$GITHUB_OUTPUT"
+          echo "skipped=$(count skipped)" >> "$GITHUB_OUTPUT"
+          echo "skipped_names=$(grep -E ' # SKIP' "$RUNNER_TEMP/webkit-output.txt" | sed -E 's/^ *ok [0-9]+ - //; s/ # SKIP.*//' | sort | paste -sd'|' -)" >> "$GITHUB_OUTPUT"
+
+  # Final gate. Fails unless the test and webkit jobs succeeded, each ran
+  # at least one test, and skips stay within what is allowed. The test job
+  # may skip exactly the 2 browser tests that need SALUTANT_BROWSER
+  # (tests/browser-protocol.test.js), checked by name. The webkit job may
+  # skip none.
+  # The mutation matrix is not part of this gate.
+  suites-ran:
+    name: Suites ran
+    needs: [test, webkit]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TEST_RESULT: ${{ needs.test.result }}
+          TEST_TESTS: ${{ needs.test.outputs.tests }}
+          TEST_SKIPPED: ${{ needs.test.outputs.skipped }}
+          TEST_SKIPPED_NAMES: ${{ needs.test.outputs.skipped_names }}
+          WEBKIT_RESULT: ${{ needs.webkit.result }}
+          WEBKIT_TESTS: ${{ needs.webkit.outputs.tests }}
+          WEBKIT_SKIPPED: ${{ needs.webkit.outputs.skipped }}
+          WEBKIT_SKIPPED_NAMES: ${{ needs.webkit.outputs.skipped_names }}
+        run: |
+          fail=0
+          check() {
+            name="$1"; result="$2"; tests="${3:-0}"; skipped="${4:-0}"; allowed="$5"
+            echo "$name: result=$result tests=$tests skipped=$skipped (allowed skipped: $allowed)"
+            [ "$result" = success ] || { echo "  $name did not succeed"; fail=1; }
+            [ "$tests" -ge 1 ] || { echo "  $name counted no tests"; fail=1; }
+            [ "$skipped" -le "$allowed" ] || { echo "  $name skipped more than allowed"; fail=1; }
+          }
+          check test "$TEST_RESULT" "$TEST_TESTS" "$TEST_SKIPPED" 2
+          check webkit "$WEBKIT_RESULT" "$WEBKIT_TESTS" "$WEBKIT_SKIPPED" 0
+          # The skipped tests must be exactly the 2 known ones, by name.
+          expected='real browser: a refused final step shows the sign-in failed message and does not navigate|real browser: sign-in works and the browser keeps and returns the service cookie'
+          if [ "$TEST_SKIPPED_NAMES" != "$expected" ]; then
+            echo "  test skipped tests are not the expected two: $TEST_SKIPPED_NAMES"; fail=1
+          fi
+          if [ -n "$WEBKIT_SKIPPED_NAMES" ]; then
+            echo "  webkit skipped tests: $WEBKIT_SKIPPED_NAMES"; fail=1
+          fi
+          exit "$fail"
 
   mutation:
     runs-on: ubuntu-latest
