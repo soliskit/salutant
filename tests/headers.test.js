@@ -102,3 +102,26 @@ test('the page, script and style are real content with the right types', async (
   assert.equal(css.headers.get('content-type'), 'text/css; charset=utf-8');
   assert.match(await css.text(), /(^|\})\s*body\s*\{[^}]*font-family\s*:/, 'style sets the body font');
 });
+test('the page routes answer only their own path and method, with the right content type', async () => {
+  const w = await makeWorld();
+  const base = 'https://salutant.example.test';
+  const get = (path) => w.worker.fetch(new Request(base + path));
+  const post = (path) => w.worker.fetch(new Request(base + path, { method: 'POST', body: '{}' }));
+
+  assert.equal((await get('/app.js')).headers.get('content-type'), 'text/javascript; charset=utf-8');
+  assert.equal((await get('/style.css')).headers.get('content-type'), 'text/css; charset=utf-8');
+
+  const start = await w.app.startSignIn(null);
+  const page = await new BrowserSession(w).getPage(APP_ORIGIN, start.stateId);
+  assert.equal(page.status, 200);
+  assert.equal(page.headers.get('content-type'), 'text/html; charset=utf-8');
+
+  // an unknown path is not the stylesheet, and a POST to a page path is not a page
+  const unknown = await get('/nope');
+  assert.equal(unknown.status, 404);
+  assert.notEqual(unknown.headers.get('content-type'), 'text/css; charset=utf-8');
+  for (const path of [`/?app=${encodeURIComponent(APP_ORIGIN)}`, '/app.js', '/style.css']) {
+    const res = await post(path);
+    assert.notEqual(res.status, 200, `POST ${path} is not served as a page`);
+  }
+});
