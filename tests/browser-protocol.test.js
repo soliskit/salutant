@@ -146,6 +146,42 @@ test('completion window boundary: 59,999 ms after verification succeeds; 60,000 
   }
 });
 
+test('a second proof cannot re-verify an already-verified state', async () => {
+  // Two challenges share one app state id and both verify. Redeeming
+  // the second proof against the already-verified state is refused as
+  // bad_state: the state binding, not proof freshness, refuses it.
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const first = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  const second = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  await w.service.drain();
+  const codeOf = (i) => w.mailer.outbox[i].text.match(/\b(\d{6})\b/)[1];
+  const v1 = await (await browser.verify({ challengeId: first.challengeId, code: codeOf(0), address: OWNER })).json();
+  const v2 = await (await browser.verify({ challengeId: second.challengeId, code: codeOf(1), address: OWNER })).json();
+  assert.ok(v1.proof && v2.proof, 'both proofs issued for the one state');
+  const ok = await w.app.handleExchange({ proof: v1.proof, state: v1.state }, SERVICE_ORIGIN);
+  assert.equal(ok.status, 200);
+  const again = await w.app.handleExchange({ proof: v2.proof, state: v2.state }, SERVICE_ORIGIN);
+  assert.equal(again.status, 400);
+  assert.equal(again.body.error, 'bad_state');
+});
+
+test('completion without the pre-auth cookie is refused even with a verified state waiting', async () => {
+  const w = await makeWorld();
+  const r = await honestSignIn(w, { redeem: false });
+  const exchange = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
+  assert.equal(exchange.status, 200, 'setup: a verified state exists');
+  for (const header of [null, 'sess=abcdef']) {
+    const res = await w.app.handleComplete(header);
+    assert.equal(res.status, 401);
+    assert.equal(res.body.error, 'no_session');
+  }
+  // The refused attempts did not consume the waiting state.
+  const stillThere = await w.app.handleComplete(`pre=${r.start.cookieValue}`);
+  assert.equal(stillThere.status, 200);
+});
+
 // Real-browser check. Skipped unless SALUTANT_BROWSER names an engine
 // ("webkit" or "chromium"); when set, a missing Playwright, a missing
 // engine or any failed step fails the test. The page is served over
@@ -283,6 +319,68 @@ test('real browser: a refused final step shows the sign-in failed message and do
       await page.click('#code-form button');
       await page.waitForFunction(() => document.getElementById('message').textContent === 'Sign-in failed. Please start again.');
       assert.equal(page.url(), start, 'the page did not navigate');
+    } finally {
+      if (browser) await browser.close();
+      if (server) server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+// The page served without its launch parameters (a bookmark, a shared
+// link, a stripped redirect) must still fail safe: the empty-parameter
+// fallbacks run, the service refuses the parameterless request, and the
+// page shows only its generic messages without navigating away.
+test('real browser: the page without its launch parameters fails safe and stays on the page',
+  { skip: ENGINE ? false : 'set SALUTANT_BROWSER=webkit or chromium to run' }, async () => {
+    const playwright = await import('playwright');
+    const launcher = playwright[ENGINE];
+    assert.ok(launcher, `unknown engine: ${ENGINE}`);
+    const dir = mkdtempSync(join(tmpdir(), 'salutant-cert-'));
+    const w = await makeWorld();
+    let server; let browser;
+    try {
+      execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1',
+        '-nodes', '-keyout', join(dir, 'k.pem'), '-out', join(dir, 'c.pem'), '-days', '1',
+        '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost'], { stdio: 'ignore' });
+      server = https.createServer({ key: readFileSync(join(dir, 'k.pem')), cert: readFileSync(join(dir, 'c.pem')) },
+        async (req, res) => {
+          const chunks = [];
+          for await (const c of req) chunks.push(c);
+          const hasBody = !['GET', 'HEAD'].includes(req.method);
+          const out = await w.worker.fetch(new Request(`https://localhost:${server.address().port}${req.url}`, {
+            method: req.method, headers: req.headers, body: hasBody ? Buffer.concat(chunks) : undefined,
+          }));
+          const cookies = out.headers.getSetCookie();
+          for (const [k, v] of out.headers) if (k !== 'set-cookie') res.setHeader(k, v);
+          if (cookies.length) res.setHeader('set-cookie', cookies);
+          res.statusCode = out.status;
+          res.end(Buffer.from(await out.arrayBuffer()));
+        });
+      await new Promise((r) => server.listen(0, '127.0.0.1', r));
+      const origin = `https://localhost:${server.address().port}`;
+      browser = await launcher.launch();
+      const context = await browser.newContext({ ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+      const problems = [];
+      page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()); });
+      // No app and no state parameters: the page is still served (with a
+      // 400) and its script runs with both fallbacks.
+      const bare = `${origin}/`;
+      await page.goto(bare);
+      await page.fill('#address', OWNER);
+      await page.click('#address-form button');
+      // The service refuses the parameterless request; the answer has no
+      // challenge id, and the page still shows only the generic message.
+      await page.waitForFunction(() => document.getElementById('message').textContent.includes('a code is on its way'));
+      await page.waitForSelector('#code-form:not([hidden])');
+      // Entering any code goes to an empty challenge id and is refused;
+      // the page says so generically and does not navigate.
+      await page.fill('#code', '000000');
+      await page.click('#code-form button');
+      await page.waitForFunction(() => document.getElementById('message').textContent.includes('did not work'));
+      assert.equal(page.url(), bare, 'the page never navigated');
+      assert.equal(w.mailer.attempts.length, 0, 'no mail was attempted');
+      assert.deepEqual(problems.filter((t) => /content security policy/i.test(t)), [], 'no policy violations');
     } finally {
       if (browser) await browser.close();
       if (server) server.close();

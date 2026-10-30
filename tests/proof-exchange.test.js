@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeWorld, BrowserSession, honestSignIn, OWNER, SERVICE_ORIGIN, APP_ORIGIN } from './helpers.js';
-import { generateSigningKeyPair, signProof, toBase64Url, verifyProofSignature } from '../src/crypto.js';
+import { generateSigningKeyPair, signProof, timingSafeEqual, toBase64Url, verifyProofSignature } from '../src/crypto.js';
 
 async function freshProof(w) {
   const r = await honestSignIn(w);
@@ -180,4 +180,24 @@ test('a proof whose header or signed payload cannot be read is rejected before a
   await assert.rejects(
     () => verifyProofSignature(`${header}.${badPayload}.${toBase64Url(sig)}`, publicKey),
     /malformed proof payload/);
+});
+
+test('a proof without exactly three parts, or naming another algorithm, is rejected before verification [R4]', async () => {
+  const { publicKey } = await generateSigningKeyPair();
+  const enc = new TextEncoder();
+  await assert.rejects(
+    () => verifyProofSignature(`${toBase64Url(enc.encode(JSON.stringify({ alg: 'EdDSA', kid: 'k1' })))}.e30`, publicKey),
+    /malformed proof/);
+  // The pinned algorithm decides, never the token - even when the
+  // header names a known key.
+  const confused = toBase64Url(enc.encode(JSON.stringify({ alg: 'HS256', kid: 'k1', typ: 'JWT' })));
+  await assert.rejects(
+    () => verifyProofSignature(`${confused}.e30.c2ln`, publicKey),
+    /unexpected algorithm/);
+});
+
+test('timingSafeEqual refuses different-length inputs instead of comparing them', () => {
+  assert.equal(timingSafeEqual(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2])), false);
+  assert.equal(timingSafeEqual(new Uint8Array([]), new Uint8Array([1])), false);
+  assert.equal(timingSafeEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2])), true);
 });
