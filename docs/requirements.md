@@ -94,7 +94,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 
 ## Limits and values (R6, R8, R11, R13)
 
-- **Send and request limits** At most three sign-in emails per address per 30 minutes including resends; sign-in mail uses at most 90% of the provider's free allowance; at most 10 sign-in requests per hour per address and per internet address. [E5](evidence-record.md#platform-notes-and-their-evidence-limits) owns current provider quotas. Local defaults are in [service.js](../src/service.js).
+- **Send and request limits** At most three sign-in emails per address per 30 minutes including resends; sign-in mail uses at most 90% of the provider's free allowance; at most 10 sign-in requests per hour per address and per internet address. [E5](evidence-record.md#facts) owns current provider quotas. Local defaults are in [service.js](../src/service.js).
 
 - **Request body** At most [2 KB].
 - **Source address** Production must read the host's trusted header, never a client-supplied value. The local prototype reads cf-connecting-ip from the supplied Request; cloud trust remains unproven.
@@ -149,7 +149,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 
 - **Interface and content** The [Mail Adapter Contract](mail/mock-mail-adapter-contract.md) owns operations, result names, reservations, generic subjects, and tracking limits.
 
-- **Retention** See [provider retention](evidence-record.md#platform-notes-and-their-evidence-limits), E5. A code expiring does not delete the email from the recipient's mailbox.
+- **Retention** See [provider retention](evidence-record.md#facts), E5. A code expiring does not delete the email from the recipient's mailbox.
 - **Provider choice** Sign-in mail goes through Resend from mail.soliskit.com. Recheck free-plan terms before any account, credential, or send.
 - **Credentials** Use a secure vault link only. Never put credentials in chat, the repository, or logs.
 
