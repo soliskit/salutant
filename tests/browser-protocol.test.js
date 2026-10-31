@@ -319,6 +319,26 @@ test('real browser: a refused final step shows the sign-in failed message and do
       await page.click('#code-form button');
       await page.waitForFunction(() => document.getElementById('message').textContent === 'Sign-in failed. Please start again.');
       assert.equal(page.url(), start, 'the page did not navigate');
+      // The page's two network failure paths: an aborted challenge request
+      // and an aborted verify request each show the generic failure message
+      // without navigating.
+      await page.route('**/v1/challenges', (route) => route.abort());
+      await page.goto(start);
+      await page.fill('#address', OWNER);
+      await page.click('#address-form button');
+      await page.waitForFunction(() => document.getElementById('message').textContent === 'Something went wrong. Please try again.');
+      assert.equal(page.url(), start, 'the page did not navigate');
+      await page.unroute('**/v1/challenges');
+      await page.goto(start);
+      await page.fill('#address', OWNER);
+      await page.click('#address-form button');
+      await page.waitForSelector('#code-form:not([hidden])');
+      await w.service.drain();
+      await page.route('**/v1/challenges/*/verify', (route) => route.abort());
+      await page.fill('#code', w.mailer.lastCode());
+      await page.click('#code-form button');
+      await page.waitForFunction(() => document.getElementById('message').textContent === 'Something went wrong. Please try again.');
+      assert.equal(page.url(), start, 'the page did not navigate');
     } finally {
       if (browser) await browser.close();
       if (server) server.close();
