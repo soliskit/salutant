@@ -61,10 +61,17 @@ jobs:
         if: steps.pre.outputs.has_lock == 'true'
         id: tracka
         shell: bash
+        env:
+          DEP_UPDATE_GIT_NAME: ${{ vars.DEP_UPDATE_GIT_NAME }}
+          DEP_UPDATE_GIT_EMAIL: ${{ vars.DEP_UPDATE_GIT_EMAIL }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -z "$DEP_UPDATE_GIT_NAME" ] || [ -z "$DEP_UPDATE_GIT_EMAIL" ]; then
+            echo "::error::DEP_UPDATE_GIT_NAME and DEP_UPDATE_GIT_EMAIL repository variables must both be set; refusing to commit without the configured identity."
+            exit 1
+          fi
+          git config user.name "$DEP_UPDATE_GIT_NAME"
+          git config user.email "$DEP_UPDATE_GIT_EMAIL"
           cp package-lock.json /tmp/lock-after.json   # placeholder; replaced if update changes anything
           BRANCH="maintenance/deps-$(date +%Y%m%d)-tree"
           git checkout -b "$BRANCH"
@@ -136,11 +143,18 @@ jobs:
       - name: Track B - same-major direct updates past declared ranges (exact pins)
         if: steps.pre.outputs.has_lock == 'true' && hashFiles('direct-same-major.txt') != ''
         shell: bash
+        env:
+          DEP_UPDATE_GIT_NAME: ${{ vars.DEP_UPDATE_GIT_NAME }}
+          DEP_UPDATE_GIT_EMAIL: ${{ vars.DEP_UPDATE_GIT_EMAIL }}
         run: |
           set -euo pipefail
           [ -s direct-same-major.txt ] || exit 0
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -z "$DEP_UPDATE_GIT_NAME" ] || [ -z "$DEP_UPDATE_GIT_EMAIL" ]; then
+            echo "::error::DEP_UPDATE_GIT_NAME and DEP_UPDATE_GIT_EMAIL repository variables must both be set; refusing to commit without the configured identity."
+            exit 1
+          fi
+          git config user.name "$DEP_UPDATE_GIT_NAME"
+          git config user.email "$DEP_UPDATE_GIT_EMAIL"
           BRANCH="maintenance/deps-$(date +%Y%m%d)-direct"
           git checkout -b "$BRANCH" origin/main
           # Each package's existing declaration style is preserved: a bare
@@ -201,11 +215,18 @@ jobs:
       - name: Track C - one branch per major direct update (exact pins)
         if: steps.pre.outputs.has_lock == 'true' && hashFiles('direct-major.txt') != ''
         shell: bash
+        env:
+          DEP_UPDATE_GIT_NAME: ${{ vars.DEP_UPDATE_GIT_NAME }}
+          DEP_UPDATE_GIT_EMAIL: ${{ vars.DEP_UPDATE_GIT_EMAIL }}
         run: |
           set -euo pipefail
           [ -s direct-major.txt ] || exit 0
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -z "$DEP_UPDATE_GIT_NAME" ] || [ -z "$DEP_UPDATE_GIT_EMAIL" ]; then
+            echo "::error::DEP_UPDATE_GIT_NAME and DEP_UPDATE_GIT_EMAIL repository variables must both be set; refusing to commit without the configured identity."
+            exit 1
+          fi
+          git config user.name "$DEP_UPDATE_GIT_NAME"
+          git config user.email "$DEP_UPDATE_GIT_EMAIL"
           while read -r spec || [ -n "$spec" ]; do
             [ -n "$spec" ] || continue
             pkg="${spec%@*}"; want="${spec##*@}"
