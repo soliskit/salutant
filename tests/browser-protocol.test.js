@@ -177,6 +177,11 @@ test('completion without the pre-auth cookie is refused even with a verified sta
     assert.equal(res.status, 401);
     assert.equal(res.body.error, 'no_session');
   }
+  // A real pre-auth cookie with no verified sign-in behind it is refused too.
+  const unverified = await w.app.startSignIn(null);
+  const noVerified = await w.app.handleComplete(`pre=${unverified.cookieValue}`);
+  assert.equal(noVerified.status, 401);
+  assert.equal(noVerified.body.error, 'no_verified_signin');
   // The refused attempts did not consume the waiting state.
   const stillThere = await w.app.handleComplete(`pre=${r.start.cookieValue}`);
   assert.equal(stillThere.status, 200);
@@ -327,6 +332,20 @@ test('real browser: a refused final step shows the sign-in failed message and do
       await page.fill('#address', OWNER);
       await page.click('#address-form button');
       await page.waitForFunction(() => document.getElementById('message').textContent === 'Something went wrong. Please try again.');
+      assert.equal(page.url(), start, 'the page did not navigate');
+      await page.unroute('**/v1/challenges');
+      // A refused creation response (rate limited, no challengeId) keeps the
+      // uniform message; the empty challenge then fails at verify like any
+      // wrong code, without navigating.
+      await page.route('**/v1/challenges', (route) => route.fulfill({ status: 429,
+        contentType: 'application/json', body: JSON.stringify({ error: 'rate_limited' }) }));
+      await page.goto(start);
+      await page.fill('#address', OWNER);
+      await page.click('#address-form button');
+      await page.waitForFunction(() => document.getElementById('message').textContent === 'If we can sign you in, a code is on its way.');
+      await page.fill('#code', '000000');
+      await page.click('#code-form button');
+      await page.waitForFunction(() => document.getElementById('message').textContent === 'That code did not work. Check it and try again.');
       assert.equal(page.url(), start, 'the page did not navigate');
       await page.unroute('**/v1/challenges');
       await page.goto(start);
