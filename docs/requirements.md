@@ -29,8 +29,6 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 | ID | Requirement |
 | --- | --- |
 | R7 | **Zero cost** Requirement: nothing billable is enabled, and a limit stops the service and never bills. Check: list the enabled plans and features at each milestone, and run a test that simulates each limit and sees a stop, not a charge. Phase 1 has no test for this requirement. A later phase must verify the real plan settings and show that each free limit stops the service without a charge. Fail: any billable item or a limit that bills. |
-| ID | Requirement |
-| --- | --- |
 | R10 | **Clean public repo** Requirement: No secrets, codes, proofs or addresses reach the repo, logs or build output. Covers the working tree, the history from this work, build artifacts, build logs and source maps. Check: scans of all five for secrets, codes, proofs and email addresses, plus a manual read of the first pull request. Fail: any hit. |
 
 ## Endpoints
@@ -60,8 +58,6 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 | ID | Requirement |
 | --- | --- |
 | R1 | **Code lifecycle** Requirement: A correct code works once. Wrong, expired and reused codes fail. Check: tests for correct, wrong, expired, reused and a correct code on the try after the limit, plus many simultaneous submits of one correct code with exactly one success. Fail: two successes, or a success after the limit. |
-| ID | Requirement |
-| --- | --- |
 | R2 | **Code generation and binding** Requirement: Codes are random, stored only as a keyed hash (a one-way scramble made with a secret key), and bound to the browser that asked. Check: storage and log scan for plain codes, cross-challenge and cross-browser reuse tests, and parallel resend-versus-verify tests. Fail means any one of: a plain code in storage or logs; a correct code accepted for a different challenge or browser; the old and new code of one challenge both succeed; a code that did not come from the secure random function. The statistical test cannot prove the last one, so it is checked by reading the code for the secure random source, and rechecked for any later code. Expired attempts and address-linked state are deleted within 24 hours; the [purge finding](audit/phase-1-findings.md#4-deleting-expired-records-r13-r6-e10) names the local limits. |
 
 ## Proof (R4)
@@ -88,11 +84,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 | ID | Requirement |
 | --- | --- |
 | R12 | **Key lifecycle** Requirement: Key rotation and emergency revoke stay inside the allowed window for apps still trusting an old key. Check: a rehearsed routine rotation, a rehearsed emergency revoke, a run with refresh unavailable, and tests of CDN or endpoint cache refill and epoch freshness against the bound. Fail: an old-key proof works past the end-to-end bound after revoke, or a proof is accepted when no valid unexpired cached key exists and refresh fails. |
-| ID | Requirement |
-| --- | --- |
 | R14 | **State survives restore safely** Requirement: A restore does not bring back used codes, used proofs or revoked keys. Check: a rehearsed restore if available, with tests for a used code, a used proof, a restored revoked key id and a cleared lockout. Fail: any of those works again after a restore. |
-| ID | Requirement |
-| --- | --- |
 | R15 | **Lost mailbox** Requirement: After the owner changes the address, the old identity's proofs and sessions fail. Check: after the steps, an old-identity proof and an old session are both rejected, and the new identity cannot see the old account. Fail: either works. Settled by the owner. |
 
 ## Limits and values (R6, R8, R11, R13)
@@ -107,14 +99,8 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 | ID | Requirement |
 | --- | --- |
 | R6 | **Limits** Requirement: Send, request and body limits hold under concurrent load. Check: concurrent over-limit tests, an oversize-body test, a spoofed-header test, and a check that no address-linked state outlives its purge time and that the daily and monthly totals are deleted at their set ages. Fail: any limit exceeded or bypassed, or address-linked state kept past its life. |
-| ID | Requirement |
-| --- | --- |
 | R8 | **Quota and lockout** Requirement: An attacker who fills the open sign-in slots can delay the owner. The attacker normally lacks the emailed code, and the owner's browser cannot use a code from a challenge the attacker created. Check: a code remains valid only in the browser that requested it. The owner cannot use a code from someone else's challenge and signs in with a new challenge once a slot frees. The attack test checks both the browser binding and that recovery path. This one experiment does not prove protection against a sustained hourly lockout; that residual risk stays for the owner-only trial. A bot check is a required addition before opening to anyone else (milestone 2). |
-| ID | Requirement |
-| --- | --- |
 | R11 | **Fits free compute** Requirement: A full sign-in fits the free CPU limit with margin. Check: a prototype measured on the real platform in a later phase. Fail: any path over the limit or inside the margin. Unproven until measured. |
-| ID | Requirement |
-| --- | --- |
 | R13 | **Logging** Requirement: Logs hold no codes, proofs or addresses. Check: scan test logs for codes, proofs and addresses, and read the provider and mailbox retention settings once and record them. Phase 1 gives mock evidence only; actual retention is read at the later mail phase. Fail: any hit, or a retention value not recorded. |
 
 ## Failure behavior (R5)
