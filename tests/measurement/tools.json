@@ -1,0 +1,8 @@
+{
+  "comment": "Exact tool versions the measurement harness requires. Provision development-only with: node tests/measurement/provision.mjs - which installs the pins below with npm install --no-save and fetches the Chromium build, following the repo's own convention for its WebKit check. No package.json entry, no lockfile, no CI change; the runtime stays zero-dependency.",
+  "tools": {
+    "playwright": "1.64.1",
+    "v8-to-istanbul": "9.3.0",
+    "istanbul-lib-coverage": "3.2.2"
+  }
+}
