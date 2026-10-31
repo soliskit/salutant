@@ -4,6 +4,15 @@ The sign-in contract, acceptance checks, and choices still open.
 
 Bracketed values are proposals, not approved production settings. Local implementation is not cloud proof. [Evidence](evidence-record.md) owns results and provider facts.
 
+## Terms
+
+- **Challenge** One sign-in attempt for one address, with its own random ID, code, and state.
+- **Proof** Salutant's signed statement that the address was verified. It expires quickly. The app redeems it once.
+- **App** A website or service that asks Salutant to verify an address. It is registered by its exact origin and exact callback URLs.
+- **Allowlist** Addresses allowed to sign in. Only the owner changes the list.
+- **Epoch** A number only the account owner can raise. Reject everything issued under an earlier number.
+- **Owner** The person who owns the Salutant service accounts and the allowlist.
+
 ## Purpose and boundary
 
 This contract covers Milestone 1, First code. The trial is owner-only; estimated volumes are not measured demand. Salutant checks an address and issues a signed proof, and publishes its public keys and epoch. The app redeems the proof once and owns its session and replay record.
@@ -17,17 +26,11 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 
 ## Requirements that apply everywhere
 
-- **R7 Zero cost** Requirement: nothing billable is enabled, and a limit stops the service and never bills. Check: list the enabled plans and features at each milestone, and run a test that simulates each limit and sees a stop, not a charge. Phase 1 has no test for this requirement. A later phase must verify the real plan settings and show that each free limit stops the service without a charge. Fail: any billable item or a limit that bills.
-- **R10 Clean public repo** Requirement: No secrets, codes, proofs or addresses reach the repo, logs or build output. Covers the working tree, the history from this work, build artifacts, build logs and source maps. Check: scans of all five for secrets, codes, proofs and email addresses, plus a manual read of the first pull request. Fail: any hit.
 
-## Terms
-
-- **Challenge** One sign-in attempt for one address, with its own random ID, code, and state.
-- **Proof** Salutant's signed statement that the address was verified. It expires quickly. The app redeems it once.
-- **App** A website or service that asks Salutant to verify an address. It is registered by its exact origin and exact callback URLs.
-- **Allowlist** Addresses allowed to sign in. Only the owner changes the list.
-- **Epoch** A number only the account owner can raise. Reject everything issued under an earlier number.
-- **Owner** The person who owns the Salutant service accounts and the allowlist.
+| ID | Requirement |
+| --- | --- |
+| R7 | **Zero cost** Requirement: nothing billable is enabled, and a limit stops the service and never bills. Check: list the enabled plans and features at each milestone, and run a test that simulates each limit and sees a stop, not a charge. Phase 1 has no test for this requirement. A later phase must verify the real plan settings and show that each free limit stops the service without a charge. Fail: any billable item or a limit that bills. |
+| R10 | **Clean public repo** Requirement: No secrets, codes, proofs or addresses reach the repo, logs or build output. Covers the working tree, the history from this work, build artifacts, build logs and source maps. Check: scans of all five for secrets, codes, proofs and email addresses, plus a manual read of the first pull request. Fail: any hit. |
 
 ## Endpoints
 
@@ -36,7 +39,10 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **GET /.well-known/jwks.json** Returns the public keys with their key ids, and the current epoch. Cacheable; the time is under App key cache. R12, R14.
 - **GET /** The code-entry page, with its script and style files, served by the Salutant service. The local page requires a registered app origin in the app query parameter. R9, R16.
 - **Everything else** Any other path returns a generic not-found response that still carries the required headers (R9). [Any method a path does not allow returns 405 Method Not Allowed with an Allow header and the same required headers.]
-- **R3 No hints** Requirement: Responses and timing do not show whether an address is allowed. Check: compare responses byte for byte except the permitted fields; compare timing within the tolerance in the Timing protocol under Test hooks for Phase 1 (its bracketed values are proposals until measured); drive the limits for an allowed and an unlisted address and find no difference. Fail: any difference outside tolerance.
+
+| ID | Requirement |
+| --- | --- |
+| R3 | **No hints** Requirement: Responses and timing do not show whether an address is allowed. Check: compare responses byte for byte except the permitted fields; compare timing within the tolerance in the Timing protocol under Test hooks for Phase 1 (its bracketed values are proposals until measured); drive the limits for an allowed and an unlisted address and find no difference. Fail: any difference outside tolerance. |
 
 ## Codes (R1, R2, R8)
 
@@ -51,8 +57,11 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **Binding** A random value held in the requesting browser binds the challenge. The email can be read on another device; enter its code in the browser that requested it.
 - **Errors** Wrong, expired, used, and dead codes return the same generic error.
 - **Atomicity** Check, update, and consume must finish in one synchronous step, with no wait between the check and write. Many simultaneous submissions of one correct code must give one success. The local model lives in [storage.js](../src/storage.js). Production is planned to use one SQLite-backed Durable Object, a Cloudflare object with private storage. No state change may span a wait for outside work.
-- **R1 Code lifecycle** Requirement: A correct code works once. Wrong, expired and reused codes fail. Check: tests for correct, wrong, expired, reused and a correct code on the try after the limit, plus many simultaneous submits of one correct code with exactly one success. Fail: two successes, or a success after the limit.
-- **R2 Code generation and binding** Requirement: Codes are random, stored only as a keyed hash (a one-way scramble made with a secret key), and bound to the browser that asked. Check: storage and log scan for plain codes, cross-challenge and cross-browser reuse tests, and parallel resend-versus-verify tests. Fail means any one of: a plain code in storage or logs; a correct code accepted for a different challenge or browser; the old and new code of one challenge both succeed; a code that did not come from the secure random function. The statistical test cannot prove the last one, so it is checked by reading the code for the secure random source, and rechecked for any later code. Expired attempts and address-linked state are deleted within 24 hours; the [purge finding](audit/phase-1-findings.md#4-deleting-expired-records-r13-r6-e10) names the local limits.
+
+| ID | Requirement |
+| --- | --- |
+| R1 | **Code lifecycle** Requirement: A correct code works once. Wrong, expired and reused codes fail. Check: tests for correct, wrong, expired, reused and a correct code on the try after the limit, plus many simultaneous submits of one correct code with exactly one success. Fail: two successes, or a success after the limit. |
+| R2 | **Code generation and binding** Requirement: Codes are random, stored only as a keyed hash (a one-way scramble made with a secret key), and bound to the browser that asked. Check: storage and log scan for plain codes, cross-challenge and cross-browser reuse tests, and parallel resend-versus-verify tests. Fail means any one of: a plain code in storage or logs; a correct code accepted for a different challenge or browser; the old and new code of one challenge both succeed; a code that did not come from the secure random function. The statistical test cannot prove the last one, so it is checked by reading the code for the secure random source, and rechecked for any later code. Expired attempts and address-linked state are deleted within 24 hours; the [purge finding](audit/phase-1-findings.md#4-deleting-expired-records-r13-r6-e10) names the local limits. |
 
 ## Proof (R4)
 
@@ -63,7 +72,10 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **App checks** Signature, key id, issuer, audience (its own origin), epoch, expiry and not-before, state, and the proof id against its redemption record in one atomic step. Then it creates its own session.
 - **Replay** The app owns the redemption record: proof id, time, and the session created. Many parallel redemptions of one valid proof give exactly one session.
 - **Salutant records** Challenge and proof issuance records: challenge id, address hash, attempts, state, epoch, and the proof id issued. Salutant never sees sessions.
-- **R4 Signed proof and exchange** Requirement: A proof is valid once, for one app, until it expires. Check: tests for wrong issuer, wrong audience, expired, future, not-yet-valid, altered, other algorithm or key type, unknown key id, reused nonce, and many parallel redemptions of one valid proof. Fail: any invalid proof accepted, or a proof that passes all checks but cannot complete one session, or completes more than one.
+
+| ID | Requirement |
+| --- | --- |
+| R4 | **Signed proof and exchange** Requirement: A proof is valid once, for one app, until it expires. Check: tests for wrong issuer, wrong audience, expired, future, not-yet-valid, altered, other algorithm or key type, unknown key id, reused nonce, and many parallel redemptions of one valid proof. Fail: any invalid proof accepted, or a proof that passes all checks but cannot complete one session, or completes more than one. |
 
 ## Keys and epoch (R12, R14, R15)
 
@@ -73,24 +85,29 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **Routine rotation** Keep both keys available for at least the proof lifetime, clock-skew allowance, and end-to-end bound combined.
 - **Epoch rule** A number the service reads and never writes. Only the account owner can raise it. Sign-in challenges, issued proofs, and app sessions carry it. Reject earlier-epoch items. If the epoch cannot be read the service stays closed. Production must stay closed after a restore until the owner raises the epoch. The local rehearsal simulates that closed state; automatic restore detection and cloud enforcement remain unproven. Apps must read the epoch with the public keys and drop earlier sessions. The local test invokes session cleanup explicitly. Trust boundary: the Cloudflare account owner.
 - **Lost mailbox** The owner adds the new address to the allowlist, removes the old one, and raises the epoch. Apps drop sessions from before the new epoch. An allowlist change admits a new identity and does not move the old identity's account or links. Any transfer is a separate owner action.
-- **R12 Key lifecycle** Requirement: Key rotation and emergency revoke stay inside the allowed window for apps still trusting an old key. Check: a rehearsed routine rotation, a rehearsed emergency revoke, a run with refresh unavailable, and tests of CDN or endpoint cache refill and epoch freshness against the bound. Fail: an old-key proof works past the end-to-end bound after revoke, or a proof is accepted when no valid unexpired cached key exists and refresh fails.
-- **R14 State survives restore safely** Requirement: A restore does not bring back used codes, used proofs or revoked keys. Check: a rehearsed restore if available, with tests for a used code, a used proof, a restored revoked key id and a cleared lockout. Fail: any of those works again after a restore.
-- **R15 Lost mailbox** Requirement: After the owner changes the address, the old identity's proofs and sessions fail. Check: after the steps, an old-identity proof and an old session are both rejected, and the new identity cannot see the old account. Fail: either works. Settled by the owner.
+
+| ID | Requirement |
+| --- | --- |
+| R12 | **Key lifecycle** Requirement: Key rotation and emergency revoke stay inside the allowed window for apps still trusting an old key. Check: a rehearsed routine rotation, a rehearsed emergency revoke, a run with refresh unavailable, and tests of CDN or endpoint cache refill and epoch freshness against the bound. Fail: an old-key proof works past the end-to-end bound after revoke, or a proof is accepted when no valid unexpired cached key exists and refresh fails. |
+| R14 | **State survives restore safely** Requirement: A restore does not bring back used codes, used proofs or revoked keys. Check: a rehearsed restore if available, with tests for a used code, a used proof, a restored revoked key id and a cleared lockout. Fail: any of those works again after a restore. |
+| R15 | **Lost mailbox** Requirement: After the owner changes the address, the old identity's proofs and sessions fail. Check: after the steps, an old-identity proof and an old session are both rejected, and the new identity cannot see the old account. Fail: either works. Settled by the owner. |
 
 ## Limits and values (R6, R8, R11, R13)
 
-- **Send and request limits** At most three sign-in emails per address per 30 minutes including resends; sign-in mail uses at most 90% of the provider's free allowance; at most 10 sign-in requests per hour per address and per internet address. [E5](evidence-record.md#platform-notes-and-their-evidence-limits) owns current provider quotas. Local defaults are in [service.js](../src/service.js).
-
+- **Send and request limits** At most three sign-in emails per address per 30 minutes including resends; sign-in mail uses at most 90% of the provider's free allowance; at most 10 sign-in requests per hour per address and per internet address. [E5](evidence-record.md#facts) owns current provider quotas. Local defaults are in [service.js](../src/service.js).
 
 - **Request body** At most [2 KB].
 - **Source address** Production must read the host's trusted header, never a client-supplied value. The local prototype reads cf-connecting-ip from the supplied Request; cloud trust remains unproven.
 - **Address-linked state** Holds only a hash made with its own secret key, separate from the code key. The cleanup deadline is 24 hours. The local purge deletes eligible records only when called, so it does not guarantee that deadline. Single-use protection still needed is not removed early. Daily and monthly totals contain no address. The local prototype keeps them for two days and 32 days from creation, then deletes them when purge runs.
 - **CPU margin** Each request fits the free per-request CPU limit with at least [20 percent] margin. Unproven until measured on the real platform.
 - **Service logs** Service logs are kept 14 days, holding time, event type, outcome, and a hashed source - never codes, proofs, or addresses. The local log array has no timed cleanup.
-- **R6 Limits** Requirement: Send, request and body limits hold under concurrent load. Check: concurrent over-limit tests, an oversize-body test, a spoofed-header test, and a check that no address-linked state outlives its purge time and that the daily and monthly totals are deleted at their set ages. Fail: any limit exceeded or bypassed, or address-linked state kept past its life.
-- **R8 Quota and lockout** Requirement: An attacker who fills the open sign-in slots can delay the owner. The attacker normally lacks the emailed code, and the owner's browser cannot use a code from a challenge the attacker created. Check: a code remains valid only in the browser that requested it. The owner cannot use a code from someone else's challenge and signs in with a new challenge once a slot frees. The attack test checks both the browser binding and that recovery path. This one experiment does not prove protection against a sustained hourly lockout; that residual risk stays for the owner-only trial. A bot check is a required addition before opening to anyone else (milestone 2).
-- **R11 Fits free compute** Requirement: A full sign-in fits the free CPU limit with margin. Check: a prototype measured on the real platform in a later phase. Fail: any path over the limit or inside the margin. Unproven until measured.
-- **R13 Logging** Requirement: Logs hold no codes, proofs or addresses. Check: scan test logs for codes, proofs and addresses, and read the provider and mailbox retention settings once and record them. Phase 1 gives mock evidence only; actual retention is read at the later mail phase. Fail: any hit, or a retention value not recorded.
+
+| ID | Requirement |
+| --- | --- |
+| R6 | **Limits** Requirement: Send, request and body limits hold under concurrent load. Check: concurrent over-limit tests, an oversize-body test, a spoofed-header test, and a check that no address-linked state outlives its purge time and that the daily and monthly totals are deleted at their set ages. Fail: any limit exceeded or bypassed, or address-linked state kept past its life. |
+| R8 | **Quota and lockout** Requirement: An attacker who fills the open sign-in slots can delay the owner. The attacker normally lacks the emailed code, and the owner's browser cannot use a code from a challenge the attacker created. Check: a code remains valid only in the browser that requested it. The owner cannot use a code from someone else's challenge and signs in with a new challenge once a slot frees. The attack test checks both the browser binding and that recovery path. This one experiment does not prove protection against a sustained hourly lockout; that residual risk stays for the owner-only trial. A bot check is a required addition before opening to anyone else (milestone 2). |
+| R11 | **Fits free compute** Requirement: A full sign-in fits the free CPU limit with margin. Check: a prototype measured on the real platform in a later phase. Fail: any path over the limit or inside the margin. Unproven until measured. |
+| R13 | **Logging** Requirement: Logs hold no codes, proofs or addresses. Check: scan test logs for codes, proofs and addresses, and read the provider and mailbox retention settings once and record them. Phase 1 gives mock evidence only; actual retention is read at the later mail phase. Fail: any hit, or a retention value not recorded. |
 
 ## Failure behavior (R5)
 
@@ -100,7 +117,10 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **No automatic retry** Do not automatically retry an uncertain send. Check it against the provider's send record.
 - **Double submit** Requests with the same idempotency key, a client-chosen ID that marks a repeat, count as one. The local page does not yet supply that key; double-click protection remains open.
 - **Person sees** The local page shows the same generic message after each request. A cooldown message and resend control remain to be built.
-- **R5 Closed on failure** Requirement: Any failure signs nobody in. Check: failure injection for each case, double-submit and provider-timeout tests, and a crash between the reservation and the send. Fail: a proof is issued from a send acceptance, an uncertain send is retried with no record, or two requests with the same idempotency key make two sends.
+
+| ID | Requirement |
+| --- | --- |
+| R5 | **Closed on failure** Requirement: Any failure signs nobody in. Check: failure injection for each case, double-submit and provider-timeout tests, and a crash between the reservation and the send. Fail: a proof is issued from a send acceptance, an uncertain send is retried with no record, or two requests with the same idempotency key make two sends. |
 
 ## Browser and callback protocol (R16)
 
@@ -111,19 +131,25 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **Cookies** Host-only, Secure, and HttpOnly, with no domain attribute. The challenge-binding cookie is SameSite=Strict. The app pre-auth cookie is SameSite=Lax so it travels on the top-level completion step. No third-party cookie is used in the local prototype.
 - **No tokens in URLs** No tokens, codes, or proofs in URLs, referrers, or logs.
 - **Session** Lifetime and logout belong to the app.
-- **R16 Browser protocol** Requirement: Wrong origins, altered state and lookalike callbacks are refused. Check: tests with a wrong origin, a sibling origin, altered state, a lookalike callback, and an external redirect, plus a Safari run with third-party cookies blocked. Fail: an invalid input is accepted, or sign-in fails with third-party cookies blocked. Cloudflare hosts the planned code page; Phase 1 remains local.
+
+| ID | Requirement |
+| --- | --- |
+| R16 | **Browser protocol** Requirement: Wrong origins, altered state and lookalike callbacks are refused. Check: tests with a wrong origin, a sibling origin, altered state, a lookalike callback, and an external redirect, plus a Safari run with third-party cookies blocked. Fail: an invalid input is accepted, or sign-in fails with third-party cookies blocked. Cloudflare hosts the planned code page; Phase 1 remains local. |
 
 ## Response headers (R9)
 
 - **Every response the service generates** Content-Security-Policy with default-src none, script-src self, style-src self, connect-src self plus the exact registered app origin, img-src self, base-uri none, frame-ancestors none, and form-action none. X-Frame-Options DENY. X-Content-Type-Options nosniff. Referrer-Policy no-referrer. Strict-Transport-Security max-age 31536000. Permissions-Policy denying camera, microphone and geolocation. Cross-Origin-Opener-Policy same-origin. Cache-Control no-store on sign-in and proof responses.
 - **Where set** In code, on every generated response: success, error, redirect, not-found and callback. A static header file does not cover generated responses.
-- **R9 Response headers** Requirement: Every response carries the required security headers. Check: real requests using each route's allowed method, saved as evidence, plus a CI check. Fail: any response lacks them.
+
+| ID | Requirement |
+| --- | --- |
+| R9 | **Response headers** Requirement: Every response carries the required security headers. Check: real requests using each route's allowed method, saved as evidence, plus a CI check. Fail: any response lacks them. |
 
 ## Mail adapter (provider-neutral)
 
 - **Interface and content** The [Mail Adapter Contract](mail/mock-mail-adapter-contract.md) owns operations, result names, reservations, generic subjects, and tracking limits.
 
-- **Retention** See [provider retention](evidence-record.md#platform-notes-and-their-evidence-limits), E5. A code expiring does not delete the email from the recipient's mailbox.
+- **Retention** See [provider retention](evidence-record.md#facts), E5. A code expiring does not delete the email from the recipient's mailbox.
 - **Provider choice** Sign-in mail goes through Resend from mail.soliskit.com. Recheck free-plan terms before any account, credential, or send.
 - **Credentials** Use a secure vault link only. Never put credentials in chat, the repository, or logs.
 
