@@ -22,7 +22,7 @@ A completed result needs evidence: a test run at an exact commit, a saved respon
 - **R4 Signed proof and exchange.** Local: [tests/proof-exchange.test.js](../tests/proof-exchange.test.js). Real platform: Pending.
 - **R5 Closed on failure.** Local: [tests/failure-modes.test.js](../tests/failure-modes.test.js). Real platform: Pending. Bounded: does not cover a crash between the reservation and the send.
 - **R6 Limits.** Local: [tests/limits.test.js](../tests/limits.test.js). Real platform: Pending.
-- **R7 Zero cost.** Local: no local test exists. Real platform: Pending.
+- **R7 Zero cost.** Local: Pending, because no local test exists. Real platform: Pending.
 - **R8 Quota and lockout.** Local: [tests/limits.test.js](../tests/limits.test.js). Real platform: Pending.
 - **R9 Response headers.** Local: [tests/headers.test.js](../tests/headers.test.js). Real platform: Pending.
 - **R10 Clean public repo.** Local: [tests/logging-hygiene.test.js](../tests/logging-hygiene.test.js). Real platform: Pending. Bounded: scans the working tree only. History, build artifacts, build logs, source maps and the first pull request read are not covered.
