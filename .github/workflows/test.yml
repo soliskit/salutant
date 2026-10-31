@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version-file: package.json
       - name: Run the tests
         shell: bash
         run: |
@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version-file: package.json
       - run: npm i --no-save "playwright@${PLAYWRIGHT_VERSION}"
       - name: Check Playwright version matches the container image
         run: node -e "process.exit(require('playwright/package.json').version==='1.64.1'?0:1)"
@@ -136,7 +136,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version-file: package.json
       - run: >
           npx --yes "@stryker-mutator/core@${STRYKER_VERSION}" run
           --testRunner command
