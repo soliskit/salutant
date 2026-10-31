@@ -39,14 +39,17 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: package.json
-          cache: npm
       - name: Check for a lockfile
         id: pre
         run: |
           if [ -f package-lock.json ]; then
             echo "has_lock=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No lockfile - no dependencies to inventory."
+            # Fail closed: declared dependencies without a lockfile would
+            # skip the inventory silently. A zero-dependency repo legitimately
+            # has nothing to inventory and skips green.
+            node -e "const p=require('./package.json'); const n=Object.keys(p.dependencies||{}).length+Object.keys(p.devDependencies||{}).length; process.exit(n?1:0)" || { echo "package.json declares dependencies but no package-lock.json exists - inventory blocked"; exit 1; }
+            echo "No lockfile and no declared dependencies - nothing to inventory."
             echo "has_lock=false" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.pre.outputs.has_lock == 'true'
@@ -119,10 +122,13 @@ jobs:
           # --save-prefix keeps ~ or ^, bare install rewrites to caret).
           probe_dir=$(mktemp -d)
           cd "$probe_dir"
+          probe_pkg=is-number
+          probe_v1=7.0.0
+          probe_v2=6.0.0
           echo '{"name":"probe","version":"1.0.0","dependencies":{"is-number":"7.0.0"}}' > package.json
-          npm install is-number@7.0.0 --save-exact --no-audit --no-fund --loglevel=error
+          npm install "$probe_pkg@$probe_v1" --save-exact --no-audit --no-fund --loglevel=error
           node -e "process.exit(require('./package.json').dependencies['is-number']==='7.0.0'?0:1)"
-          npm install is-number@6.0.0 --save-prefix='~' --no-audit --no-fund --loglevel=error
+          npm install "$probe_pkg@$probe_v2" --save-prefix='~' --no-audit --no-fund --loglevel=error
           node -e "process.exit(require('./package.json').dependencies['is-number']==='~6.0.0'?0:1)"
           cd - >/dev/null
           echo "probe ok: npm $(npm --version) preserves declaration styles"
@@ -138,7 +144,7 @@ jobs:
           BRANCH="chore/deps-$(date +%Y%m%d)-direct"
           git checkout -b "$BRANCH" origin/main
           # Each package's existing declaration style is preserved: a bare
-          # `npm install pkg@x.y.z` rewrites exact pins and tilde ranges as
+          # a bare npm install of an exact version rewrites exact pins and tilde
           # caret (verified on npm 10.9.9), so the install flags follow the
           # existing spec prefix. Any style outside exact/~/^ fails the
           # branch for review instead of silently changing policy.
