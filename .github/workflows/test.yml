@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm test 2>&1 | tee "$RUNNER_TEMP/test-output.txt"
+          node --test --test-reporter=tap tests/*.test.js 2>&1 | tee "$RUNNER_TEMP/test-output.txt"
       - name: Count the tests
         id: counts
         if: always()
