@@ -124,4 +124,10 @@ test('the page routes answer only their own path and method, with the right cont
     const res = await post(path);
     assert.notEqual(res.status, 200, `POST ${path} is not served as a page`);
   }
+
+  // The v1 API also answers only its own method: a right path with the
+  // wrong method falls through to the same 404 as an unknown route.
+  assert.equal((await get('/v1/challenges')).status, 404, 'GET /v1/challenges');
+  assert.equal((await get('/v1/challenges/abc/verify')).status, 404, 'GET verify');
+  assert.equal((await post('/.well-known/jwks.json')).status, 404, 'POST jwks');
 });
