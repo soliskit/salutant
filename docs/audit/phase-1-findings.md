@@ -88,7 +88,7 @@ rejected everything (failed closed).
 Finding: the 10 minute end-to-end bound (endpoint cache of 5 minutes
 plus app cache of 5 minutes) is implementable as specified. The key
 endpoint is the web address where apps fetch the public signing keys.
-The bound is a hard maximum for the owner-only trial (decision log S28),
+The bound is a hard maximum for the owner-only trial,
 with cloud proof pending. A shorter app cache would shrink the window at
 the cost of more key-endpoint traffic.
 
@@ -120,7 +120,7 @@ The epoch rule (finding 1) is the planned protection for restored data.
 The local service appends events to an in-memory array in
 [src/service.js](../../src/service.js), in the constructor and log method.
 Neither method nor the purge method ages out those entries. The approved
-service-log retention in S39 is therefore not implemented by this local
+service-log retention is therefore not implemented by this local
 array. This source check was made October 12, 2026; it is not a cloud result.
 
 ## 5. Codes stay tied to the requesting browser (R2, R8)
@@ -135,8 +135,7 @@ delayed only." The test supports a narrower claim: the code is not
 cancelled, but the owner cannot use it. The
 alternative (dropping the browser binding) would let a phished or
 observed code verify from any browser, which is the attack R2's
-binding exists to stop. The binding stays (decision log S13, 7 October
-2026).
+binding exists to stop. The binding stays.
 
 ## 6. Response timing and processor use (R3, R11)
 
@@ -149,28 +148,7 @@ value that 95 percent of samples stay under. CPU time is the processor
 time a request uses. Ed25519 is the signature algorithm that signs the
 proofs.
 
-These samples are from an older run, taken October 7, 2026 on Node 22 at
-tree b9f9b61. That historical identifier is retained as reported and is not
-a current-main reference. These measurements have not been rerun on current main.
-
-Timing protocol (R3), measured: 200 interleaved requests per class, 3 runs,
-local harness.
-
-- Median per class per run: allowed 0.463 / 0.428 / 0.415 ms; unlisted
-  0.462 / 0.426 / 0.403 ms.
-- Median gap per run: 0.001 / 0.001 / 0.012 ms. P95 gap per run:
-  0.529 / 0.037 / 0.111 ms.
-- Same-class run-to-run difference: 0.059 ms. Tolerance: 20 ms (the larger
-  of 20 ms and the run-to-run difference). Hard maximum: 50 ms. Result: pass
-  in all three runs.
-
-CPU sample (R11), local only: `node scripts/bench.js` (20 runs,
-`process.cpuUsage` around a full sign-in: challenge, mail mock, verify,
-Ed25519 sign, app verify, session issue). Median 2.90 ms CPU, min 2.09 ms,
-max 65.40 ms (the cold first run, dominated by one-time key generation and
-imports). The key endpoint answered in 0.21 ms CPU. These are local numbers
-and say nothing about production hardware or the Workers free CPU
-limit recorded in E2; that is a cloud-phase measurement.
+These are older local numbers, not rerun on current main, and say nothing about the cloud.
 
 ## What local testing does not prove
 

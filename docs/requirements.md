@@ -2,7 +2,7 @@
 
 The sign-in contract, acceptance checks, and choices still open.
 
-Bracketed values are proposals, not approved production settings. Local implementation is not cloud proof. [Decisions](decisions.md) owns approved choices; [evidence](evidence-record.md) owns results and provider facts.
+Bracketed values are proposals, not approved production settings. Local implementation is not cloud proof. [Evidence](evidence-record.md) owns results and provider facts.
 
 ## Purpose and boundary
 
@@ -12,7 +12,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 
 1. Enter an email address in the app.
 2. Salutant sends a code to the inbox. Phase 1 uses stand-in mail only.
-3. Enter the code in the browser that requested it. It expires and works once; the approved lifetime lives in S30.
+3. Enter the code in the browser that requested it. It expires after 30 minutes and works once.
 4. The app checks Salutant's signed proof and completes sign-in. It owns the account and session.
 
 ## Requirements that apply everywhere
@@ -40,7 +40,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 
 ## Codes (R1, R2, R8)
 
-- **Format, lifetime, wrong tries, resend, and active attempts** [S29–S33](decisions.md#settled-choices) owns the approved values. [S13](decisions.md#settled-choices) owns browser binding. [S39](decisions.md#settled-choices) owns the cleanup deadline.
+- **Format, lifetime, wrong tries, resend, and active attempts** The sign-in code is six digits; a code expires after 30 minutes, works once, and only in the browser that asked; three wrong guesses cancel a code; a resend is allowed after a one-minute wait and replaces the old code; at most two unfinished attempts per address. The cleanup deadline is 24 hours.
 - **Source** Generate codes with the platform's cryptographically secure random function. Compare their hashes with a timing-safe comparison. The local implementation uses Web Crypto random values and its own comparison loop; this is not proof of cloud timing behavior.
 - **Storage** Never store the code as readable text. Store only a keyed hash (HMAC), a fingerprint made from the app, purpose, challenge ID, and code. Keep its service secret outside the database.
 
@@ -52,13 +52,13 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **Errors** Wrong, expired, used, and dead codes return the same generic error.
 - **Atomicity** Check, update, and consume must finish in one synchronous step, with no wait between the check and write. Many simultaneous submissions of one correct code must give one success. The local model lives in [storage.js](../src/storage.js). Production is planned to use one SQLite-backed Durable Object, a Cloudflare object with private storage. No state change may span a wait for outside work.
 - **R1 Code lifecycle** Requirement: A correct code works once. Wrong, expired and reused codes fail. Check: tests for correct, wrong, expired, reused and a correct code on the try after the limit, plus many simultaneous submits of one correct code with exactly one success. Fail: two successes, or a success after the limit.
-- **R2 Code generation and binding** Requirement: Codes are random, stored only as a keyed hash (a one-way scramble made with a secret key), and bound to the browser that asked. Check: storage and log scan for plain codes, cross-challenge and cross-browser reuse tests, and parallel resend-versus-verify tests. Fail means any one of: a plain code in storage or logs; a correct code accepted for a different challenge or browser; the old and new code of one challenge both succeed; a code that did not come from the secure random function. The statistical test cannot prove the last one, so it is checked by reading the code for the secure random source, and rechecked for any later code. Cleanup follows S39; the [purge finding](audit/phase-1-findings.md#4-deleting-expired-records-r13-r6-e10) names the local limits.
+- **R2 Code generation and binding** Requirement: Codes are random, stored only as a keyed hash (a one-way scramble made with a secret key), and bound to the browser that asked. Check: storage and log scan for plain codes, cross-challenge and cross-browser reuse tests, and parallel resend-versus-verify tests. Fail means any one of: a plain code in storage or logs; a correct code accepted for a different challenge or browser; the old and new code of one challenge both succeed; a code that did not come from the secure random function. The statistical test cannot prove the last one, so it is checked by reading the code for the secure random source, and rechecked for any later code. Expired attempts and address-linked state are deleted within 24 hours; the [purge finding](audit/phase-1-findings.md#4-deleting-expired-records-r13-r6-e10) names the local limits.
 
 ## Proof (R4)
 
 - **Algorithm** Use only Ed25519 (EdDSA), the selected signing algorithm. The app rejects any other algorithm or key type.
 - **Claims** Issuer, audience, minimal subject, issued-at, not-before, expiry, key id, nonce, proof id, and epoch. The nonce carries the sign-in state. Salutant shares only the address the app needs.
-- **Lifetime** [S37 and S38](decisions.md#settled-choices) own expiry and clock tolerance. The local app also imposes a shorter exchange window; see [the callback finding](audit/phase-1-findings.md#2-returning-the-sign-in-result-to-the-app-r16).
+- **Lifetime** The proof expires after five minutes and works once; a one-minute clock tolerance is allowed, about six minutes in total. The local app also imposes a shorter exchange window; see [the callback finding](audit/phase-1-findings.md#2-returning-the-sign-in-result-to-the-app-r16).
 - **Nonce** Bound to the transaction that started the sign-in.
 - **App checks** Signature, key id, issuer, audience (its own origin), epoch, expiry and not-before, state, and the proof id against its redemption record in one atomic step. Then it creates its own session.
 - **Replay** The app owns the redemption record: proof id, time, and the session created. Many parallel redemptions of one valid proof give exactly one session.
@@ -68,7 +68,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 ## Keys and epoch (R12, R14, R15)
 
 - **Signing key** Create outside the repository. Store as a service secret. Identify it with a key ID.
-- **App key cache** Apps cache public keys for at most 5 minutes. The endpoint cache is 5 minutes. Both are adopted production settings (derivation decisions of October 15, 2026). [S28](decisions.md#settled-choices) owns the emergency revoke bound. No layer holds a key longer than its own setting.
+- **App key cache** Apps cache public keys for at most 5 minutes. The endpoint cache is 5 minutes. Both are adopted production settings. After an emergency key revoke, apps stop trusting the old key within at most 10 minutes - an adopted limit whose cloud proof is still pending. No layer holds a key longer than its own setting.
 - **Fail closed** After its cached key expires, an app that cannot refresh rejects every proof. Good proofs may fail during an emergency revoke. That is accepted.
 - **Routine rotation** Keep both keys available for at least the proof lifetime, clock-skew allowance, and end-to-end bound combined.
 - **Epoch rule** A number the service reads and never writes. Only the account owner can raise it. Sign-in challenges, issued proofs, and app sessions carry it. Reject earlier-epoch items. If the epoch cannot be read the service stays closed. Production must stay closed after a restore until the owner raises the epoch. The local rehearsal simulates that closed state; automatic restore detection and cloud enforcement remain unproven. Apps must read the epoch with the public keys and drop earlier sessions. The local test invokes session cleanup explicitly. Trust boundary: the Cloudflare account owner.
@@ -79,14 +79,14 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 
 ## Limits and values (R6, R8, R11, R13)
 
-- **Send and request limits** [S34–S36](decisions.md#settled-choices) owns the approved policy. [E5](evidence-record.md#platform-notes-and-their-evidence-limits) owns current provider quotas. Local defaults are in [service.js](../src/service.js).
+- **Send and request limits** At most three sign-in emails per address per 30 minutes including resends; sign-in mail uses at most 90% of the provider's free allowance; at most 10 sign-in requests per hour per address and per internet address. [E5](evidence-record.md#platform-notes-and-their-evidence-limits) owns current provider quotas. Local defaults are in [service.js](../src/service.js).
 
 
 - **Request body** At most [2 KB].
 - **Source address** Production must read the host's trusted header, never a client-supplied value. The local prototype reads cf-connecting-ip from the supplied Request; cloud trust remains unproven.
-- **Address-linked state** Holds only a hash made with its own secret key, separate from the code key. S39 sets the cleanup deadline. The local purge deletes eligible records only when called, so it does not guarantee that deadline. Single-use protection still needed is not removed early. Daily and monthly totals contain no address. The local prototype keeps them for two days and 32 days from creation, then deletes them when purge runs.
+- **Address-linked state** Holds only a hash made with its own secret key, separate from the code key. The cleanup deadline is 24 hours. The local purge deletes eligible records only when called, so it does not guarantee that deadline. Single-use protection still needed is not removed early. Daily and monthly totals contain no address. The local prototype keeps them for two days and 32 days from creation, then deletes them when purge runs.
 - **CPU margin** Each request fits the free per-request CPU limit with at least [20 percent] margin. Unproven until measured on the real platform.
-- **Service logs** [S39](decisions.md#settled-choices) owns retention. Logs contain time, event type, outcome, and a hashed source. Never codes, proofs, or email addresses. The local log array has no timed cleanup.
+- **Service logs** Service logs are kept 14 days, holding time, event type, outcome, and a hashed source - never codes, proofs, or addresses. The local log array has no timed cleanup.
 - **R6 Limits** Requirement: Send, request and body limits hold under concurrent load. Check: concurrent over-limit tests, an oversize-body test, a spoofed-header test, and a check that no address-linked state outlives its purge time and that the daily and monthly totals are deleted at their set ages. Fail: any limit exceeded or bypassed, or address-linked state kept past its life.
 - **R8 Quota and lockout** Requirement: An attacker who fills the open sign-in slots can delay the owner. The attacker normally lacks the emailed code, and the owner's browser cannot use a code from a challenge the attacker created. Check: a code remains valid only in the browser that requested it. The owner cannot use a code from someone else's challenge and signs in with a new challenge once a slot frees. The attack test checks both the browser binding and that recovery path. This one experiment does not prove protection against a sustained hourly lockout; that residual risk stays for the owner-only trial. A bot check is a required addition before opening to anyone else (milestone 2).
 - **R11 Fits free compute** Requirement: A full sign-in fits the free CPU limit with margin. Check: a prototype measured on the real platform in a later phase. Fail: any path over the limit or inside the margin. Unproven until measured.
@@ -124,7 +124,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **Interface and content** The [Mail Adapter Contract](mail/mock-mail-adapter-contract.md) owns operations, result names, reservations, generic subjects, and tracking limits.
 
 - **Retention** See [provider retention](evidence-record.md#platform-notes-and-their-evidence-limits), E5. A code expiring does not delete the email from the recipient's mailbox.
-- **Provider choice** [S27](decisions.md#settled-choices) owns the selected mail path. Recheck free-plan terms before any account, credential, or send.
+- **Provider choice** Sign-in mail goes through Resend from mail.soliskit.com. Recheck free-plan terms before any account, credential, or send.
 - **Credentials** Use a secure vault link only. Never put credentials in chat, the repository, or logs.
 
 ## Test hooks for Phase 1
@@ -148,5 +148,5 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **3** Host records and certificates for salutant.soliskit.com and mail.soliskit.com, recorded when the hosts exist.
 - **4** Production request and response fields. Phase 1 has concrete fields and status codes in [service.js](../src/service.js); adopting the production contract remains open. No field may reveal whether the address is allowed (R3).
 - **5** Production timing values and the owner's review of the measured values, in the later phases.
-- **6** Bot-check design before opening to others; see S22.
+- **6** Bot-check design before opening to others.
 - **7** Local page resend controls and idempotency keys, real log cleanup, and automatic purge scheduling remain unbuilt. See the [Evidence Record](evidence-record.md).

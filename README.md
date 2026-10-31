@@ -9,14 +9,13 @@ before completing sign-in. Salutant does not manage the app's account or session
 
 This repo holds Phase 1: a local prototype that replaces outside services
 with stand-ins. It runs on any machine with
-Node.js 20 or later, sends no real email, uses no accounts or
+Node.js 26, sends no real email, uses no accounts or
 credentials, and deploys nothing. Phase 1 is merged. Deployment, real
 sends, and account setup each need their own go-ahead.
 
 ## Layout
 
 - [Requirements](docs/requirements.md) defines behavior and acceptance checks.
-- `docs/decisions.md` holds the decisions this work is built on.
 - `docs/evidence-record.md` has one row per requirement, with its result
   and a link to its test.
 - `docs/mail/` describes the mock mail adapter.
@@ -38,7 +37,7 @@ built-in test runner.
 
 ## Limits and behavior
 
-The [Decision Log](docs/decisions.md) records code lifetime, request
+[Requirements](docs/requirements.md) records the approved values: code lifetime, request
 limits, and the mail-budget policy. The [Evidence Record](docs/evidence-record.md)
 links local checks and names what still needs cloud testing. The private
 Playbook holds the full plan.
