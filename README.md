@@ -39,8 +39,7 @@ built-in test runner.
 
 [Requirements](docs/requirements.md) records the approved values: code lifetime, request
 limits, and the mail-budget policy. The [Evidence Record](docs/evidence-record.md)
-links local checks and names what still needs cloud testing. The private
-Playbook holds the full plan.
+links local checks and names what still needs cloud testing. The [Salutant Project](https://github.com/users/soliskit/projects/8) tracks work order and current status. Requirements defines acceptance checks; the Evidence Record owns results. Private scope and authority stay in the Playbook.
 
 ## License
 
