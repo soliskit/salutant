@@ -1,0 +1,146 @@
+name: Deploy Salutant
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a second tap queues instead of replacing the
+# in-flight run.
+concurrency:
+  group: deploy-salutant
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+      # State comes from the Cloudflare API itself, never from inference.
+      # The response is validated as JSON with the documented schema:
+      #   HTTP 200, success:true, and result[] entries with type
+      #     "secret_text" named CODE_HMAC_KEY, STATE_HMAC_KEY, SIGNING_KEYS
+      #     and EPOCH                               -> rerun, reuse them
+      #   HTTP 200 missing any of that             -> STOP (partial state)
+      #   HTTP 404 with success:false and error code 10007 (worker not
+      #     found)                                 -> first run
+      #   anything else: other status, other error codes, contradictory
+      #     envelopes, malformed or off-schema bodies -> STOP (unknown)
+      # This checks name-and-type presence, not secret contents; secret
+      # values are never readable, and a rerun never changes these four.
+      # A curl failure aborts the step under set -e. No branch infers
+      # worker absence from a failed or unparseable answer.
+      - name: Determine worker state without guessing
+        id: state
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          resp=$(curl -sS -w $'\n%{http_code}' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/salutant/secrets")
+          http_code=${resp##*$'\n'}
+          body=${resp%$'\n'*}
+          printf '%s' "$body" > "$RUNNER_TEMP/secret-list.json"
+          decision=$(HTTP_CODE="$http_code" BODY_FILE="$RUNNER_TEMP/secret-list.json" node --input-type=module <<'EOF'
+          import { readFileSync } from 'node:fs';
+          let parsed;
+          try { parsed = JSON.parse(readFileSync(process.env.BODY_FILE, 'utf8')); }
+          catch { console.log('STOP'); process.exit(0); }
+          if (process.env.HTTP_CODE === '404') {
+            // Documented failure envelope: success:false, errors:[{code,...}];
+            // 10007 = "Worker or workers.dev subdomain not found".
+            const codes = parsed?.success === false && Array.isArray(parsed?.errors) ? parsed.errors.map(e => e?.code) : [];
+            console.log(codes.includes(10007) ? 'FIRST' : 'STOP');
+          } else if (process.env.HTTP_CODE === '200') {
+            // Documented success shape: {success:true, result:[{name, type:"secret_text"}]}.
+            const entries = parsed?.success === true && Array.isArray(parsed?.result) ? parsed.result : [];
+            const required = ['CODE_HMAC_KEY', 'STATE_HMAC_KEY', 'SIGNING_KEYS', 'EPOCH'];
+            console.log(required.every(n => entries.some(s => s?.name === n && s?.type === 'secret_text')) ? 'RERUN' : 'STOP');
+          } else {
+            console.log('STOP');
+          }
+          EOF
+          )
+          case "$decision" in
+            FIRST)
+              echo "Confirmed worker absence: Cloudflare error 10007. First run; signing secrets and EPOCH will be planted."
+              echo "first_run=true" >> "$GITHUB_OUTPUT"
+              ;;
+            RERUN)
+              echo "Confirmed: CODE_HMAC_KEY, STATE_HMAC_KEY, SIGNING_KEYS and EPOCH all present on the worker; reruns reuse them."
+              echo "first_run=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Could not confirm worker state (HTTP $http_code). Stopping rather than guessing."
+              exit 1
+              ;;
+          esac
+      - name: Build the secrets file (first run also generates the signing secrets)
+        shell: bash
+        env:
+          FIRST_RUN: ${{ steps.state.outputs.first_run }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          EPOCH: ${{ secrets.EPOCH }}
+          ALLOWLIST: ${{ secrets.ALLOWLIST }}
+          APPS: ${{ secrets.APPS }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import { randomBytes } from 'node:crypto';
+          import { writeFileSync } from 'node:fs';
+
+          const values = {
+            RESEND_API_KEY: process.env.RESEND_API_KEY,
+            MAIL_FROM: process.env.MAIL_FROM,
+            ALLOWLIST: process.env.ALLOWLIST,
+            APPS: process.env.APPS,
+          };
+          if (process.env.FIRST_RUN === 'true') {
+            // EPOCH is planted once and preserved on reruns: the service
+            // can raise it server-side (owner restore), and a rerun must
+            // never reset it to the stale planted value.
+            values.EPOCH = process.env.EPOCH;
+            const { generateSigningKeyPair, exportPublicJwk } = await import('./src/crypto.js');
+            const { privateKey, publicKey } = await generateSigningKeyPair();
+            const privateJwk = await crypto.subtle.exportKey('jwk', privateKey);
+            const publicJwk = await exportPublicJwk(publicKey, 'k1');
+            values.CODE_HMAC_KEY = randomBytes(32).toString('base64url');
+            values.STATE_HMAC_KEY = randomBytes(32).toString('base64url');
+            values.SIGNING_KEYS = JSON.stringify({ currentKid: 'k1', keys: [{ kid: 'k1', publicJwk, privateJwk, status: 'active', notAfterMs: Date.now() + 90*24*3600*1000 }] });
+          }
+          for (const [name, value] of Object.entries(values)) {
+            if (!value) throw new Error(`${name} is empty; set it in repository secrets`);
+            console.log(`::add-mask::${value}`);
+          }
+          writeFileSync('secrets.json', JSON.stringify(values));
+          console.log(`secrets.json written: ${Object.keys(values).length} secrets, first run: ${process.env.FIRST_RUN}`);
+          EOF
+      # One step uploads code and secrets together. Secrets not in the file
+      # are preserved from the previous version (documented), so a rerun's
+      # 4-setting file leaves the signing secrets and EPOCH untouched.
+      - name: Deploy the worker with its secrets
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.156.2 deploy --secrets-file secrets.json
+      # Runs whether the deploy succeeded or failed. A hard runner crash
+      # could still skip it; the file lives only inside the ephemeral
+      # runner either way.
+      - name: Remove the temporary secrets file
+        if: always()
+        shell: bash
+        run: rm -f secrets.json
