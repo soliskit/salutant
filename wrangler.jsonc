@@ -1,0 +1,24 @@
+{
+  // Salutant production worker. No account IDs, addresses or secret
+  // values in the repo (R10); secrets are set with `wrangler secret put`
+  // at deployment time, which is a separately gated step.
+  "name": "salutant",
+  "main": "src/entry.js",
+  "compatibility_date": "2026-11-01",
+  // Custom domain: salutant.soliskit.com. Host records are step 2.2 of
+  // the deployment plan, not part of this PR.
+  "routes": [
+    { "pattern": "salutant.soliskit.com", "custom_domain": true }
+  ],
+  "vars": {
+    "SERVICE_ORIGIN": "https://salutant.soliskit.com"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "SALUTANT_STORE", "class_name": "SalutantStoreDO" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SalutantStoreDO"] }
+  ]
+}
