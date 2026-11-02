@@ -163,7 +163,7 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 
 ## Quotas
 
-- **Account** Cloudflare free plan only, with no payment method. The owner confirms this before any setup; if it is not on the free plan, setup stops.
+- **Account** Workers Free only, with no paid Workers subscription and no billable Workers features; a payment method kept for domain registration is acceptable. The owner confirms this before any setup; if it is not on the free plan, setup stops.
 - **Shared budget** Free limits cover the whole account, not each object. Other account use and purge work count against the same budgets.
 - **Re-check** Costs are re-read at each milestone. Platform facts and their sources are in the Evidence Record (docs/evidence-record.md).
 
