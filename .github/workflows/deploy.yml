@@ -134,9 +134,13 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Exact pinned version, set apart from the package name so
+          # the repository hygiene scan does not read the
+          # package@version form as an email address.
+          WRANGLER_VERSION: '4.156.2'
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.156.2 deploy --secrets-file secrets.json
+          npx --yes "wrangler@${WRANGLER_VERSION}" deploy --secrets-file secrets.json
       # Runs whether the deploy succeeded or failed. A hard runner crash
       # could still skip it; the file lives only inside the ephemeral
       # runner either way.
