@@ -2,18 +2,32 @@
 // epoch steps.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeWorld, BrowserSession, honestSignIn, OWNER, SERVICE_ORIGIN, APP_ORIGIN } from './helpers.js';
+import { MemoryStore } from '../src/storage.js';
+import { DurableObjectStore } from '../src/do-store.js';
 import { generateSigningKeyPair, signProof } from '../src/crypto.js';
+import { makeWorld, makeDOStorage, BrowserSession, honestSignIn, OWNER, SERVICE_ORIGIN, APP_ORIGIN } from './helpers.js';
 
-test('restore rehearsal: without an epoch raise the service stays closed; after it, old items are rejected', async () => {
-  const w = await makeWorld();
+// The plan requires the storage-exercising suite to run against both
+// store drivers: MemoryStore (local twin) and DurableObjectStore (the
+// production binding), so storage behavior is proven against the same
+// interface the worker will use.
+const DRIVERS = [
+  ['MemoryStore', () => new MemoryStore()],
+  ['DurableObjectStore', () => new DurableObjectStore(makeDOStorage())],
+];
+const sortedEntries = (snap) => JSON.parse(snap).sort(([a], [b]) => (a < b ? -1 : 1));
+
+for (const [driver, storeFactory] of DRIVERS) {
+
+test(`[${driver}] restore rehearsal: without an epoch raise the service stays closed; after it, old items are rejected`, async () => {
+  const w = await makeWorld({ storeFactory });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
   const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
   await w.service.drain();
   const code = w.mailer.lastCode();
   const snapshot = w.store.snapshot();
-  const beforeConsume = structuredClone([...w.store.records]);
+  const beforeConsume = sortedEntries(snapshot);
 
   // Consume the code, then simulate a point-in-time restore that brings
   // the consumed challenge back as open.
@@ -21,7 +35,7 @@ test('restore rehearsal: without an epoch raise the service stays closed; after 
   assert.ok((await used.json()).proof);
   w.store.restoreFrom(snapshot);
   assert.ok(beforeConsume.length > 0, 'records existed before the code was consumed');
-  assert.deepEqual([...w.store.records], beforeConsume, 'restore brings back exactly the snapshotted records');
+  assert.deepEqual(sortedEntries(w.store.snapshot()), beforeConsume, 'restore brings back exactly the snapshotted records');
 
   // Operational rule: a restore
   // does not resume service. The epoch stays unreadable until the owner
@@ -42,8 +56,8 @@ test('restore rehearsal: without an epoch raise the service stays closed; after 
   assert.ok(fresh.verified.proof, 'service resumes on the new epoch');
 });
 
-test('a restored consumed code is not reusable once the epoch moved', async () => {
-  const w = await makeWorld();
+test(`[${driver}] a restored consumed code is not reusable once the epoch moved`, async () => {
+  const w = await makeWorld({ storeFactory });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
   const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
@@ -54,8 +68,8 @@ test('a restored consumed code is not reusable once the epoch moved', async () =
   assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' });
 });
 
-test('routine rotation: the old key verifies during overlap and is gone after', async () => {
-  const w = await makeWorld();
+test(`[${driver}] routine rotation: the old key verifies during overlap and is gone after`, async () => {
+  const w = await makeWorld({ storeFactory });
   const r = await honestSignIn(w, { redeem: false });
   assert.ok(r.verified.proof);
 
@@ -80,8 +94,8 @@ test('routine rotation: the old key verifies during overlap and is gone after', 
   assert.equal(stale.body.error, 'unknown_key');
 });
 
-test('emergency revoke: a warm app cache may accept within the bound; after it, fail closed', async () => {
-  const w = await makeWorld();
+test(`[${driver}] emergency revoke: a warm app cache may accept within the bound; after it, fail closed`, async () => {
+  const w = await makeWorld({ storeFactory });
   const r = await honestSignIn(w, { redeem: false });
   const before = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
   assert.equal(before.status, 200);
@@ -105,8 +119,8 @@ test('emergency revoke: a warm app cache may accept within the bound; after it, 
   w.app.fetchJwks = realFetch;
 });
 
-test('a proof from an earlier epoch is rejected and the app drops earlier sessions', async () => {
-  const w = await makeWorld();
+test(`[${driver}] a proof from an earlier epoch is rejected and the app drops earlier sessions`, async () => {
+  const w = await makeWorld({ storeFactory });
   const r = await honestSignIn(w);
   assert.equal(r.complete.status, 200);
   const sessionId = r.complete.body.sessionId;
@@ -125,11 +139,12 @@ test('a proof from an earlier epoch is rejected and the app drops earlier sessio
   assert.ok(!w.app.sessionExists(sessionId));
 });
 
-test('the key endpoint reports the current epoch and honors the cache window', async () => {
-  const w = await makeWorld();
+test(`[${driver}] the key endpoint reports the current epoch and honors the cache window`, async () => {
+  const w = await makeWorld({ storeFactory });
   const first = await (await w.service.fetch(new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`))).json();
   assert.equal(first.epoch, 1);
   w.epoch.value = 7;
   const second = await (await w.service.fetch(new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`))).json();
   assert.equal(second.epoch, 7);
 });
+}

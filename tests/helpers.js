@@ -1,7 +1,9 @@
 // Shared test harness. Builds a world: mock service + stub app with
 // injected fakes and a controllable clock. Example addresses and origins
 // only; nothing real is referenced.
+import { DatabaseSync } from 'node:sqlite';
 import { MemoryStore } from '../src/storage.js';
+import { DurableObjectStore } from '../src/do-store.js';
 import { SalutantService } from '../src/service.js';
 import { MockMailAdapter } from '../src/mail-mock.js';
 import { StubApp } from '../src/stub-app.js';
@@ -13,6 +15,38 @@ export const APP_ORIGIN = 'https://app.example.test';
 export const OWNER = 'owner@example.test';
 export const STRANGER = 'stranger@example.test';
 export const ATTACKER = 'attacker@example.test';
+
+// Minimal Durable Object ctx.storage shape over a real SQLite engine:
+// transactionSync(fn) and sql.exec(query, ...params) -> { toArray() }.
+// Lets the whole service suite run against DurableObjectStore, the
+// production storage twin, not only MemoryStore.
+export function makeDOStorage() {
+  const db = new DatabaseSync(':memory:');
+  return {
+    sql: {
+      exec(query, ...params) {
+        const stmt = db.prepare(query);
+        if (/^\s*select/i.test(query)) {
+          const rows = stmt.all(...params);
+          return { toArray: () => rows };
+        }
+        stmt.run(...params);
+        return { toArray: () => [] };
+      },
+    },
+    transactionSync(fn) {
+      db.exec('BEGIN');
+      try {
+        const result = fn();
+        db.exec('COMMIT');
+        return result;
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+    },
+  };
+}
 
 export class ControllableEpoch {
   constructor(value = 1) { this.value = value; this.available = true; }
@@ -28,10 +62,11 @@ export async function makeWorld({
   mailerBehavior = 'accepted',
   config = {},
   appConfig = {},
+  storeFactory = () => new MemoryStore(),
 } = {}) {
   let clockNow = now;
   const clock = () => clockNow;
-  const store = new MemoryStore();
+  const store = storeFactory();
   const appStore = new MemoryStore();
   const mailer = new MockMailAdapter({ behavior: mailerBehavior });
   const epoch = new ControllableEpoch(1);
