@@ -111,9 +111,9 @@ jobs:
             // can raise it server-side (owner restore), and a rerun must
             // never reset it to the stale planted value.
             values.EPOCH = process.env.EPOCH;
-            const { generateSigningKeyPair, exportPublicJwk } = await import('./src/crypto.js');
+            const { generateSigningKeyPair, exportPublicJwk, exportSigningPrivateJwk } = await import('./src/crypto.js');
             const { privateKey, publicKey } = await generateSigningKeyPair();
-            const privateJwk = await crypto.subtle.exportKey('jwk', privateKey);
+            const privateJwk = await exportSigningPrivateJwk(privateKey);
             const publicJwk = await exportPublicJwk(publicKey, 'k1');
             values.CODE_HMAC_KEY = randomBytes(32).toString('base64url');
             values.STATE_HMAC_KEY = randomBytes(32).toString('base64url');
