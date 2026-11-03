@@ -25,15 +25,16 @@ import { SalutantService } from './service.js';
 import { SalutantStoreDO as StoreDO } from './do-store.js';
 import { ResendMailAdapter } from './mail-resend.js';
 import { createWorker } from './worker.js';
-import { fromBase64Url } from './crypto.js';
+import { fromBase64Url, normalizeEd25519Jwk } from './crypto.js';
 
-async function importSigningKeys(text) {
+// Exported for the signing-key boundary regression (tests/signing-key-jwk.test.js).
+export async function importSigningKeys(text) {
   const { currentKid, keys } = JSON.parse(text);
   const signingKeys = new Map();
   for (const k of keys) {
     const [publicKey, privateKey] = await Promise.all([
-      crypto.subtle.importKey('jwk', k.publicJwk, { name: 'Ed25519' }, true, ['verify']),
-      crypto.subtle.importKey('jwk', k.privateJwk, { name: 'Ed25519' }, true, ['sign']),
+      crypto.subtle.importKey('jwk', normalizeEd25519Jwk(k.publicJwk), { name: 'Ed25519' }, true, ['verify']),
+      crypto.subtle.importKey('jwk', normalizeEd25519Jwk(k.privateJwk), { name: 'Ed25519' }, true, ['sign']),
     ]);
     signingKeys.set(k.kid, { publicKey, privateKey, status: k.status, notAfterMs: k.notAfterMs });
   }
