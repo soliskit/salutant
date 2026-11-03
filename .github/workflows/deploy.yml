@@ -30,7 +30,7 @@ jobs:
       #     and EPOCH                               -> rerun, reuse them
       #   HTTP 200 missing any of that             -> STOP (partial state)
       #   HTTP 404 with success:false and error code 10007 (worker not
-      #     found)                                 -> first run
+      #     found)                                 -> STOP (absent worker; a rerun never plants keys)
       #   anything else: other status, other error codes, contradictory
       #     envelopes, malformed or off-schema bodies -> STOP (unknown)
       # This checks name-and-type presence, not secret contents; secret
@@ -73,8 +73,10 @@ jobs:
           )
           case "$decision" in
             FIRST)
-              echo "Confirmed worker absence: Cloudflare error 10007. First run; signing secrets and EPOCH will be planted."
-              echo "first_run=true" >> "$GITHUB_OUTPUT"
+              echo "Confirmed worker absence: Cloudflare error 10007."
+              echo "A deploy rerun must never plant new signing keys: absence can mean accidental deletion, a wrong account, or a rename."
+              echo "Stopping. Initial bootstrap is a separate, explicitly approved operation."
+              exit 1
               ;;
             RERUN)
               echo "Confirmed: CODE_HMAC_KEY, STATE_HMAC_KEY, SIGNING_KEYS and EPOCH all present on the worker; reruns reuse them."
