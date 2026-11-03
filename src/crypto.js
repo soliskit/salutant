@@ -66,6 +66,20 @@ export async function exportPublicJwk(publicKey, kid) {
   return { kty: jwk.kty, crv: jwk.crv, x: jwk.x, kid, alg: 'EdDSA', use: 'sig' };
 }
 
+// RFC 8037 registers "EdDSA" as the JWS alg value for Ed25519 keys;
+// Node's JWK export labels them "Ed25519" instead, which Workers'
+// importKey rejects. Normalize before import, and before a JWK leaves
+// this process for the SIGNING_KEYS secret.
+export function normalizeEd25519Jwk(jwk) {
+  return { ...jwk, alg: 'EdDSA' };
+}
+
+// Private half of the signing pair as a JWK for the SIGNING_KEYS secret,
+// with the label normalized as above.
+export async function exportSigningPrivateJwk(privateKey) {
+  return normalizeEd25519Jwk(await subtle.exportKey('jwk', privateKey));
+}
+
 // Compact JWS with one pinned algorithm (R4). No 'none', no RSA, no
 // algorithm from the token itself is ever honored at verify time.
 export async function signProof(claims, privateKey, kid) {
