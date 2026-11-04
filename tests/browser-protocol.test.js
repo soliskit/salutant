@@ -99,7 +99,6 @@ test('login CSRF: an attacker-owned state or proof cannot log the victim into th
 
   // The victim begins their own sign-in (own browser, own cookie) but
   // never finishes.
-  const victimBrowser = new BrowserSession(w);
   const victimStart = await w.app.startSignIn(null);
 
   // Attack: the victim's browser is lured to the completion URL. It
