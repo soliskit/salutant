@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryStore } from '../src/storage.js';
 import { DurableObjectStore } from '../src/do-store.js';
-import { generateSigningKeyPair, signProof } from '../src/crypto.js';
-import { makeWorld, makeDOStorage, BrowserSession, honestSignIn, OWNER, SERVICE_ORIGIN, APP_ORIGIN } from './helpers.js';
+import { generateSigningKeyPair } from '../src/crypto.js';
+import { makeWorld, makeDOStorage, BrowserSession, honestSignIn, OWNER, SERVICE_ORIGIN } from './helpers.js';
 
 // The plan requires the storage-exercising suite to run against both
 // store drivers: MemoryStore (local twin) and DurableObjectStore (the

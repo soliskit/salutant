@@ -144,12 +144,9 @@ export class DurableObjectStore {
   }
 }
 
-// Durable Object wrapper. Not deployable on its own: the worker entry
-// point and the wrangler.jsonc binding - including the DO migration that
-// enables SQLite storage (new_sqlite_classes) - are deferred to PR-3 of
-// the approved M2 plan, which wires this class and builds the service
-// around a DurableObjectStore. This PR intentionally ships only the
-// store, the wrapper, and their tests.
+// Durable Object wrapper. Wired for deployment: src/entry.js extends
+// this class, and wrangler.jsonc binds it as SALUTANT_STORE with the v1
+// migration enabling SQLite storage (new_sqlite_classes).
 export class SalutantStoreDO {
   constructor(ctx, env) {
     this.store = new DurableObjectStore(ctx.storage);
