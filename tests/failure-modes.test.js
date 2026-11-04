@@ -14,7 +14,6 @@ test('an uncertain send is not retried, counts against budget, and is reconciled
   assert.equal(w.mailer.reconciliations.length, 1, 'reconciled against the provider record');
   const reservation = w.store.transact((s) => s.getRef([...s.keysWithPrefix('reservation:')][0]));
   assert.equal(reservation.outcome, 'uncertain');
-  const sentDay = w.store.transact((s) => s.getRef('counter:sendday:' + Object.keys(Object.fromEntries(s.records)).find(() => true)));
   assert.ok(w.store.keysWithPrefix('counter:sendday:').length === 1, 'budget counted');
 });
 
