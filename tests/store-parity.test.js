@@ -187,3 +187,21 @@ test('parity: restore inside a transaction replaces wholesale, including transac
     assert.equal(store.get('restored'), true, name);
   }
 });
+
+test('parity: keysWithPrefix inside a transaction merges the working copy', async () => {
+  for (const [name, store] of makeStores()) {
+    store.set('code:keep', 1);
+    store.set('code:drop', 2);
+    store.set('budget:owner', 3);
+    const seen = store.transact((s) => {
+      s.set('code:new', 4);      // created in the transaction, matches the prefix
+      s.delete('code:drop');     // deleted in the transaction, was stored
+      s.set('budget:spent', 5);  // touched in the transaction, other prefix
+      return s.keysWithPrefix('code:').sort();
+    });
+    assert.deepEqual(seen, ['code:keep', 'code:new'], name);
+    assert.deepEqual(store.keysWithPrefix('code:').sort(), ['code:keep', 'code:new'], name);
+    assert.deepEqual(store.keysWithPrefix('budget:').sort(), ['budget:owner', 'budget:spent'], name);
+    assert.equal(store.get('code:drop'), undefined, name);
+  }
+});
