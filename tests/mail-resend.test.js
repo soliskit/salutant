@@ -20,7 +20,10 @@ function stubFetch(handlers) {
     return {
       ok: h.ok ?? (h.status >= 200 && h.status < 300),
       status: h.status,
-      json: async () => h.body,
+      json: async () => {
+        if (h.rawBody !== undefined) throw new SyntaxError('Unexpected token');
+        return h.body;
+      },
     };
   };
   impl.calls = calls;
@@ -130,4 +133,15 @@ test('reconcile after accepted reads the provider record and never POSTs', async
 test('reconcile of an unknown requestId is unknown', async () => {
   const a = adapter(stubFetch([]));
   assert.deepEqual(await a.reconcile('nope'), { state: 'unknown' });
+});
+
+test('a non-JSON provider body is uncertain, not accepted', async () => {
+  // The provider answered 200 but the body is not JSON (a proxy or
+  // outage page): no provider id can be read, so the send is uncertain
+  // and reconcile has no record to settle it.
+  const f = stubFetch([{ status: 200, rawBody: '<html>Bad Gateway</html>' }]);
+  const a = adapter(f);
+  assert.deepEqual(await a.send(MSG), { outcome: 'uncertain' });
+  assert.deepEqual(await a.reconcile('req-1'), { state: 'unknown' });
+  assert.equal(f.calls.length, 1);
 });
