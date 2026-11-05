@@ -182,6 +182,16 @@ test('a proof whose header or signed payload cannot be read is rejected before a
     /malformed proof payload/);
 });
 
+test('a proof whose signature does not verify is rejected as a bad signature [R4]', async () => {
+  const { publicKey, privateKey } = await generateSigningKeyPair();
+  const [header, payload, signature] = (await signProof({ sub: 'x' }, privateKey, 'k1')).split('.');
+  // One changed character, still valid base64url: decodes fine, verifies false.
+  const forged = (signature[0] === 'A' ? 'B' : 'A') + signature.slice(1);
+  await assert.rejects(
+    () => verifyProofSignature(`${header}.${payload}.${forged}`, publicKey),
+    /bad signature/);
+});
+
 test('a proof without exactly three parts, or naming another algorithm, is rejected before verification [R4]', async () => {
   const { publicKey } = await generateSigningKeyPair();
   const enc = new TextEncoder();
