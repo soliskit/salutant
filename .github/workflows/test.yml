@@ -50,9 +50,6 @@ jobs:
 
   webkit:
     runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble
-      options: --init --ipc=host
     env:
       PLAYWRIGHT_VERSION: '1.64.1'
     timeout-minutes: 15
@@ -68,7 +65,8 @@ jobs:
         with:
           node-version-file: package.json
       - run: npm i --no-save "playwright@${PLAYWRIGHT_VERSION}"
-      - name: Check Playwright version matches the container image
+      - run: npx playwright install --with-deps webkit
+      - name: Check Playwright package version
         run: node -e "process.exit(require('playwright/package.json').version==='1.64.1'?0:1)"
       - name: Run the WebKit protocol tests
         shell: bash
