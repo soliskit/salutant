@@ -92,3 +92,21 @@ test('the code-entry page rejects a missing app parameter for a registered non-e
   assert.ok(directives.includes("form-action 'none'"));
   assert.ok(!response.headers.get('content-security-policy').includes(APP_ORIGIN));
 });
+
+// R16 / exact origin list: with several registered apps, the page is served
+// for each registered origin and still refused for an unregistered one.
+test('the code-entry page is served for each registered app origin and refused for an unregistered one', async () => {
+  const second = 'https://second.example.test';
+  const worker = createWorker({ apps: [{ origin: APP_ORIGIN }, { origin: second }] });
+  for (const origin of [APP_ORIGIN, second]) {
+    const response = await worker.fetch(
+      new Request(`${SERVICE_ORIGIN}/?app=${encodeURIComponent(origin)}`));
+    assert.equal(response.status, 200, `${origin} is registered`);
+    const directives = response.headers.get('content-security-policy')
+      .split(';').map((part) => part.trim());
+    assert.ok(directives.includes(`connect-src 'self' ${origin}`), 'connect-src names that exact origin');
+  }
+  const refused = await worker.fetch(
+    new Request(`${SERVICE_ORIGIN}/?app=${encodeURIComponent('https://other.example.test')}`));
+  assert.equal(refused.status, 400);
+});
