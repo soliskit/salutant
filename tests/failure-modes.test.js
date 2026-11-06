@@ -5,16 +5,24 @@ import { MockMailAdapter } from '../src/mail-mock.js';
 import { makeWorld, BrowserSession, OWNER } from './helpers.js';
 
 test('an uncertain send is not retried, counts against budget, and is reconciled', async () => {
-  const w = await makeWorld({ mailerBehavior: 'uncertain' });
+  let captured;
+  const w = await makeWorld({
+    mailerBehavior: ({ text }) => { captured = text.match(/\b(\d{6})\b/)[1]; return 'uncertain'; },
+  });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  await browser.postChallenge({ address: OWNER, stateId: start.stateId });
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
   await w.service.drain();
   assert.equal(w.mailer.attempts.length, 1, 'no automatic retry');
   assert.equal(w.mailer.reconciliations.length, 1, 'reconciled against the provider record');
   const reservation = w.store.transact((s) => s.getRef([...s.keysWithPrefix('reservation:')][0]));
   assert.equal(reservation.outcome, 'uncertain');
+  assert.equal(reservation.reconciled, 'absent', 'the provider has no record of the send');
   assert.ok(w.store.keysWithPrefix('counter:sendday:').length === 1, 'budget counted');
+  // R5: with no provider record the code was never delivered, so even the
+  // exact code verifies nothing.
+  const res = await browser.verify({ challengeId: created.challengeId, code: captured, address: OWNER });
+  assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' });
 });
 
 test('a failed send means no proof and a recorded reservation', async () => {
