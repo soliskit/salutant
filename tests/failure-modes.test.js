@@ -56,6 +56,34 @@ test('a double-click is one request', async () => {
   assert.equal(w.store.keysWithPrefix('challenge:').length, 1);
 });
 
+test('a request without an idempotency header stays separate from the literal key null', async () => {
+  const w = await makeWorld();
+  const browser1 = new BrowserSession(w);
+  const browser2 = new BrowserSession(w);
+  const first = await w.app.startSignIn(null);
+  const second = await w.app.startSignIn(null);
+  assert.notEqual(first.stateId, second.stateId, 'setup requires separate pending states');
+  const firstResponse = await browser1.postChallenge({
+    address: OWNER, stateId: first.stateId, idempotencyKey: 'null',
+  });
+  const firstBody = await firstResponse.json();
+  assert.equal(firstResponse.status, 200);
+  assert.equal(firstBody.status, 'ok');
+  await w.service.drain();
+  const secondResponse = await browser2.postChallenge({
+    address: OWNER, stateId: second.stateId,
+  });
+  const secondBody = await secondResponse.json();
+  await w.service.drain();
+  assert.equal(secondResponse.status, 200);
+  assert.equal(secondBody.status, 'ok');
+  const secondChallenge = w.store.get(`challenge:${secondBody.challengeId}`);
+  assert.ok(secondChallenge, 'the fresh request has a saved challenge');
+  assert.equal(secondChallenge.stateId, second.stateId);
+  assert.equal(w.store.get(`challenge:${firstBody.challengeId}`).stateId, first.stateId);
+  assert.equal(w.mailer.attempts.length, 2, 'each independent request sends once');
+});
+
 test('a storage failure closes the service: no send, plain message', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);

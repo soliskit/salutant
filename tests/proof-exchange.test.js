@@ -133,6 +133,26 @@ test('a correctly signed proof missing required claims is rejected', async () =>
   }
 });
 
+test('a correctly signed numeric subject is rejected before identity binding', async () => {
+  const w = await makeWorld();
+  const r = await honestSignIn(w, { redeem: false });
+  assert.ok(r.verified.proof, 'setup proof');
+  assert.equal(r.verified.state, r.start.stateId, 'setup state belongs to this sign-in');
+  const [, payload] = r.verified.proof.split('.');
+  const claims = JSON.parse(new TextDecoder().decode(
+    (await import('../src/crypto.js')).fromBase64Url(payload)));
+  claims.sub = 123;
+  const key = w.service.signingKeys.get('k1');
+  const token = await signProof(claims, key.privateKey, 'k1');
+  const res = await w.app.handleExchange(
+    { proof: token, state: r.verified.state }, SERVICE_ORIGIN);
+  assert.equal(res.status, 400);
+  assert.deepEqual(res.body, { error: 'bad_proof' });
+  assert.equal(res.acao, SERVICE_ORIGIN);
+  assert.equal(w.appStore.get(`state:${r.start.stateId}`).verifiedSub, null,
+    'a rejected proof must not bind an identity');
+});
+
 test('the exchange window runs from proof issuance: a slow code step does not shut out a resend', async () => {
   const w = await makeWorld();
   // The person takes 61 seconds to read the mail and type the code.
