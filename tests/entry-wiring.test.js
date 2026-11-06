@@ -6,6 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import entry, { SalutantStoreDO } from '../src/entry.js';
+import { createWorker } from '../src/worker.js';
 import { generateSigningKeyPair, exportPublicJwk, exportSigningPrivateJwk, toBase64Url } from '../src/crypto.js';
 import { makeDOStorage, SERVICE_ORIGIN, APP_ORIGIN, OWNER } from './helpers.js';
 
@@ -62,4 +63,32 @@ test('the object builds the service once and serves page assets through it', asy
   assert.equal(second.status, 200);
   assert.match(second.headers.get('content-type'), /^text\/css/);
   assert.equal(object.workerPromise, built, 'the second request reuses the same build');
+});
+
+// Exercises the production wiring's epochSource.read through the existing
+// public-key route, without a challenge, mail call or production service.
+test('the object key endpoint returns the epoch from its configured environment', async () => {
+  const env = await makeEnv();
+  env.EPOCH = JSON.stringify({ value: 7 });
+  const object = new SalutantStoreDO({ storage: makeDOStorage() }, env);
+  const response = await object.fetch(new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`));
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /^application\/json/);
+  const body = await response.json();
+  assert.equal(body.epoch, 7, 'the endpoint reads the configured epoch, not a fixed default');
+  assert.equal(body.keys.length, 1);
+  assert.equal(body.keys[0].kid, 'k1');
+});
+
+// Checks the worker fallback for a normal registry containing a non-empty
+// app origin. It makes no policy claim about configuring an empty origin.
+test('the code-entry page rejects a missing app parameter for a registered non-empty origin', async () => {
+  const worker = createWorker({ apps: [{ origin: APP_ORIGIN }] });
+  const response = await worker.fetch(new Request(`${SERVICE_ORIGIN}/`));
+  assert.equal(response.status, 400);
+  assert.match(response.headers.get('content-type'), /^text\/html/);
+  const directives = response.headers.get('content-security-policy').split(';').map((part) => part.trim());
+  assert.ok(directives.includes("connect-src 'self'"));
+  assert.ok(directives.includes("form-action 'none'"));
+  assert.ok(!response.headers.get('content-security-policy').includes(APP_ORIGIN));
 });
