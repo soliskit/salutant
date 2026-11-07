@@ -496,3 +496,22 @@ test('rolling timestamp storage stays bounded across repeated windows', async ()
     assert.equal(w.mailer.attempts.length, (window + 1) * 3);
   }
 });
+
+test('resends below the daily and monthly send caps send mail and resends at them do not', async () => {
+  for (const config of [{ sendsPerDay: 2 }, { sendsPerMonth: 2 }]) {
+    const w = await makeWorld({ config });
+    const browser = new BrowserSession(w);
+    const c = await create(w, browser);
+    await w.service.drain();
+    assert.equal(w.mailer.outbox.length, 1, `first code sent under ${JSON.stringify(config)}`);
+    w.advance(61_000);
+    const below = await browser.resend({ challengeId: c.challengeId, address: OWNER });
+    await w.service.drain();
+    assert.equal(w.mailer.outbox.length, 2, 'a resend below the cap sends mail');
+    w.advance(61_000);
+    const atCap = await browser.resend({ challengeId: c.challengeId, address: OWNER });
+    await w.service.drain();
+    assert.equal(w.mailer.outbox.length, 2, 'a resend at the cap sends nothing');
+    assert.equal(atCap.status, below.status, 'the withheld resend answers like the sent one');
+  }
+});
