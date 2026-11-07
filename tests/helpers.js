@@ -32,7 +32,7 @@ export function makeDOStorage() {
         }
         stmt.run(...params);
         return { toArray: () => [] };
-      },
+      }
     },
     transactionSync(fn) {
       db.exec('BEGIN');
@@ -44,12 +44,15 @@ export function makeDOStorage() {
         db.exec('ROLLBACK');
         throw err;
       }
-    },
+    }
   };
 }
 
 export class ControllableEpoch {
-  constructor(value = 1) { this.value = value; this.available = true; }
+  constructor(value = 1) {
+    this.value = value;
+    this.available = true;
+  }
   async read() {
     if (!this.available) throw new Error('epoch source unavailable');
     return this.value;
@@ -62,7 +65,7 @@ export async function makeWorld({
   mailerBehavior = 'accepted',
   config = {},
   appConfig = {},
-  storeFactory = () => new MemoryStore(),
+  storeFactory = () => new MemoryStore()
 } = {}) {
   let clockNow = now;
   const clock = () => clockNow;
@@ -71,35 +74,60 @@ export async function makeWorld({
   const mailer = new MockMailAdapter({ behavior: mailerBehavior });
   const epoch = new ControllableEpoch(1);
   const keyPair = await generateSigningKeyPair();
-  const signingKeys = new Map([['k1', { ...keyPair, status: 'current', notAfterMs: null }]]);
+  const signingKeys = new Map([
+    ['k1', { ...keyPair, status: 'current', notAfterMs: null }]
+  ]);
   const logSink = [];
   const service = new SalutantService({
-    store, mailer, epochSource: epoch, allowlist,
+    store,
+    mailer,
+    epochSource: epoch,
+    allowlist,
     apps: [{ origin: APP_ORIGIN, callbackUrl: `${APP_ORIGIN}/auth/callback` }],
     serviceOrigin: SERVICE_ORIGIN,
     codeHmacKeyBytes: globalThis.crypto.getRandomValues(new Uint8Array(32)),
     stateHmacKeyBytes: globalThis.crypto.getRandomValues(new Uint8Array(32)),
-    signingKeys, currentKid: 'k1', clock, logSink, config,
+    signingKeys,
+    currentKid: 'k1',
+    clock,
+    logSink,
+    config
   });
   await service.ready();
   const worker = createWorker(service);
   const app = new StubApp({
-    origin: APP_ORIGIN, serviceOrigin: SERVICE_ORIGIN,
+    origin: APP_ORIGIN,
+    serviceOrigin: SERVICE_ORIGIN,
     fetchJwks: async () => {
-      const r = await service.fetch(new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`));
+      const r = await service.fetch(
+        new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
+      );
       if (!r.ok) throw new Error('jwks unavailable');
       return r.json();
     },
     store: appStore,
     stateHmacKeyBytes: globalThis.crypto.getRandomValues(new Uint8Array(32)),
-    clock, config: appConfig,
+    clock,
+    config: appConfig
   });
   await app.ready();
   return {
-    service, worker, app, store, appStore, mailer, epoch, logSink, clock,
-    advance: (ms) => { clockNow += ms; },
-    setNow: (v) => { clockNow = v; },
-    getNow: () => clockNow,
+    service,
+    worker,
+    app,
+    store,
+    appStore,
+    mailer,
+    epoch,
+    logSink,
+    clock,
+    advance: (ms) => {
+      clockNow += ms;
+    },
+    setNow: (v) => {
+      clockNow = v;
+    },
+    getNow: () => clockNow
   };
 }
 
@@ -111,33 +139,52 @@ export class BrowserSession {
     this.cookies = new Map(); // name -> { value, path }
   }
   _cookieHeaderFor(path) {
-    return [...this.cookies.entries()]
-      .filter(([, c]) => path.startsWith(c.path))
-      .map(([n, c]) => `${n}=${c.value}`).join('; ') || null;
+    return (
+      [...this.cookies.entries()]
+        .filter(([, c]) => path.startsWith(c.path))
+        .map(([n, c]) => `${n}=${c.value}`)
+        .join('; ') || null
+    );
   }
   _storeCookies(response) {
     const setC = response.headers.getSetCookie?.() ?? [];
     for (const line of setC) {
       const [pair, ...attrs] = line.split(';').map((s) => s.trim());
       const [name, value] = pair.split('=');
-      const path = attrs.find((a) => a.toLowerCase().startsWith('path='))?.slice(5) ?? '/';
+      const path =
+        attrs.find((a) => a.toLowerCase().startsWith('path='))?.slice(5) ?? '/';
       this.cookies.set(name, { value, path });
     }
   }
-  async postChallenge({ address, appOrigin = APP_ORIGIN, stateId, idempotencyKey, headers = {} }) {
-    const res = await this.world.worker.fetch(new Request(`${SERVICE_ORIGIN}/v1/challenges`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}), ...headers },
-      body: JSON.stringify({ address, appOrigin, stateId }),
-    }));
+  async postChallenge({
+    address,
+    appOrigin = APP_ORIGIN,
+    stateId,
+    idempotencyKey,
+    headers = {}
+  }) {
+    const res = await this.world.worker.fetch(
+      new Request(`${SERVICE_ORIGIN}/v1/challenges`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+          ...headers
+        },
+        body: JSON.stringify({ address, appOrigin, stateId })
+      })
+    );
     this._storeCookies(res);
     return res;
   }
   async resend({ challengeId, address }) {
-    const res = await this.world.worker.fetch(new Request(`${SERVICE_ORIGIN}/v1/challenges`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ resendOf: challengeId, address }),
-    }));
+    const res = await this.world.worker.fetch(
+      new Request(`${SERVICE_ORIGIN}/v1/challenges`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resendOf: challengeId, address })
+      })
+    );
     this._storeCookies(res);
     return res;
   }
@@ -148,36 +195,68 @@ export class BrowserSession {
       const c = this._cookieHeaderFor(path);
       if (c) headers.cookie = c;
     }
-    return this.world.worker.fetch(new Request(`${SERVICE_ORIGIN}${path}`, {
-      method: 'POST', headers, body: JSON.stringify({ code, address }),
-    }));
+    return this.world.worker.fetch(
+      new Request(`${SERVICE_ORIGIN}${path}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ code, address })
+      })
+    );
   }
   async getPage(appOrigin = APP_ORIGIN, stateId = 'x'.repeat(24)) {
-    return this.world.worker.fetch(new Request(
-      `${SERVICE_ORIGIN}/?app=${encodeURIComponent(appOrigin)}&state=${encodeURIComponent(stateId)}`));
+    return this.world.worker.fetch(
+      new Request(
+        `${SERVICE_ORIGIN}/?app=${encodeURIComponent(appOrigin)}&state=${encodeURIComponent(stateId)}`
+      )
+    );
   }
 }
 
 // Drive a whole sign-in the honest way. Returns every artifact.
-export async function honestSignIn(world, { address = OWNER, browser = new BrowserSession(world), redeem = true } = {}) {
+export async function honestSignIn(
+  world,
+  { address = OWNER, browser = new BrowserSession(world), redeem = true } = {}
+) {
   const start = await world.app.startSignIn(null);
   const page = await browser.getPage(APP_ORIGIN, start.stateId);
-  const create = await browser.postChallenge({ address, stateId: start.stateId });
+  const create = await browser.postChallenge({
+    address,
+    stateId: start.stateId
+  });
   const created = await create.json();
   await world.service.drain();
   const code = world.mailer.lastCode();
-  const verify = await browser.verify({ challengeId: created.challengeId, code, address });
+  const verify = await browser.verify({
+    challengeId: created.challengeId,
+    code,
+    address
+  });
   const verified = await verify.json();
   let exchange = null;
   let complete = null;
   if (verified.proof && redeem) {
     exchange = await world.app.handleExchange(
-      { proof: verified.proof, state: verified.state }, SERVICE_ORIGIN);
+      { proof: verified.proof, state: verified.state },
+      SERVICE_ORIGIN
+    );
     if (exchange.status === 200) {
       complete = await world.app.handleComplete(`pre=${start.cookieValue}`);
     }
   }
-  return { start, page, create, created, code, verify, verified, exchange, complete, browser };
+  return {
+    start,
+    page,
+    create,
+    created,
+    code,
+    verify,
+    verified,
+    exchange,
+    complete,
+    browser
+  };
 }
 
-export function bodyText(response) { return response.text(); }
+export function bodyText(response) {
+  return response.text();
+}

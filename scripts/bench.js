@@ -3,7 +3,12 @@
 // verify and session issue. Run: node scripts/bench.js
 // Local numbers say nothing about Workers CPU limits (cloud phase).
 import { performance } from 'node:perf_hooks';
-import { makeWorld, BrowserSession, honestSignIn, OWNER } from '../tests/helpers.js';
+import {
+  makeWorld,
+  BrowserSession,
+  honestSignIn,
+  OWNER
+} from '../tests/helpers.js';
 
 const RUNS = 20;
 const samples = [];
@@ -22,13 +27,25 @@ for (let i = 0; i < RUNS; i++) {
 // Key endpoint sample
 const w = await makeWorld();
 const cpu0 = process.cpuUsage();
-await w.service.fetch(new Request('https://salutant.example.test/.well-known/jwks.json'));
+await w.service.fetch(
+  new Request('https://salutant.example.test/.well-known/jwks.json')
+);
 const jwks = process.cpuUsage(cpu0);
 samples.sort((a, b) => a - b);
 const median = samples[Math.floor(samples.length / 2)];
-console.log(JSON.stringify({
-  runs: RUNS,
-  signInCpuMs: { min: samples[0].toFixed(2), median: median.toFixed(2), max: samples.at(-1).toFixed(2) },
-  firstRunKeygenWallMs: firstKeygenMs.toFixed(1),
-  jwksCpuMs: ((jwks.user + jwks.system) / 1000).toFixed(2),
-}, null, 1));
+console.log(
+  JSON.stringify(
+    {
+      runs: RUNS,
+      signInCpuMs: {
+        min: samples[0].toFixed(2),
+        median: median.toFixed(2),
+        max: samples.at(-1).toFixed(2)
+      },
+      firstRunKeygenWallMs: firstKeygenMs.toFixed(1),
+      jwksCpuMs: ((jwks.user + jwks.system) / 1000).toFixed(2)
+    },
+    null,
+    1
+  )
+);

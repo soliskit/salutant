@@ -6,18 +6,28 @@ export class MockMailAdapter {
   // behavior: "ok" | "uncertain" | "failed" | (message) => outcome
   constructor({ behavior = 'accepted' } = {}) {
     this.behavior = behavior;
-    this.outbox = [];        // every accepted message, readable by tests
-    this.attempts = [];      // every send call, including uncertain/failed
+    this.outbox = []; // every accepted message, readable by tests
+    this.attempts = []; // every send call, including uncertain/failed
     this.reconciliations = [];
   }
 
   async send({ requestId, to, subject, text }) {
     if (!requestId) throw new Error('adapter contract: requestId is required');
-    const outcome = typeof this.behavior === 'function' ? this.behavior({ requestId, to, subject, text }) : this.behavior;
+    const outcome =
+      typeof this.behavior === 'function'
+        ? this.behavior({ requestId, to, subject, text })
+        : this.behavior;
     this.attempts.push({ requestId, to, subject, outcome });
     if (outcome === 'accepted') {
       const providerId = `mock-${this.outbox.length + 1}`;
-      this.outbox.push({ requestId, providerId, to, subject, text, acceptedAt: Date.now() });
+      this.outbox.push({
+        requestId,
+        providerId,
+        to,
+        subject,
+        text,
+        acceptedAt: Date.now()
+      });
       return { outcome: 'accepted', providerId };
     }
     if (outcome === 'uncertain') return { outcome: 'uncertain' };

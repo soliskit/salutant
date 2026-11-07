@@ -19,7 +19,7 @@ export function createWorker(service) {
         return staticAsset(PAGE_CSS, 'text/css; charset=utf-8');
       }
       return service.fetch(request);
-    },
+    }
   };
 }
 
@@ -37,7 +37,11 @@ function staticAsset(text, contentType) {
 function codeEntryPage(service, url) {
   const appOrigin = url.searchParams.get('app') ?? '';
   const known = service.apps.some((a) => a.origin === appOrigin);
-  const r = respond(known ? 200 : 400, PAGE_HTML, known ? { connectOrigin: appOrigin } : {});
+  const r = respond(
+    known ? 200 : 400,
+    PAGE_HTML,
+    known ? { connectOrigin: appOrigin } : {}
+  );
   r.headers.set('content-type', 'text/html; charset=utf-8');
   return r;
 }

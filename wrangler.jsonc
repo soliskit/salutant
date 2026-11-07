@@ -7,18 +7,12 @@
   "compatibility_date": "2026-11-01",
   // Custom domain: salutant.soliskit.com. Host records are step 2.2 of
   // the deployment plan, not part of this PR.
-  "routes": [
-    { "pattern": "salutant.soliskit.com", "custom_domain": true }
-  ],
+  "routes": [{ "pattern": "salutant.soliskit.com", "custom_domain": true }],
   "vars": {
     "SERVICE_ORIGIN": "https://salutant.soliskit.com"
   },
   "durable_objects": {
-    "bindings": [
-      { "name": "SALUTANT_STORE", "class_name": "SalutantStoreDO" }
-    ]
+    "bindings": [{ "name": "SALUTANT_STORE", "class_name": "SalutantStoreDO" }]
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["SalutantStoreDO"] }
-  ]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SalutantStoreDO"] }]
 }

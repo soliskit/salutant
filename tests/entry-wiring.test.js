@@ -7,12 +7,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import entry, { SalutantStoreDO } from '../src/entry.js';
 import { createWorker } from '../src/worker.js';
-import { generateSigningKeyPair, exportPublicJwk, exportSigningPrivateJwk, toBase64Url } from '../src/crypto.js';
+import {
+  generateSigningKeyPair,
+  exportPublicJwk,
+  exportSigningPrivateJwk,
+  toBase64Url
+} from '../src/crypto.js';
 import { makeDOStorage, SERVICE_ORIGIN, APP_ORIGIN, OWNER } from './helpers.js';
 
 async function makeEnv() {
   const pair = await generateSigningKeyPair();
-  const bytes = () => toBase64Url(globalThis.crypto.getRandomValues(new Uint8Array(32)));
+  const bytes = () =>
+    toBase64Url(globalThis.crypto.getRandomValues(new Uint8Array(32)));
   return {
     RESEND_API_KEY: 'test-key-not-real',
     MAIL_FROM: 'Salutant <no-reply@example.test>',
@@ -20,16 +26,22 @@ async function makeEnv() {
     STATE_HMAC_KEY: bytes(),
     SIGNING_KEYS: JSON.stringify({
       currentKid: 'k1',
-      keys: [{
-        kid: 'k1', status: 'current', notAfterMs: null,
-        publicJwk: await exportPublicJwk(pair.publicKey, 'k1'),
-        privateJwk: await exportSigningPrivateJwk(pair.privateKey),
-      }],
+      keys: [
+        {
+          kid: 'k1',
+          status: 'current',
+          notAfterMs: null,
+          publicJwk: await exportPublicJwk(pair.publicKey, 'k1'),
+          privateJwk: await exportSigningPrivateJwk(pair.privateKey)
+        }
+      ]
     }),
     EPOCH: JSON.stringify({ value: 1 }),
     ALLOWLIST: JSON.stringify([OWNER]),
-    APPS: JSON.stringify([{ origin: APP_ORIGIN, callbackUrl: `${APP_ORIGIN}/auth/callback` }]),
-    SERVICE_ORIGIN,
+    APPS: JSON.stringify([
+      { origin: APP_ORIGIN, callbackUrl: `${APP_ORIGIN}/auth/callback` }
+    ]),
+    SERVICE_ORIGIN
   };
 }
 
@@ -38,11 +50,19 @@ test('the worker forwards every request to the one named object', async () => {
   const seen = [];
   const env = {
     SALUTANT_STORE: {
-      idFromName(name) { names.push(name); return `id:${name}`; },
-      get(id) {
-        return { async fetch(request) { seen.push([id, request.url]); return new Response('from the object'); } };
+      idFromName(name) {
+        names.push(name);
+        return `id:${name}`;
       },
-    },
+      get(id) {
+        return {
+          async fetch(request) {
+            seen.push([id, request.url]);
+            return new Response('from the object');
+          }
+        };
+      }
+    }
   };
   const request = new Request(`${SERVICE_ORIGIN}/app.js`);
   const res = await entry.fetch(request, env);
@@ -52,8 +72,15 @@ test('the worker forwards every request to the one named object', async () => {
 });
 
 test('the object builds the service once and serves page assets through it', async () => {
-  const object = new SalutantStoreDO({ storage: makeDOStorage() }, await makeEnv());
-  assert.equal(object.workerPromise, null, 'nothing is built before the first request');
+  const object = new SalutantStoreDO(
+    { storage: makeDOStorage() },
+    await makeEnv()
+  );
+  assert.equal(
+    object.workerPromise,
+    null,
+    'nothing is built before the first request'
+  );
   const first = await object.fetch(new Request(`${SERVICE_ORIGIN}/app.js`));
   assert.equal(first.status, 200);
   assert.match(first.headers.get('content-type'), /^text\/javascript/);
@@ -62,7 +89,11 @@ test('the object builds the service once and serves page assets through it', asy
   const second = await object.fetch(new Request(`${SERVICE_ORIGIN}/style.css`));
   assert.equal(second.status, 200);
   assert.match(second.headers.get('content-type'), /^text\/css/);
-  assert.equal(object.workerPromise, built, 'the second request reuses the same build');
+  assert.equal(
+    object.workerPromise,
+    built,
+    'the second request reuses the same build'
+  );
 });
 
 // Exercises the production wiring's epochSource.read through the existing
@@ -71,11 +102,17 @@ test('the object key endpoint returns the epoch from its configured environment'
   const env = await makeEnv();
   env.EPOCH = JSON.stringify({ value: 7 });
   const object = new SalutantStoreDO({ storage: makeDOStorage() }, env);
-  const response = await object.fetch(new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`));
+  const response = await object.fetch(
+    new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
+  );
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type'), /^application\/json/);
   const body = await response.json();
-  assert.equal(body.epoch, 7, 'the endpoint reads the configured epoch, not a fixed default');
+  assert.equal(
+    body.epoch,
+    7,
+    'the endpoint reads the configured epoch, not a fixed default'
+  );
   assert.equal(body.keys.length, 1);
   assert.equal(body.keys[0].kid, 'k1');
 });
@@ -87,26 +124,42 @@ test('the code-entry page rejects a missing app parameter for a registered non-e
   const response = await worker.fetch(new Request(`${SERVICE_ORIGIN}/`));
   assert.equal(response.status, 400);
   assert.match(response.headers.get('content-type'), /^text\/html/);
-  const directives = response.headers.get('content-security-policy').split(';').map((part) => part.trim());
+  const directives = response.headers
+    .get('content-security-policy')
+    .split(';')
+    .map((part) => part.trim());
   assert.ok(directives.includes("connect-src 'self'"));
   assert.ok(directives.includes("form-action 'none'"));
-  assert.ok(!response.headers.get('content-security-policy').includes(APP_ORIGIN));
+  assert.ok(
+    !response.headers.get('content-security-policy').includes(APP_ORIGIN)
+  );
 });
 
 // R16 / exact origin list: with several registered apps, the page is served
 // for each registered origin and still refused for an unregistered one.
 test('the code-entry page is served for each registered app origin and refused for an unregistered one', async () => {
   const second = 'https://second.example.test';
-  const worker = createWorker({ apps: [{ origin: APP_ORIGIN }, { origin: second }] });
+  const worker = createWorker({
+    apps: [{ origin: APP_ORIGIN }, { origin: second }]
+  });
   for (const origin of [APP_ORIGIN, second]) {
     const response = await worker.fetch(
-      new Request(`${SERVICE_ORIGIN}/?app=${encodeURIComponent(origin)}`));
+      new Request(`${SERVICE_ORIGIN}/?app=${encodeURIComponent(origin)}`)
+    );
     assert.equal(response.status, 200, `${origin} is registered`);
-    const directives = response.headers.get('content-security-policy')
-      .split(';').map((part) => part.trim());
-    assert.ok(directives.includes(`connect-src 'self' ${origin}`), 'connect-src names that exact origin');
+    const directives = response.headers
+      .get('content-security-policy')
+      .split(';')
+      .map((part) => part.trim());
+    assert.ok(
+      directives.includes(`connect-src 'self' ${origin}`),
+      'connect-src names that exact origin'
+    );
   }
   const refused = await worker.fetch(
-    new Request(`${SERVICE_ORIGIN}/?app=${encodeURIComponent('https://other.example.test')}`));
+    new Request(
+      `${SERVICE_ORIGIN}/?app=${encodeURIComponent('https://other.example.test')}`
+    )
+  );
   assert.equal(refused.status, 400);
 });

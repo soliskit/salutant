@@ -21,25 +21,36 @@ test('MemoryStore can be constructed from a snapshot', () => {
 
 test('SalutantService uses the wall clock when no clock is injected', async () => {
   const keyPair = await generateSigningKeyPair();
-  const signingKeys = new Map([['k1', { ...keyPair, status: 'current', notAfterMs: null }]]);
+  const signingKeys = new Map([
+    ['k1', { ...keyPair, status: 'current', notAfterMs: null }]
+  ]);
   const logSink = [];
   const service = new SalutantService({
     store: new MemoryStore(),
     mailer: new MockMailAdapter({ behavior: 'accepted' }),
-    epochSource: { async read() { return 1; } },
+    epochSource: {
+      async read() {
+        return 1;
+      }
+    },
     allowlist: [OWNER],
     apps: [{ origin: APP_ORIGIN, callbackUrl: `${APP_ORIGIN}/auth/callback` }],
     serviceOrigin: SERVICE_ORIGIN,
     codeHmacKeyBytes: globalThis.crypto.getRandomValues(new Uint8Array(32)),
     stateHmacKeyBytes: globalThis.crypto.getRandomValues(new Uint8Array(32)),
-    signingKeys, currentKid: 'k1', logSink,
+    signingKeys,
+    currentKid: 'k1',
+    logSink
   });
   await service.ready();
   const before = Date.now();
   service.log('probe', 'ok', 'test');
   const after = Date.now();
   const t = Date.parse(logSink[0].time);
-  assert.ok(t >= before - 1000 && t <= after + 1000, `log time ${logSink[0].time} not near wall clock`);
+  assert.ok(
+    t >= before - 1000 && t <= after + 1000,
+    `log time ${logSink[0].time} not near wall clock`
+  );
 });
 
 test('StubApp uses the wall clock when no clock is injected', async () => {
@@ -47,9 +58,11 @@ test('StubApp uses the wall clock when no clock is injected', async () => {
   const app = new StubApp({
     origin: APP_ORIGIN,
     serviceOrigin: SERVICE_ORIGIN,
-    fetchJwks: async () => { throw new Error('not needed for this test'); },
+    fetchJwks: async () => {
+      throw new Error('not needed for this test');
+    },
     store: appStore,
-    stateHmacKeyBytes: globalThis.crypto.getRandomValues(new Uint8Array(32)),
+    stateHmacKeyBytes: globalThis.crypto.getRandomValues(new Uint8Array(32))
   });
   await app.ready();
   const before = Date.now();
@@ -57,6 +70,8 @@ test('StubApp uses the wall clock when no clock is injected', async () => {
   const after = Date.now();
   const pending = appStore.get(`state:${start.stateId}`);
   assert.ok(pending, 'pending state stored');
-  assert.ok(pending.createdAtMs >= before && pending.createdAtMs <= after,
-    `createdAtMs ${pending.createdAtMs} not between ${before} and ${after}`);
+  assert.ok(
+    pending.createdAtMs >= before && pending.createdAtMs <= after,
+    `createdAtMs ${pending.createdAtMs} not between ${before} and ${after}`
+  );
 });

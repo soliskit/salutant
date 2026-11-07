@@ -14,11 +14,19 @@ test('logs hold no codes, proofs or addresses; subject lines carry no code', asy
   assert.ok(!logText.includes(OWNER), 'no address in logs');
   assert.ok(!logText.includes(r.verified.proof), 'no proof in logs');
   for (const entry of w.logSink) {
-    assert.deepEqual(Object.keys(entry).sort(), ['event', 'outcome', 'source', 'time']);
+    assert.deepEqual(Object.keys(entry).sort(), [
+      'event',
+      'outcome',
+      'source',
+      'time'
+    ]);
   }
   for (const mail of w.mailer.outbox) {
     assert.equal(mail.subject, 'Your sign-in code');
-    assert.ok(!mail.subject.includes(r.code), 'the code appears only in the body');
+    assert.ok(
+      !mail.subject.includes(r.code),
+      'the code appears only in the body'
+    );
   }
   // The store holds keyed hashes only.
   const dump = JSON.stringify([...w.store.records]);
@@ -31,11 +39,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SKIP_DIRS = new Set(['.git', 'node_modules']);
 const PATTERNS = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-  /AKIA[0-9A-Z]{16}/,                    // AWS access key id
-  /xox[baprs]-[0-9A-Za-z-]{10,}/,        // Slack tokens
-  /sk_live_[0-9a-zA-Z]{10,}/,            // Stripe live key
-  /re_[0-9a-zA-Z]{20,}/,                 // Resend API key shape
-  /\b[\w.+-]+@(?!example\.(test|com|org))[\w-]+\.[\w.]+\b/, // non-example addresses
+  /AKIA[0-9A-Z]{16}/, // AWS access key id
+  /xox[baprs]-[0-9A-Za-z-]{10,}/, // Slack tokens
+  /sk_live_[0-9a-zA-Z]{10,}/, // Stripe live key
+  /re_[0-9a-zA-Z]{20,}/, // Resend API key shape
+  /\b[\w.+-]+@(?!example\.(test|com|org))[\w-]+\.[\w.]+\b/ // non-example addresses
 ];
 
 function* walk(dir) {

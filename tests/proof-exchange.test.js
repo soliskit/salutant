@@ -1,8 +1,21 @@
 // R4 signed proof and exchange.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeWorld, BrowserSession, honestSignIn, OWNER, SERVICE_ORIGIN, APP_ORIGIN } from './helpers.js';
-import { generateSigningKeyPair, signProof, timingSafeEqual, toBase64Url, verifyProofSignature } from '../src/crypto.js';
+import {
+  makeWorld,
+  BrowserSession,
+  honestSignIn,
+  OWNER,
+  SERVICE_ORIGIN,
+  APP_ORIGIN
+} from './helpers.js';
+import {
+  generateSigningKeyPair,
+  signProof,
+  timingSafeEqual,
+  toBase64Url,
+  verifyProofSignature
+} from '../src/crypto.js';
 
 async function freshProof(w) {
   const r = await honestSignIn(w);
@@ -23,8 +36,14 @@ test('many parallel redemptions of one proof give one redemption', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
   assert.ok(r.verified.proof, 'setup proof');
-  const outcomes = await Promise.all(Array.from({ length: 20 }, () =>
-    w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN)));
+  const outcomes = await Promise.all(
+    Array.from({ length: 20 }, () =>
+      w.app.handleExchange(
+        { proof: r.verified.proof, state: r.verified.state },
+        SERVICE_ORIGIN
+      )
+    )
+  );
   assert.equal(outcomes.filter((o) => o.status === 200).length, 1);
   assert.equal(outcomes.filter((o) => o.body.error === 'replayed').length, 19);
 });
@@ -32,25 +51,47 @@ test('many parallel redemptions of one proof give one redemption', async () => {
 async function tampered(w, mutate) {
   const r = await honestSignIn(w);
   const [h, p, s] = r.verified.proof.split('.');
-  const claims = JSON.parse(new TextDecoder().decode(
-    (await import('../src/crypto.js')).fromBase64Url(p)));
+  const claims = JSON.parse(
+    new TextDecoder().decode(
+      (await import('../src/crypto.js')).fromBase64Url(p)
+    )
+  );
   mutate(claims);
   const key = w.service.signingKeys.get('k1');
   return signProof(claims, key.privateKey, 'k1');
 }
 
 test('wrong issuer, audience, expiry, not-before and issue time are rejected', async () => {
-  const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 100, requestsPerAddressPerHour: 100, requestsPerSourcePerHour: 100 } });
+  const w = await makeWorld({
+    config: {
+      sendsPerAddressPer30Minutes: 100,
+      requestsPerAddressPerHour: 100,
+      requestsPerSourcePerHour: 100
+    }
+  });
   const cases = [
-    (c) => { c.iss = 'https://evil.example.test'; },
-    (c) => { c.aud = 'https://other.example.test'; },
-    (c) => { c.exp = Math.floor(w.getNow() / 1000) - 120; },
-    (c) => { c.nbf = Math.floor(w.getNow() / 1000) + 600; },
-    (c) => { c.iat = Math.floor(w.getNow() / 1000) + 600; },
+    (c) => {
+      c.iss = 'https://evil.example.test';
+    },
+    (c) => {
+      c.aud = 'https://other.example.test';
+    },
+    (c) => {
+      c.exp = Math.floor(w.getNow() / 1000) - 120;
+    },
+    (c) => {
+      c.nbf = Math.floor(w.getNow() / 1000) + 600;
+    },
+    (c) => {
+      c.iat = Math.floor(w.getNow() / 1000) + 600;
+    }
   ];
   for (const mutate of cases) {
     const token = await tampered(w, mutate);
-    const res = await w.app.handleExchange({ proof: token, state: 'x'.repeat(24) }, SERVICE_ORIGIN);
+    const res = await w.app.handleExchange(
+      { proof: token, state: 'x'.repeat(24) },
+      SERVICE_ORIGIN
+    );
     assert.notEqual(res.status, 200);
   }
 });
@@ -59,11 +100,17 @@ test('an altered proof body fails its signature', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w);
   const [h, p, s] = r.verified.proof.split('.');
-  const claims = JSON.parse(new TextDecoder().decode(
-    (await import('../src/crypto.js')).fromBase64Url(p)));
+  const claims = JSON.parse(
+    new TextDecoder().decode(
+      (await import('../src/crypto.js')).fromBase64Url(p)
+    )
+  );
   claims.sub = 'someone-else@example.test';
   const forged = `${h}.${toBase64Url(new TextEncoder().encode(JSON.stringify(claims)))}.${s}`;
-  const res = await w.app.handleExchange({ proof: forged, state: r.verified.state }, SERVICE_ORIGIN);
+  const res = await w.app.handleExchange(
+    { proof: forged, state: r.verified.state },
+    SERVICE_ORIGIN
+  );
   assert.notEqual(res.status, 200);
 });
 
@@ -71,24 +118,57 @@ test('another algorithm or key type is never accepted', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w);
   // alg:none style token
-  const noneHeader = toBase64Url(new TextEncoder().encode(JSON.stringify({ alg: 'none', typ: 'JWT' })));
+  const noneHeader = toBase64Url(
+    new TextEncoder().encode(JSON.stringify({ alg: 'none', typ: 'JWT' }))
+  );
   const [, p] = r.verified.proof.split('.');
-  const res = await w.app.handleExchange({ proof: `${noneHeader}.${p}.` , state: r.verified.state }, SERVICE_ORIGIN);
+  const res = await w.app.handleExchange(
+    { proof: `${noneHeader}.${p}.`, state: r.verified.state },
+    SERVICE_ORIGIN
+  );
   assert.notEqual(res.status, 200);
   // a different key pair's signature under the real kid fails
   const other = await generateSigningKeyPair();
-  const claims = { iss: SERVICE_ORIGIN, aud: APP_ORIGIN, sub: OWNER, iat: 1, nbf: 1, exp: 9e9, kid: 'k1', jti: 'x', nonce: 'y', epoch: 1 };
+  const claims = {
+    iss: SERVICE_ORIGIN,
+    aud: APP_ORIGIN,
+    sub: OWNER,
+    iat: 1,
+    nbf: 1,
+    exp: 9e9,
+    kid: 'k1',
+    jti: 'x',
+    nonce: 'y',
+    epoch: 1
+  };
   const forged = await signProof(claims, other.privateKey, 'k1');
-  const res2 = await w.app.handleExchange({ proof: forged, state: 'y' }, SERVICE_ORIGIN);
+  const res2 = await w.app.handleExchange(
+    { proof: forged, state: 'y' },
+    SERVICE_ORIGIN
+  );
   assert.notEqual(res2.status, 200);
 });
 
 test('an unknown key id is rejected after one refresh', async () => {
   const w = await makeWorld();
   const other = await generateSigningKeyPair();
-  const claims = { iss: SERVICE_ORIGIN, aud: APP_ORIGIN, sub: OWNER, iat: 1, nbf: 1, exp: 9e9, kid: 'kNope', jti: 'x', nonce: 'y', epoch: 1 };
+  const claims = {
+    iss: SERVICE_ORIGIN,
+    aud: APP_ORIGIN,
+    sub: OWNER,
+    iat: 1,
+    nbf: 1,
+    exp: 9e9,
+    kid: 'kNope',
+    jti: 'x',
+    nonce: 'y',
+    epoch: 1
+  };
   const token = await signProof(claims, other.privateKey, 'kNope');
-  const res = await w.app.handleExchange({ proof: token, state: 'y' }, SERVICE_ORIGIN);
+  const res = await w.app.handleExchange(
+    { proof: token, state: 'y' },
+    SERVICE_ORIGIN
+  );
   assert.notEqual(res.status, 200);
   assert.equal(res.body.error, 'unknown_key');
 });
@@ -98,7 +178,10 @@ test('a reused state value is rejected', async () => {
   const r = await honestSignIn(w);
   assert.equal(r.exchange.status, 200);
   // second exchange of the same proof+state: replayed
-  const again = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
+  const again = await w.app.handleExchange(
+    { proof: r.verified.proof, state: r.verified.state },
+    SERVICE_ORIGIN
+  );
   assert.equal(again.body.error, 'replayed');
 });
 
@@ -106,11 +189,26 @@ test('a proof for another audience is rejected by this app', async () => {
   const w = await makeWorld();
   const key = w.service.signingKeys.get('k1');
   const nowS = Math.floor(w.getNow() / 1000);
-  const token = await signProof({
-    iss: SERVICE_ORIGIN, aud: 'https://other.example.test', sub: OWNER,
-    iat: nowS, nbf: nowS, exp: nowS + 300, kid: 'k1', jti: 'j1', nonce: 'n1', epoch: 1,
-  }, key.privateKey, 'k1');
-  const res = await w.app.handleExchange({ proof: token, state: 'n1' }, SERVICE_ORIGIN);
+  const token = await signProof(
+    {
+      iss: SERVICE_ORIGIN,
+      aud: 'https://other.example.test',
+      sub: OWNER,
+      iat: nowS,
+      nbf: nowS,
+      exp: nowS + 300,
+      kid: 'k1',
+      jti: 'j1',
+      nonce: 'n1',
+      epoch: 1
+    },
+    key.privateKey,
+    'k1'
+  );
+  const res = await w.app.handleExchange(
+    { proof: token, state: 'n1' },
+    SERVICE_ORIGIN
+  );
   assert.equal(res.body.error, 'bad_proof');
 });
 
@@ -122,12 +220,18 @@ test('a correctly signed proof missing required claims is rejected', async () =>
     // Mutate this sign-in's own claims so the missing field is the only
     // defect: nonce, epoch and audience all match.
     const [, p] = r.verified.proof.split('.');
-    const claims = JSON.parse(new TextDecoder().decode(
-      (await import('../src/crypto.js')).fromBase64Url(p)));
+    const claims = JSON.parse(
+      new TextDecoder().decode(
+        (await import('../src/crypto.js')).fromBase64Url(p)
+      )
+    );
     delete claims[field];
     const key = w.service.signingKeys.get('k1');
     const token = await signProof(claims, key.privateKey, 'k1');
-    const res = await w.app.handleExchange({ proof: token, state: r.verified.state }, SERVICE_ORIGIN);
+    const res = await w.app.handleExchange(
+      { proof: token, state: r.verified.state },
+      SERVICE_ORIGIN
+    );
     assert.notEqual(res.status, 200, `missing ${field} must be rejected`);
     assert.equal(res.body.error, 'bad_proof');
   }
@@ -137,20 +241,32 @@ test('a correctly signed numeric subject is rejected before identity binding', a
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
   assert.ok(r.verified.proof, 'setup proof');
-  assert.equal(r.verified.state, r.start.stateId, 'setup state belongs to this sign-in');
+  assert.equal(
+    r.verified.state,
+    r.start.stateId,
+    'setup state belongs to this sign-in'
+  );
   const [, payload] = r.verified.proof.split('.');
-  const claims = JSON.parse(new TextDecoder().decode(
-    (await import('../src/crypto.js')).fromBase64Url(payload)));
+  const claims = JSON.parse(
+    new TextDecoder().decode(
+      (await import('../src/crypto.js')).fromBase64Url(payload)
+    )
+  );
   claims.sub = 123;
   const key = w.service.signingKeys.get('k1');
   const token = await signProof(claims, key.privateKey, 'k1');
   const res = await w.app.handleExchange(
-    { proof: token, state: r.verified.state }, SERVICE_ORIGIN);
+    { proof: token, state: r.verified.state },
+    SERVICE_ORIGIN
+  );
   assert.equal(res.status, 400);
   assert.deepEqual(res.body, { error: 'bad_proof' });
   assert.equal(res.acao, SERVICE_ORIGIN);
-  assert.equal(w.appStore.get(`state:${r.start.stateId}`).verifiedSub, null,
-    'a rejected proof must not bind an identity');
+  assert.equal(
+    w.appStore.get(`state:${r.start.stateId}`).verifiedSub,
+    null,
+    'a rejected proof must not bind an identity'
+  );
 });
 
 test('the exchange window runs from proof issuance: a slow code step does not shut out a resend', async () => {
@@ -158,31 +274,60 @@ test('the exchange window runs from proof issuance: a slow code step does not sh
   // The person takes 61 seconds to read the mail and type the code.
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  const created = await (
+    await browser.postChallenge({ address: OWNER, stateId: start.stateId })
+  ).json();
   await w.service.drain();
   const code = w.mailer.lastCode();
   w.advance(61_000);
-  const verified = await (await browser.verify({ challengeId: created.challengeId, code, address: OWNER })).json();
+  const verified = await (
+    await browser.verify({
+      challengeId: created.challengeId,
+      code,
+      address: OWNER
+    })
+  ).json();
   assert.ok(verified.proof, 'proof issued after a slow code step');
-  const exchange = await w.app.handleExchange({ proof: verified.proof, state: verified.state }, SERVICE_ORIGIN);
-  assert.equal(exchange.status, 200, 'window runs from issuance, not state creation');
+  const exchange = await w.app.handleExchange(
+    { proof: verified.proof, state: verified.state },
+    SERVICE_ORIGIN
+  );
+  assert.equal(
+    exchange.status,
+    200,
+    'window runs from issuance, not state creation'
+  );
 });
 
 test('the exchange rejects a proof 61 seconds after issuance', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
   w.advance(61_000);
-  const late = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
-  assert.notEqual(late.status, 200, 'an exchange 61 seconds after issuance is rejected');
+  const late = await w.app.handleExchange(
+    { proof: r.verified.proof, state: r.verified.state },
+    SERVICE_ORIGIN
+  );
+  assert.notEqual(
+    late.status,
+    200,
+    'an exchange 61 seconds after issuance is rejected'
+  );
 });
 
 test('exchange window boundary: 59,999 ms after issuance succeeds; 60,000 and 60,001 reject', async () => {
-  for (const [ms, ok] of [[59_999, true], [60_000, false], [60_001, false]]) {
+  for (const [ms, ok] of [
+    [59_999, true],
+    [60_000, false],
+    [60_001, false]
+  ]) {
     const w = await makeWorld();
     const r = await honestSignIn(w, { redeem: false });
     assert.ok(r.verified.proof, 'setup proof');
     w.advance(ms);
-    const res = await w.app.handleExchange({ proof: r.verified.proof, state: r.verified.state }, SERVICE_ORIGIN);
+    const res = await w.app.handleExchange(
+      { proof: r.verified.proof, state: r.verified.state },
+      SERVICE_ORIGIN
+    );
     assert.equal(res.status === 200, ok, `exchange at +${ms} ms`);
   }
 });
@@ -190,44 +335,79 @@ test('exchange window boundary: 59,999 ms after issuance succeeds; 60,000 and 60
 test('a proof whose header or signed payload cannot be read is rejected before any claim is trusted [R4]', async () => {
   const { publicKey, privateKey } = await generateSigningKeyPair();
   const enc = new TextEncoder();
-  const [header, payload, signature] = (await signProof({ sub: 'x' }, privateKey, 'k1')).split('.');
+  const [header, payload, signature] = (
+    await signProof({ sub: 'x' }, privateKey, 'k1')
+  ).split('.');
   await assert.rejects(
-    () => verifyProofSignature(`${toBase64Url(enc.encode('not json'))}.${payload}.${signature}`, publicKey),
-    /malformed proof header/);
+    () =>
+      verifyProofSignature(
+        `${toBase64Url(enc.encode('not json'))}.${payload}.${signature}`,
+        publicKey
+      ),
+    /malformed proof header/
+  );
   // A correctly signed payload that is not JSON is still refused.
   const badPayload = toBase64Url(enc.encode('not json'));
-  const sig = new Uint8Array(await globalThis.crypto.subtle.sign({ name: 'Ed25519' }, privateKey, enc.encode(`${header}.${badPayload}`)));
+  const sig = new Uint8Array(
+    await globalThis.crypto.subtle.sign(
+      { name: 'Ed25519' },
+      privateKey,
+      enc.encode(`${header}.${badPayload}`)
+    )
+  );
   await assert.rejects(
-    () => verifyProofSignature(`${header}.${badPayload}.${toBase64Url(sig)}`, publicKey),
-    /malformed proof payload/);
+    () =>
+      verifyProofSignature(
+        `${header}.${badPayload}.${toBase64Url(sig)}`,
+        publicKey
+      ),
+    /malformed proof payload/
+  );
 });
 
 test('a proof whose signature does not verify is rejected as a bad signature [R4]', async () => {
   const { publicKey, privateKey } = await generateSigningKeyPair();
-  const [header, payload, signature] = (await signProof({ sub: 'x' }, privateKey, 'k1')).split('.');
+  const [header, payload, signature] = (
+    await signProof({ sub: 'x' }, privateKey, 'k1')
+  ).split('.');
   // One changed character, still valid base64url: decodes fine, verifies false.
   const forged = (signature[0] === 'A' ? 'B' : 'A') + signature.slice(1);
   await assert.rejects(
     () => verifyProofSignature(`${header}.${payload}.${forged}`, publicKey),
-    /bad signature/);
+    /bad signature/
+  );
 });
 
 test('a proof without exactly three parts, or naming another algorithm, is rejected before verification [R4]', async () => {
   const { publicKey } = await generateSigningKeyPair();
   const enc = new TextEncoder();
   await assert.rejects(
-    () => verifyProofSignature(`${toBase64Url(enc.encode(JSON.stringify({ alg: 'EdDSA', kid: 'k1' })))}.e30`, publicKey),
-    /malformed proof/);
+    () =>
+      verifyProofSignature(
+        `${toBase64Url(enc.encode(JSON.stringify({ alg: 'EdDSA', kid: 'k1' })))}.e30`,
+        publicKey
+      ),
+    /malformed proof/
+  );
   // The pinned algorithm decides, never the token - even when the
   // header names a known key.
-  const confused = toBase64Url(enc.encode(JSON.stringify({ alg: 'HS256', kid: 'k1', typ: 'JWT' })));
+  const confused = toBase64Url(
+    enc.encode(JSON.stringify({ alg: 'HS256', kid: 'k1', typ: 'JWT' }))
+  );
   await assert.rejects(
     () => verifyProofSignature(`${confused}.e30.c2ln`, publicKey),
-    /unexpected algorithm/);
+    /unexpected algorithm/
+  );
 });
 
 test('timingSafeEqual refuses different-length inputs instead of comparing them', () => {
-  assert.equal(timingSafeEqual(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2])), false);
+  assert.equal(
+    timingSafeEqual(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2])),
+    false
+  );
   assert.equal(timingSafeEqual(new Uint8Array([]), new Uint8Array([1])), false);
-  assert.equal(timingSafeEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2])), true);
+  assert.equal(
+    timingSafeEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2])),
+    true
+  );
 });

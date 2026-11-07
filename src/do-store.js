@@ -27,7 +27,9 @@ export class DurableObjectStore {
   }
 
   _ensureTable() {
-    this.storage.sql.exec(`CREATE TABLE IF NOT EXISTS ${TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+    this.storage.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ${TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL)`
+    );
   }
 
   // Synchronous single-step state change. `fn` must not await.
@@ -41,7 +43,11 @@ export class DurableObjectStore {
           if (entry.value === undefined) {
             this.storage.sql.exec(`DELETE FROM ${TABLE} WHERE key = ?`, key);
           } else {
-            this.storage.sql.exec(`INSERT OR REPLACE INTO ${TABLE} (key, value) VALUES (?, ?)`, key, JSON.stringify(entry.value));
+            this.storage.sql.exec(
+              `INSERT OR REPLACE INTO ${TABLE} (key, value) VALUES (?, ?)`,
+              key,
+              JSON.stringify(entry.value)
+            );
           }
         }
         return result;
@@ -53,7 +59,9 @@ export class DurableObjectStore {
 
   _load(key) {
     if (this.tx && this.tx.has(key)) return this.tx.get(key).value;
-    const rows = this.storage.sql.exec(`SELECT value FROM ${TABLE} WHERE key = ?`, key).toArray();
+    const rows = this.storage.sql
+      .exec(`SELECT value FROM ${TABLE} WHERE key = ?`, key)
+      .toArray();
     const value = rows.length === 0 ? undefined : JSON.parse(rows[0].value);
     if (this.tx) this.tx.set(key, { value, dirty: false });
     return value;
@@ -76,7 +84,11 @@ export class DurableObjectStore {
     if (this.tx) {
       this.tx.set(key, { value, dirty: true });
     } else {
-      this.storage.sql.exec(`INSERT OR REPLACE INTO ${TABLE} (key, value) VALUES (?, ?)`, key, JSON.stringify(value));
+      this.storage.sql.exec(
+        `INSERT OR REPLACE INTO ${TABLE} (key, value) VALUES (?, ?)`,
+        key,
+        JSON.stringify(value)
+      );
     }
   }
 
@@ -90,7 +102,12 @@ export class DurableObjectStore {
 
   keysWithPrefix(prefix) {
     const pattern = prefix.replace(/[%_\\]/g, (c) => `\\${c}`) + '%';
-    const out = new Set(this.storage.sql.exec(`SELECT key FROM ${TABLE} WHERE key LIKE ? ESCAPE '\\'`, pattern).toArray().map((r) => r.key));
+    const out = new Set(
+      this.storage.sql
+        .exec(`SELECT key FROM ${TABLE} WHERE key LIKE ? ESCAPE '\\'`, pattern)
+        .toArray()
+        .map((r) => r.key)
+    );
     if (this.tx) {
       for (const [key, entry] of this.tx) {
         if (!key.startsWith(prefix)) continue;
@@ -107,7 +124,9 @@ export class DurableObjectStore {
   // Inside a transaction the snapshot sees the working copy, exactly like
   // MemoryStore over its live map: uncommitted changes are included.
   snapshot() {
-    const rows = this.storage.sql.exec(`SELECT key, value FROM ${TABLE}`).toArray();
+    const rows = this.storage.sql
+      .exec(`SELECT key, value FROM ${TABLE}`)
+      .toArray();
     const merged = new Map(rows.map((r) => [r.key, JSON.parse(r.value)]));
     if (this.tx) {
       for (const [key, entry] of this.tx) {
@@ -127,10 +146,13 @@ export class DurableObjectStore {
       // so a key created earlier in this same transaction is gone too,
       // exactly like MemoryStore replacing its map.
       this.tx = new Map();
-      for (const row of this.storage.sql.exec(`SELECT key FROM ${TABLE}`).toArray()) {
+      for (const row of this.storage.sql
+        .exec(`SELECT key FROM ${TABLE}`)
+        .toArray()) {
         this.tx.set(row.key, { value: undefined, dirty: true });
       }
-      for (const [key, value] of entries) this.tx.set(key, { value, dirty: true });
+      for (const [key, value] of entries)
+        this.tx.set(key, { value, dirty: true });
       return;
     }
     // Outside one, the whole replace is a single transaction: a crash
@@ -138,7 +160,11 @@ export class DurableObjectStore {
     this.storage.transactionSync(() => {
       this.storage.sql.exec(`DELETE FROM ${TABLE}`);
       for (const [key, value] of entries) {
-        this.storage.sql.exec(`INSERT INTO ${TABLE} (key, value) VALUES (?, ?)`, key, JSON.stringify(value));
+        this.storage.sql.exec(
+          `INSERT INTO ${TABLE} (key, value) VALUES (?, ?)`,
+          key,
+          JSON.stringify(value)
+        );
       }
     });
   }

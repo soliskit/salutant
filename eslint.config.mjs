@@ -1,8 +1,8 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import tseslint from 'typescript-eslint'
-import promise from 'eslint-plugin-promise'
-import prettierRecommended from 'eslint-plugin-prettier/recommended'
+import js from '@eslint/js';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
+import promise from 'eslint-plugin-promise';
+import prettierRecommended from 'eslint-plugin-prettier/recommended';
 
 export default tseslint.config(
   { ignores: ['node_modules/'] },
@@ -19,9 +19,12 @@ export default tseslint.config(
     }
   },
   {
-    files: ['tests/browser-protocol.test.js', 'tests/measurement/fixtures/**/*.mjs'],
+    files: [
+      'tests/browser-protocol.test.js',
+      'tests/measurement/fixtures/**/*.mjs'
+    ],
     languageOptions: {
       globals: { ...globals.browser }
     }
   }
-)
+);
