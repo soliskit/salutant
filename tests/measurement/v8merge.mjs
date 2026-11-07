@@ -10,27 +10,31 @@ export class CoverageConflict extends Error {}
 // entries: [{ url, source, functions: [...] }]
 // returns Map url -> { url, source, coverageList: [functions, ...] }
 export function mergeV8Entries(entries) {
-  const byUrl = new Map()
+  const byUrl = new Map();
   for (const entry of entries) {
-    if (!entry.url) continue
-    const existing = byUrl.get(entry.url)
+    if (!entry.url) continue;
+    const existing = byUrl.get(entry.url);
     if (!existing) {
-      byUrl.set(entry.url, { url: entry.url, source: entry.source, coverageList: [entry.functions] })
-      continue
+      byUrl.set(entry.url, {
+        url: entry.url,
+        source: entry.source,
+        coverageList: [entry.functions]
+      });
+      continue;
     }
     // A take whose source could not be retrieved carries source undefined;
     // that is a retrieval gap, not a content signal, so it joins the file
     // without voting on identity. Two defined sources that differ still
     // fail the run, and a file with no defined source fails at conversion.
-    if (existing.source === undefined) existing.source = entry.source
+    if (existing.source === undefined) existing.source = entry.source;
     else if (entry.source !== undefined && existing.source !== entry.source) {
       throw new CoverageConflict(
         `coverage conflict: ${entry.url} appeared with two different contents`
-      )
+      );
     }
-    existing.coverageList.push(entry.functions)
+    existing.coverageList.push(entry.functions);
   }
-  return byUrl
+  return byUrl;
 }
 
 // A file on a list that never loaded counts as 0% for its pipeline: one
@@ -48,5 +52,5 @@ export function uncovered(url, source) {
         }
       ]
     ]
-  }
+  };
 }

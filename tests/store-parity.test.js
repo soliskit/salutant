@@ -21,7 +21,7 @@ import { makeDOStorage } from './helpers.js';
 function makeStores() {
   return [
     ['MemoryStore', new MemoryStore()],
-    ['DurableObjectStore', new DurableObjectStore(makeDOStorage())],
+    ['DurableObjectStore', new DurableObjectStore(makeDOStorage())]
   ];
 }
 
@@ -31,8 +31,16 @@ test('parity: set/get/delete/keysWithPrefix across the interface', async () => {
     store.set('code:1', { code: '123456', attempts: 0 });
     store.set('code:2', { code: '654321', attempts: 0 });
     store.set('budget:owner', { used: 1 });
-    assert.deepEqual(store.get('code:1'), { code: '123456', attempts: 0 }, name);
-    assert.deepEqual(store.keysWithPrefix('code:').sort(), ['code:1', 'code:2'], name);
+    assert.deepEqual(
+      store.get('code:1'),
+      { code: '123456', attempts: 0 },
+      name
+    );
+    assert.deepEqual(
+      store.keysWithPrefix('code:').sort(),
+      ['code:1', 'code:2'],
+      name
+    );
     assert.deepEqual(store.keysWithPrefix('nope:'), [], name);
     store.delete('code:1');
     assert.equal(store.get('code:1'), undefined, name);
@@ -87,7 +95,11 @@ test('parity: keysWithPrefix treats % and _ in keys as literal characters', asyn
     store.set('rate:100_x', 2);
     store.set('rate:1000', 3);
     assert.deepEqual(store.keysWithPrefix('rate:100%'), ['rate:100%'], name);
-    assert.deepEqual(store.keysWithPrefix('rate:100').sort(), ['rate:100%', 'rate:1000', 'rate:100_x'], name);
+    assert.deepEqual(
+      store.keysWithPrefix('rate:100').sort(),
+      ['rate:100%', 'rate:1000', 'rate:100_x'],
+      name
+    );
   }
 });
 
@@ -98,8 +110,16 @@ test('parity: snapshot and restore use one shared format in both directions', as
       for (const [k, v] of Object.entries(data)) a.set(k, v);
       b.restoreFrom(a.snapshot());
       assert.deepEqual(b.get('code:1'), data['code:1'], `${aName} -> ${bName}`);
-      assert.deepEqual(b.get('budget:owner'), data['budget:owner'], `${aName} -> ${bName}`);
-      assert.deepEqual(JSON.parse(b.snapshot()).sort(), JSON.parse(a.snapshot()).sort(), `${aName} -> ${bName}`);
+      assert.deepEqual(
+        b.get('budget:owner'),
+        data['budget:owner'],
+        `${aName} -> ${bName}`
+      );
+      assert.deepEqual(
+        JSON.parse(b.snapshot()).sort(),
+        JSON.parse(a.snapshot()).sort(),
+        `${aName} -> ${bName}`
+      );
     }
   }
 });
@@ -107,7 +127,9 @@ test('parity: snapshot and restore use one shared format in both directions', as
 test('DurableObjectStore: state survives a new store instance over the same storage', () => {
   const storage = makeDOStorage();
   const first = new DurableObjectStore(storage);
-  first.transact((s) => s.getRef('k') === undefined && s.set('k', { kept: true }));
+  first.transact(
+    (s) => s.getRef('k') === undefined && s.set('k', { kept: true })
+  );
   first.set('k', { kept: true });
   const second = new DurableObjectStore(storage);
   assert.deepEqual(second.get('k'), { kept: true });
@@ -117,11 +139,14 @@ test('DurableObjectStore: state survives a new store instance over the same stor
 test('DurableObjectStore: a throwing transaction rolls back (DO guarantee)', () => {
   const store = new DurableObjectStore(makeDOStorage());
   store.set('a', 1);
-  assert.throws(() =>
-    store.transact((s) => {
-      s.set('a', 2);
-      throw new Error('boom');
-    }), /boom/);
+  assert.throws(
+    () =>
+      store.transact((s) => {
+        s.set('a', 2);
+        throw new Error('boom');
+      }),
+    /boom/
+  );
   assert.equal(store.get('a'), 1);
 });
 
@@ -129,11 +154,16 @@ test('DurableObjectStore: restoreFrom is atomic - a mid-restore failure leaves p
   const storage = makeDOStorage();
   const store = new DurableObjectStore(storage);
   store.set('old', 1);
-  const snap = JSON.stringify([['a', 1], ['b', 2], ['c', 3]]);
+  const snap = JSON.stringify([
+    ['a', 1],
+    ['b', 2],
+    ['c', 3]
+  ]);
   let inserts = 0;
   const realExec = storage.sql.exec;
   storage.sql.exec = (query, ...params) => {
-    if (/^\s*insert/i.test(query) && ++inserts === 2) throw new Error('crash mid-restore');
+    if (/^\s*insert/i.test(query) && ++inserts === 2)
+      throw new Error('crash mid-restore');
     return realExec(query, ...params);
   };
   assert.throws(() => store.restoreFrom(snap), /crash mid-restore/);
@@ -164,7 +194,14 @@ test('parity: snapshot inside a transaction sees the working copy', async () => 
       return s.snapshot();
     });
     const entries = JSON.parse(snap).sort(([x], [y]) => (x < y ? -1 : 1));
-    assert.deepEqual(entries, [['a', 10], ['c', 3]], name);
+    assert.deepEqual(
+      entries,
+      [
+        ['a', 10],
+        ['c', 3]
+      ],
+      name
+    );
     // ...and restore accepts what snapshot produced, on both drivers.
     store.restoreFrom(snap);
     assert.equal(store.get('a'), 10, name);
@@ -194,14 +231,22 @@ test('parity: keysWithPrefix inside a transaction merges the working copy', asyn
     store.set('code:drop', 2);
     store.set('budget:owner', 3);
     const seen = store.transact((s) => {
-      s.set('code:new', 4);      // created in the transaction, matches the prefix
-      s.delete('code:drop');     // deleted in the transaction, was stored
-      s.set('budget:spent', 5);  // touched in the transaction, other prefix
+      s.set('code:new', 4); // created in the transaction, matches the prefix
+      s.delete('code:drop'); // deleted in the transaction, was stored
+      s.set('budget:spent', 5); // touched in the transaction, other prefix
       return s.keysWithPrefix('code:').sort();
     });
     assert.deepEqual(seen, ['code:keep', 'code:new'], name);
-    assert.deepEqual(store.keysWithPrefix('code:').sort(), ['code:keep', 'code:new'], name);
-    assert.deepEqual(store.keysWithPrefix('budget:').sort(), ['budget:owner', 'budget:spent'], name);
+    assert.deepEqual(
+      store.keysWithPrefix('code:').sort(),
+      ['code:keep', 'code:new'],
+      name
+    );
+    assert.deepEqual(
+      store.keysWithPrefix('budget:').sort(),
+      ['budget:owner', 'budget:spent'],
+      name
+    );
     assert.equal(store.get('code:drop'), undefined, name);
   }
 });

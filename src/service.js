@@ -6,8 +6,15 @@
 
 import { respond } from './headers.js';
 import {
-  generateCode, randomId, timingSafeEqual, importHmacKey, hmacSha256,
-  signProof, exportPublicJwk, toBase64Url, fromBase64Url,
+  generateCode,
+  randomId,
+  timingSafeEqual,
+  importHmacKey,
+  hmacSha256,
+  signProof,
+  exportPublicJwk,
+  toBase64Url,
+  fromBase64Url
 } from './crypto.js';
 
 export const DEFAULT_CONFIG = {
@@ -26,7 +33,7 @@ export const DEFAULT_CONFIG = {
   endpointCacheSeconds: 300,
   keyCacheMs: 5 * 60_000,
   addressStateTtlMs: 24 * 3_600_000,
-  challengePurgeMs: 3_600_000, // one hour after expiry: records never live 24h (R6)
+  challengePurgeMs: 3_600_000 // one hour after expiry: records never live 24h (R6)
 };
 
 // How long the daily and monthly send totals are kept: two days and 32 days.
@@ -37,17 +44,19 @@ const GENERIC_VERIFY_ERROR = 'invalid_or_expired_code';
 
 export class SalutantService {
   constructor({
-    store, mailer, epochSource,
-    allowlist,           // exact addresses from service settings; never in the repo
-    apps,                // [{ origin, callbackUrl }] exact matches only, no wildcards
-    serviceOrigin,       // e.g. https://salutant.example.test in the mock
-    codeHmacKeyBytes,    // a service secret in production
-    stateHmacKeyBytes,   // a separate service secret for address/source-linked state
-    signingKeys,         // Map kid -> { publicKey, privateKey, status, notAfterMs }
+    store,
+    mailer,
+    epochSource,
+    allowlist, // exact addresses from service settings; never in the repo
+    apps, // [{ origin, callbackUrl }] exact matches only, no wildcards
+    serviceOrigin, // e.g. https://salutant.example.test in the mock
+    codeHmacKeyBytes, // a service secret in production
+    stateHmacKeyBytes, // a separate service secret for address/source-linked state
+    signingKeys, // Map kid -> { publicKey, privateKey, status, notAfterMs }
     currentKid,
     clock = () => Date.now(),
     logSink = [],
-    config = {},
+    config = {}
   }) {
     this.store = store;
     this.mailer = mailer;
@@ -64,24 +73,38 @@ export class SalutantService {
     this._inflight = new Map(); // idempotency single-flight for concurrent duplicates
     this._keysReady = Promise.all([
       importHmacKey(codeHmacKeyBytes),
-      importHmacKey(stateHmacKeyBytes),
-    ]).then(([codeKey, stateKey]) => { this._codeKey = codeKey; this._stateKey = stateKey; });
+      importHmacKey(stateHmacKeyBytes)
+    ]).then(([codeKey, stateKey]) => {
+      this._codeKey = codeKey;
+      this._stateKey = stateKey;
+      return undefined;
+    });
   }
 
-  async ready() { await this._keysReady; }
+  async ready() {
+    await this._keysReady;
+  }
 
   // R13: time, event type, outcome and a hashed source. Never codes,
   // proofs or email addresses.
   log(event, outcome, source) {
-    this.logSink.push({ time: new Date(this.clock()).toISOString(), event, outcome, source });
+    this.logSink.push({
+      time: new Date(this.clock()).toISOString(),
+      event,
+      outcome,
+      source
+    });
   }
 
-  async _hmac(key, message) { return toBase64Url(await hmacSha256(key, message)); }
+  async _hmac(key, message) {
+    return toBase64Url(await hmacSha256(key, message));
+  }
 
   async _epochOrClosed() {
     // R14: if the epoch cannot be read, the service stays closed.
     const epoch = await this.epochSource.read();
-    if (!Number.isSafeInteger(epoch) || epoch < 0) throw new Error('epoch unreadable');
+    if (!Number.isSafeInteger(epoch) || epoch < 0)
+      throw new Error('epoch unreadable');
     return epoch;
   }
 
@@ -128,7 +151,9 @@ export class SalutantService {
       chunks.push(value);
     }
     try {
-      return { body: JSON.parse(new TextDecoder().decode(concatBytes(chunks))) };
+      return {
+        body: JSON.parse(new TextDecoder().decode(concatBytes(chunks)))
+      };
     } catch {
       return { bad: true };
     }
@@ -145,7 +170,10 @@ export class SalutantService {
     const { tooBig, bad, body } = await this._jsonBody(request);
     if (tooBig || bad) return respond(400, { error: 'bad_request' });
 
-    const sourceHash = await this._hmac(this._stateKey, `source:${this._sourceOf(request)}`);
+    const sourceHash = await this._hmac(
+      this._stateKey,
+      `source:${this._sourceOf(request)}`
+    );
 
     // Idempotency: a double-click is one request (R5). Concurrent
     // duplicates join the in-flight response; later duplicates get the
@@ -156,7 +184,8 @@ export class SalutantService {
       // The replay must carry the original binding cookie, or a
       // fresh-browser retry could never verify the challenge it
       // already paid for (R2, R5).
-      if (recorded.setCookie) r.headers.append('set-cookie', recorded.setCookie);
+      if (recorded.setCookie)
+        r.headers.append('set-cookie', recorded.setCookie);
       return r;
     };
     if (idemKey) {
@@ -172,10 +201,21 @@ export class SalutantService {
       }
     }
     let markDone = null;
-    if (idemKey) this._inflight.set(idemKey, new Promise((resolve) => { markDone = resolve; }));
+    if (idemKey)
+      this._inflight.set(
+        idemKey,
+        new Promise((resolve) => {
+          markDone = resolve;
+        })
+      );
     const respondAndRecord = (status, respBody, setCookie = null) => {
       if (idemKey) {
-        const recorded = { status, body: respBody, setCookie, createdAtMs: this.clock() };
+        const recorded = {
+          status,
+          body: respBody,
+          setCookie,
+          createdAtMs: this.clock()
+        };
         this.store.transact((s) => s.set(`idem:${idemKey}`, recorded));
         markDone?.(recorded);
         this._inflight.delete(idemKey);
@@ -192,7 +232,12 @@ export class SalutantService {
 
     const address = typeof body.address === 'string' ? body.address.trim() : '';
     const app = this.apps.find((a) => a.origin === body.appOrigin);
-    if (!address || !app || typeof body.stateId !== 'string' || body.stateId.length < 16) {
+    if (
+      !address ||
+      !app ||
+      typeof body.stateId !== 'string' ||
+      body.stateId.length < 16
+    ) {
       this.log('challenge', 'rejected_request', sourceHash);
       return respondAndRecord(400, { error: 'bad_request' });
     }
@@ -207,16 +252,37 @@ export class SalutantService {
     // the cap check and the reservation (R6, R8).
     const [addressHash, codeHmac, bindingHmac] = await Promise.all([
       this._hmac(this._stateKey, `addr:${address}`),
-      this._hmac(this._codeKey, codeHmacMessage(app.origin, 'signin', challengeId, code)),
-      this._hmac(this._codeKey, `binding:${challengeId}:${binding}`),
+      this._hmac(
+        this._codeKey,
+        codeHmacMessage(app.origin, 'signin', challengeId, code)
+      ),
+      this._hmac(this._codeKey, `binding:${challengeId}:${binding}`)
     ]);
 
     // R6: one synchronous step for the request counters. Listed and
     // unlisted addresses count the same way, so a limit response never
     // reveals an allowed address (R3).
     const gate = this.store.transact((s) => {
-      if (bump(s, `reqsrc:${sourceHash}`, hourWindow(now), this.config.addressStateTtlMs, now) > this.config.requestsPerSourcePerHour) return 'rate_limited';
-      if (bump(s, `reqaddr:${addressHash}`, hourWindow(now), this.config.addressStateTtlMs, now) > this.config.requestsPerAddressPerHour) return 'rate_limited';
+      if (
+        bump(
+          s,
+          `reqsrc:${sourceHash}`,
+          hourWindow(now),
+          this.config.addressStateTtlMs,
+          now
+        ) > this.config.requestsPerSourcePerHour
+      )
+        return 'rate_limited';
+      if (
+        bump(
+          s,
+          `reqaddr:${addressHash}`,
+          hourWindow(now),
+          this.config.addressStateTtlMs,
+          now
+        ) > this.config.requestsPerAddressPerHour
+      )
+        return 'rate_limited';
       return null;
     });
     if (gate) {
@@ -232,15 +298,23 @@ export class SalutantService {
     // that the address is on the list, because an unlisted address
     // never bumps its send counter.
     const verdict = this.store.transact((s) => {
-      const openCount = s.keysWithPrefix('challenge:')
+      const openCount = s
+        .keysWithPrefix('challenge:')
         .map((k) => s.getRef(k))
-        .filter((c) => c.addressHash === addressHash && c.state === 'open' && c.expiresAtMs > now)
-        .length;
-      if (openCount >= this.config.activeChallengesPerAddress) return 'withheld_cap';
+        .filter(
+          (c) =>
+            c.addressHash === addressHash &&
+            c.state === 'open' &&
+            c.expiresAtMs > now
+        ).length;
+      if (openCount >= this.config.activeChallengesPerAddress)
+        return 'withheld_cap';
       const overBudget =
-        readRecentSends(s, addressHash, now) >= this.config.sendsPerAddressPer30Minutes ||
+        readRecentSends(s, addressHash, now) >=
+          this.config.sendsPerAddressPer30Minutes ||
         readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay ||
-        readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth;
+        readCounter(s, 'sendmonth', monthWindow(now)) >=
+          this.config.sendsPerMonth;
       if (overBudget) {
         // R3: a budget refusal does the SAME storage work as an
         // unlisted acceptance (challenge + reservation, real ids, real
@@ -249,13 +323,30 @@ export class SalutantService {
         // delivered, so verify always rejects it (R5), and no send
         // budget is touched because no mail goes out.
         s.set(`challenge:${challengeId}`, {
-          id: challengeId, addressHash, appOrigin: app.origin, stateId: body.stateId,
-          purpose: 'signin', codeHmac, bindingHmac, attempts: 0, state: 'open',
-          epoch, createdAtMs: now, expiresAtMs: now + this.config.codeTtlMs,
-          lastSentAtMs: now, listed, proofId: null, requestId,
+          id: challengeId,
+          addressHash,
+          appOrigin: app.origin,
+          stateId: body.stateId,
+          purpose: 'signin',
+          codeHmac,
+          bindingHmac,
+          attempts: 0,
+          state: 'open',
+          epoch,
+          createdAtMs: now,
+          expiresAtMs: now + this.config.codeTtlMs,
+          lastSentAtMs: now,
+          listed,
+          proofId: null,
+          requestId
         });
         s.set(`reservation:${requestId}`, {
-          requestId, challengeId, addressHash, createdAtMs: now, epoch, outcome: 'withheld',
+          requestId,
+          challengeId,
+          addressHash,
+          createdAtMs: now,
+          epoch,
+          outcome: 'withheld'
         });
         return 'withheld_send_limit';
       }
@@ -264,13 +355,30 @@ export class SalutantService {
       // record carries the epoch (R14) and only keyed hashes of the
       // address (R2, R6); the address itself is never stored.
       s.set(`challenge:${challengeId}`, {
-        id: challengeId, addressHash, appOrigin: app.origin, stateId: body.stateId,
-        purpose: 'signin', codeHmac, bindingHmac, attempts: 0, state: 'open',
-        epoch, createdAtMs: now, expiresAtMs: now + this.config.codeTtlMs,
-        lastSentAtMs: now, listed, proofId: null, requestId,
+        id: challengeId,
+        addressHash,
+        appOrigin: app.origin,
+        stateId: body.stateId,
+        purpose: 'signin',
+        codeHmac,
+        bindingHmac,
+        attempts: 0,
+        state: 'open',
+        epoch,
+        createdAtMs: now,
+        expiresAtMs: now + this.config.codeTtlMs,
+        lastSentAtMs: now,
+        listed,
+        proofId: null,
+        requestId
       });
       s.set(`reservation:${requestId}`, {
-        requestId, challengeId, addressHash, createdAtMs: now, epoch, outcome: 'pending',
+        requestId,
+        challengeId,
+        addressHash,
+        createdAtMs: now,
+        epoch,
+        outcome: 'pending'
       });
       if (listed) {
         recordSend(s, addressHash, this.config.addressStateTtlMs, now);
@@ -291,9 +399,12 @@ export class SalutantService {
       // so answer with its real ids and real binding cookie - on the
       // wire this is indistinguishable from an acceptance (R3).
       this.log('challenge', verdict, sourceHash);
-      const refusedCookie =
-        `sb_${cookieNameFragment(challengeId)}=${binding}; Path=/v1/challenges/${encodeURIComponent(challengeId)}/verify; Secure; HttpOnly; SameSite=Strict`;
-      return respondAndRecord(200, { status: 'ok', requestId, challengeId }, refusedCookie);
+      const refusedCookie = `sb_${cookieNameFragment(challengeId)}=${binding}; Path=/v1/challenges/${encodeURIComponent(challengeId)}/verify; Secure; HttpOnly; SameSite=Strict`;
+      return respondAndRecord(
+        200,
+        { status: 'ok', requestId, challengeId },
+        refusedCookie
+      );
     }
 
     // The response never waits on the mail provider (R3); the send runs
@@ -315,9 +426,12 @@ export class SalutantService {
     // HttpOnly, SameSite Strict, path-scoped to this challenge's verify
     // route. Same-origin first-party, so no third-party cookie is
     // needed (R16).
-    const setCookie =
-      `sb_${cookieNameFragment(challengeId)}=${binding}; Path=/v1/challenges/${encodeURIComponent(challengeId)}/verify; Secure; HttpOnly; SameSite=Strict`;
-    return respondAndRecord(200, { status: 'ok', requestId, challengeId }, setCookie);
+    const setCookie = `sb_${cookieNameFragment(challengeId)}=${binding}; Path=/v1/challenges/${encodeURIComponent(challengeId)}/verify; Secure; HttpOnly; SameSite=Strict`;
+    return respondAndRecord(
+      200,
+      { status: 'ok', requestId, challengeId },
+      setCookie
+    );
   }
 
   async _resend(body, epoch, now, sourceHash, respondAndRecord) {
@@ -325,9 +439,15 @@ export class SalutantService {
     // that challenge's earlier code. It reuses the slot (R8) and obeys
     // the resend cooldown.
     const address = typeof body.address === 'string' ? body.address.trim() : '';
-    const peek = this.store.transact((s) => s.get(`challenge:${body.resendOf}`));
+    const peek = this.store.transact((s) =>
+      s.get(`challenge:${body.resendOf}`)
+    );
     if (!peek || !address) {
-      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: randomId(16) });
+      return respondAndRecord(200, {
+        status: 'ok',
+        requestId: randomId(16),
+        challengeId: randomId(16)
+      });
     }
     // Every awaited step finishes here, BEFORE the gate. The gate below
     // is one synchronous step with no await between check and write, so
@@ -337,20 +457,32 @@ export class SalutantService {
     const code = generateCode();
     const [addressHash, codeHmac] = await Promise.all([
       this._hmac(this._stateKey, `addr:${address}`),
-      this._hmac(this._codeKey, codeHmacMessage(peek.appOrigin, 'signin', peek.id, code)),
+      this._hmac(
+        this._codeKey,
+        codeHmacMessage(peek.appOrigin, 'signin', peek.id, code)
+      )
     ]);
     if (addressHash !== peek.addressHash) {
-      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: randomId(16) });
+      return respondAndRecord(200, {
+        status: 'ok',
+        requestId: randomId(16),
+        challengeId: randomId(16)
+      });
     }
     const verdict = this.store.transact((s) => {
       const c = s.getRef(`challenge:${peek.id}`);
-      if (!c || c.state !== 'open' || c.expiresAtMs <= now || c.epoch !== epoch) return 'gone';
-      if (now - c.lastSentAtMs < this.config.resendCooldownMs) return 'cooldown';
+      if (!c || c.state !== 'open' || c.expiresAtMs <= now || c.epoch !== epoch)
+        return 'gone';
+      if (now - c.lastSentAtMs < this.config.resendCooldownMs)
+        return 'cooldown';
       if (c.listed) {
         const overBudget =
-          readRecentSends(s, c.addressHash, now) >= this.config.sendsPerAddressPer30Minutes ||
-          readCounter(s, 'sendday', dayWindow(now)) >= this.config.sendsPerDay ||
-          readCounter(s, 'sendmonth', monthWindow(now)) >= this.config.sendsPerMonth;
+          readRecentSends(s, c.addressHash, now) >=
+            this.config.sendsPerAddressPer30Minutes ||
+          readCounter(s, 'sendday', dayWindow(now)) >=
+            this.config.sendsPerDay ||
+          readCounter(s, 'sendmonth', monthWindow(now)) >=
+            this.config.sendsPerMonth;
         if (overBudget) {
           // A withheld resend moves the cooldown clock exactly like an
           // accepted one (R3): identical state evolution, so an
@@ -365,7 +497,12 @@ export class SalutantService {
       c.lastSentAtMs = now;
       c.requestId = requestId;
       s.set(`reservation:${requestId}`, {
-        requestId, challengeId: c.id, addressHash: c.addressHash, createdAtMs: now, epoch, outcome: 'pending',
+        requestId,
+        challengeId: c.id,
+        addressHash: c.addressHash,
+        createdAtMs: now,
+        epoch,
+        outcome: 'pending'
       });
       if (c.listed) {
         recordSend(s, c.addressHash, this.config.addressStateTtlMs, now);
@@ -386,16 +523,28 @@ export class SalutantService {
       // creation (R3): the per-address send counter only moves for
       // listed addresses, so a 429 here would be a membership oracle.
       this.log('resend', verdict, sourceHash);
-      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: peek.id });
+      return respondAndRecord(200, {
+        status: 'ok',
+        requestId: randomId(16),
+        challengeId: peek.id
+      });
     }
     if (verdict === 'gone') {
-      return respondAndRecord(200, { status: 'ok', requestId: randomId(16), challengeId: peek.id });
+      return respondAndRecord(200, {
+        status: 'ok',
+        requestId: randomId(16),
+        challengeId: peek.id
+      });
     }
     if (peek.listed) {
       this.pendingSends.push(this._sendCode(requestId, address, code));
     }
     this.log('resend', 'accepted', sourceHash);
-    return respondAndRecord(200, { status: 'ok', requestId, challengeId: peek.id });
+    return respondAndRecord(200, {
+      status: 'ok',
+      requestId,
+      challengeId: peek.id
+    });
   }
 
   async _sendCode(requestId, address, code) {
@@ -403,8 +552,10 @@ export class SalutantService {
     // automatically, counts against the budget, and is reconciled
     // against the provider's send record.
     const result = await this.mailer.send({
-      requestId, to: address, subject: 'Your sign-in code',
-      text: `Your sign-in code is ${code}. It expires ${this.config.codeTtlMs / 60_000} minutes after the original request.`,
+      requestId,
+      to: address,
+      subject: 'Your sign-in code',
+      text: `Your sign-in code is ${code}. It expires ${this.config.codeTtlMs / 60_000} minutes after the original request.`
     });
     this.store.transact((s) => {
       const r = s.getRef(`reservation:${requestId}`);
@@ -428,7 +579,10 @@ export class SalutantService {
     const epoch = await this._epochOrClosed();
     const { tooBig, bad, body } = await this._jsonBody(request);
     if (tooBig || bad) return respond(400, { error: 'bad_request' });
-    const sourceHash = await this._hmac(this._stateKey, `source:${this._sourceOf(request)}`);
+    const sourceHash = await this._hmac(
+      this._stateKey,
+      `source:${this._sourceOf(request)}`
+    );
     const now = this.clock();
 
     // Read-only step to learn the record's app origin so the keyed hash
@@ -439,17 +593,30 @@ export class SalutantService {
     const appOrigin = peek?.appOrigin ?? 'none';
     const address = typeof body.address === 'string' ? body.address.trim() : '';
     const code = typeof body.code === 'string' ? body.code : '';
-    const binding = request.headers.get('cookie')
-      ?.match(new RegExp(`(?:^|;\\s*)sb_${cookieNameFragment(challengeId)}=([^;]+)`))?.[1] ?? '';
+    const binding =
+      request.headers
+        .get('cookie')
+        ?.match(
+          new RegExp(`(?:^|;\\s*)sb_${cookieNameFragment(challengeId)}=([^;]+)`)
+        )?.[1] ?? '';
     const [codeHmac, bindingHmac, addressHash] = await Promise.all([
-      this._hmac(this._codeKey, codeHmacMessage(appOrigin, 'signin', challengeId, code)),
+      this._hmac(
+        this._codeKey,
+        codeHmacMessage(appOrigin, 'signin', challengeId, code)
+      ),
       this._hmac(this._codeKey, `binding:${challengeId}:${binding}`),
-      this._hmac(this._stateKey, `addr:${address}`),
+      this._hmac(this._stateKey, `addr:${address}`)
     ]);
 
     const outcome = this.store.transact((s) => {
       const c = s.getRef(`challenge:${challengeId}`);
-      if (!c || !c.listed || c.state !== 'open' || c.expiresAtMs <= now || c.epoch !== epoch) {
+      if (
+        !c ||
+        !c.listed ||
+        c.state !== 'open' ||
+        c.expiresAtMs <= now ||
+        c.epoch !== epoch
+      ) {
         return { ok: false };
       }
       if (c.attempts >= this.config.maxAttempts) {
@@ -461,10 +628,17 @@ export class SalutantService {
       // the code it holds was never delivered. This check costs the
       // request no attempt: only a delivered code can be tried.
       const r = s.getRef(`reservation:${c.requestId}`);
-      const delivered = r && (r.outcome === 'accepted' || r.reconciled === 'sent');
+      const delivered =
+        r && (r.outcome === 'accepted' || r.reconciled === 'sent');
       if (!delivered) return { ok: false };
-      const codeOk = timingSafeEqual(fromBase64Url(codeHmac), fromBase64Url(c.codeHmac));
-      const bindingOk = timingSafeEqual(fromBase64Url(bindingHmac), fromBase64Url(c.bindingHmac));
+      const codeOk = timingSafeEqual(
+        fromBase64Url(codeHmac),
+        fromBase64Url(c.codeHmac)
+      );
+      const bindingOk = timingSafeEqual(
+        fromBase64Url(bindingHmac),
+        fromBase64Url(c.bindingHmac)
+      );
       const addressOk = addressHash === c.addressHash;
       if (!codeOk || !bindingOk || !addressOk) {
         c.attempts += 1; // a wrong try is counted in the same step
@@ -489,24 +663,40 @@ export class SalutantService {
     // needs - it lives only inside this signed proof, never in storage
     // or logs. The nonce is the state id the app opened with, so the
     // proof is bound to the transaction that started the sign-in.
-    const proof = await signProof({
-      iss: this.serviceOrigin,
-      aud: outcome.appOrigin,
-      sub: address,
-      iat: nowSeconds, nbf: nowSeconds, exp: nowSeconds + this.config.proofTtlSeconds,
-      kid: this.currentKid, jti, nonce: outcome.stateId, epoch,
-    }, key.privateKey, this.currentKid);
+    const proof = await signProof(
+      {
+        iss: this.serviceOrigin,
+        aud: outcome.appOrigin,
+        sub: address,
+        iat: nowSeconds,
+        nbf: nowSeconds,
+        exp: nowSeconds + this.config.proofTtlSeconds,
+        kid: this.currentKid,
+        jti,
+        nonce: outcome.stateId,
+        epoch
+      },
+      key.privateKey,
+      this.currentKid
+    );
 
     this.store.transact((s) => {
       const c = s.getRef(`challenge:${challengeId}`);
       if (c) c.proofId = jti;
       s.set(`issuance:${jti}`, {
-        jti, challengeId, epoch, issuedAtMs: now,
-        expiresAtMs: now + this.config.proofTtlSeconds * 1000,
+        jti,
+        challengeId,
+        epoch,
+        issuedAtMs: now,
+        expiresAtMs: now + this.config.proofTtlSeconds * 1000
       });
     });
     this.log('verify', 'proof_issued', sourceHash);
-    return respond(200, { proof, state: outcome.stateId, callbackUrl: app.callbackUrl });
+    return respond(200, {
+      proof,
+      state: outcome.stateId,
+      callbackUrl: app.callbackUrl
+    });
   }
 
   // GET /.well-known/jwks.json - public keys and the current epoch.
@@ -520,7 +710,11 @@ export class SalutantService {
       if (k.status === 'overlap' && k.notAfterMs <= now) continue;
       keys.push(await exportPublicJwk(k.publicKey, kid));
     }
-    return respond(200, { keys, epoch }, { cache: { publicSeconds: this.config.endpointCacheSeconds } });
+    return respond(
+      200,
+      { keys, epoch },
+      { cache: { publicSeconds: this.config.endpointCacheSeconds } }
+    );
   }
 
   // Housekeeping used by tests and by the future alarm-driven purge.
@@ -529,25 +723,31 @@ export class SalutantService {
   purge(now = this.clock()) {
     this.store.transact((s) => {
       for (const k of s.keysWithPrefix('challenge:')) {
-        if (s.getRef(k).expiresAtMs + this.config.challengePurgeMs <= now) s.delete(k);
+        if (s.getRef(k).expiresAtMs + this.config.challengePurgeMs <= now)
+          s.delete(k);
       }
       for (const k of s.keysWithPrefix('counter:')) {
         if (s.getRef(k).expiresAtMs <= now) s.delete(k);
       }
       for (const k of s.keysWithPrefix('reservation:')) {
-        if (s.getRef(k).createdAtMs + this.config.addressStateTtlMs <= now) s.delete(k);
+        if (s.getRef(k).createdAtMs + this.config.addressStateTtlMs <= now)
+          s.delete(k);
       }
       for (const k of s.keysWithPrefix('issuance:')) {
-        if (s.getRef(k).expiresAtMs + this.config.challengePurgeMs <= now) s.delete(k);
+        if (s.getRef(k).expiresAtMs + this.config.challengePurgeMs <= now)
+          s.delete(k);
       }
       for (const k of s.keysWithPrefix('idem:')) {
-        if (s.getRef(k).createdAtMs + this.config.addressStateTtlMs <= now) s.delete(k);
+        if (s.getRef(k).createdAtMs + this.config.addressStateTtlMs <= now)
+          s.delete(k);
       }
     });
   }
 
   // Test hook: wait for fire-and-forget sends to settle.
-  async drain() { await Promise.allSettled(this.pendingSends); }
+  async drain() {
+    await Promise.allSettled(this.pendingSends);
+  }
 }
 
 export function codeHmacMessage(appOrigin, purpose, challengeId, code) {
@@ -565,15 +765,21 @@ function withheldChallenge(respondAndRecord) {
   const requestId = randomId(16);
   const challengeId = randomId(16);
   const binding = randomId(24);
-  const setCookie =
-    `sb_${cookieNameFragment(challengeId)}=${binding}; Path=/v1/challenges/${encodeURIComponent(challengeId)}/verify; Secure; HttpOnly; SameSite=Strict`;
-  return respondAndRecord(200, { status: 'ok', requestId, challengeId }, setCookie);
+  const setCookie = `sb_${cookieNameFragment(challengeId)}=${binding}; Path=/v1/challenges/${encodeURIComponent(challengeId)}/verify; Secure; HttpOnly; SameSite=Strict`;
+  return respondAndRecord(
+    200,
+    { status: 'ok', requestId, challengeId },
+    setCookie
+  );
 }
 
 function concatBytes(chunks) {
   const out = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0));
   let off = 0;
-  for (const c of chunks) { out.set(c, off); off += c.byteLength; }
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.byteLength;
+  }
   return out;
 }
 
@@ -582,8 +788,9 @@ function concatBytes(chunks) {
 // uncertain sends still consume quota; refusals never add a timestamp.
 const SEND_WINDOW_MS = 30 * 60_000;
 function recentSends(s, addressHash, now) {
-  return (s.getRef(`counter:sendaddr:${addressHash}:rolling`)?.timestamps ?? [])
-    .filter((time) => time > now - SEND_WINDOW_MS);
+  return (
+    s.getRef(`counter:sendaddr:${addressHash}:rolling`)?.timestamps ?? []
+  ).filter((time) => time > now - SEND_WINDOW_MS);
 }
 function readRecentSends(s, addressHash, now) {
   return recentSends(s, addressHash, now).length;
@@ -591,11 +798,20 @@ function readRecentSends(s, addressHash, now) {
 function recordSend(s, addressHash, ttlMs, now) {
   const timestamps = recentSends(s, addressHash, now);
   timestamps.push(now);
-  s.set(`counter:sendaddr:${addressHash}:rolling`, { timestamps, expiresAtMs: now + ttlMs });
+  s.set(`counter:sendaddr:${addressHash}:rolling`, {
+    timestamps,
+    expiresAtMs: now + ttlMs
+  });
 }
-function hourWindow(now) { return `h:${Math.floor(now / 3_600_000)}`; }
-function dayWindow(now) { return `d:${new Date(now).toISOString().slice(0, 10)}`; }
-function monthWindow(now) { return `m:${new Date(now).toISOString().slice(0, 7)}`; }
+function hourWindow(now) {
+  return `h:${Math.floor(now / 3_600_000)}`;
+}
+function dayWindow(now) {
+  return `d:${new Date(now).toISOString().slice(0, 10)}`;
+}
+function monthWindow(now) {
+  return `m:${new Date(now).toISOString().slice(0, 7)}`;
+}
 
 // Counter records carry their own expiry, so address-linked state never
 // outlives its window while the plain day and month totals live to the

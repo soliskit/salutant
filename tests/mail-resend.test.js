@@ -8,7 +8,12 @@ import { ResendMailAdapter } from '../src/mail-resend.js';
 
 const FROM = 'Salutant <no-reply@example.test>';
 const KEY = 're_test_key';
-const MSG = { requestId: 'req-1', to: 'owner@example.test', subject: 'Your sign-in code', text: 'Your sign-in code is 123456.' };
+const MSG = {
+  requestId: 'req-1',
+  to: 'owner@example.test',
+  subject: 'Your sign-in code',
+  text: 'Your sign-in code is 123456.'
+};
 
 function stubFetch(handlers) {
   const calls = [];
@@ -23,7 +28,7 @@ function stubFetch(handlers) {
       json: async () => {
         if (h.rawBody !== undefined) throw new SyntaxError('Unexpected token');
         return h.body;
-      },
+      }
     };
   };
   impl.calls = calls;
@@ -35,13 +40,22 @@ function adapter(fetchImpl) {
 }
 
 test('constructor requires apiKey and from', () => {
-  assert.throws(() => new ResendMailAdapter({ from: FROM }), /apiKey is required/);
-  assert.throws(() => new ResendMailAdapter({ apiKey: KEY }), /from is required/);
+  assert.throws(
+    () => new ResendMailAdapter({ from: FROM }),
+    /apiKey is required/
+  );
+  assert.throws(
+    () => new ResendMailAdapter({ apiKey: KEY }),
+    /from is required/
+  );
 });
 
 test('send requires requestId', async () => {
   const a = adapter(stubFetch([]));
-  await assert.rejects(() => a.send({ to: MSG.to, subject: MSG.subject, text: MSG.text }), /requestId is required/);
+  await assert.rejects(
+    () => a.send({ to: MSG.to, subject: MSG.subject, text: MSG.text }),
+    /requestId is required/
+  );
   await assert.rejects(() => a.reconcile(''), /requestId is required/);
 });
 
@@ -56,7 +70,12 @@ test('accepted send: returns providerId, sends idempotency key and plain-text pa
   assert.equal(call.opts.headers['idempotency-key'], 'req-1');
   assert.equal(call.opts.headers.authorization, `Bearer ${KEY}`);
   const body = JSON.parse(call.opts.body);
-  assert.deepEqual(body, { from: FROM, to: [MSG.to], subject: MSG.subject, text: MSG.text });
+  assert.deepEqual(body, {
+    from: FROM,
+    to: [MSG.to],
+    subject: MSG.subject,
+    text: MSG.text
+  });
 });
 
 test('provider refusal (4xx) is failed, not retried', async () => {
@@ -81,7 +100,7 @@ test('2xx without a provider id is uncertain', async () => {
 test('reconcile after accepted reads the provider record', async () => {
   const f = stubFetch([
     { status: 200, body: { id: 'prov-1' } },
-    { status: 200, body: { id: 'prov-1', last_event: 'delivered' } },
+    { status: 200, body: { id: 'prov-1', last_event: 'delivered' } }
   ]);
   const a = adapter(f);
   await a.send(MSG);
@@ -95,7 +114,7 @@ test('reconcile of accepted send: 404 is absent, 5xx and network failure are unk
   for (const [h, want] of [
     [{ status: 404, body: {} }, { state: 'absent' }],
     [{ status: 500, body: {} }, { state: 'unknown' }],
-    [{ throw: 'reset' }, { state: 'unknown' }],
+    [{ throw: 'reset' }, { state: 'unknown' }]
   ]) {
     const f = stubFetch([{ status: 200, body: { id: 'prov-1' } }, h]);
     const a = adapter(f);
@@ -105,7 +124,10 @@ test('reconcile of accepted send: 404 is absent, 5xx and network failure are unk
 });
 
 test('reconcile after uncertain with no providerId is unknown and never re-sends', async () => {
-  const f = stubFetch([{ throw: 'timeout' }, { status: 200, body: { id: 'prov-1' } }]);
+  const f = stubFetch([
+    { throw: 'timeout' },
+    { status: 200, body: { id: 'prov-1' } }
+  ]);
   const a = adapter(f);
   assert.deepEqual(await a.send(MSG), { outcome: 'uncertain' });
   assert.deepEqual(await a.reconcile('req-1'), { state: 'unknown' });
@@ -119,11 +141,17 @@ test('reconcile after uncertain with no providerId is unknown and never re-sends
 test('reconcile after accepted reads the provider record and never POSTs', async () => {
   const f = stubFetch([
     { status: 200, body: { id: 'prov-1' } },
-    { status: 200, body: {} },
+    { status: 200, body: {} }
   ]);
   const a = adapter(f);
-  assert.deepEqual(await a.send(MSG), { outcome: 'accepted', providerId: 'prov-1' });
-  assert.deepEqual(await a.reconcile('req-1'), { state: 'sent', providerId: 'prov-1' });
+  assert.deepEqual(await a.send(MSG), {
+    outcome: 'accepted',
+    providerId: 'prov-1'
+  });
+  assert.deepEqual(await a.reconcile('req-1'), {
+    state: 'sent',
+    providerId: 'prov-1'
+  });
   assert.equal(f.calls.length, 2);
   assert.equal(f.calls[0].opts.method, 'POST');
   assert.notEqual(f.calls[1].opts.method, 'POST');

@@ -50,7 +50,13 @@ export function timingSafeEqual(a, b) {
 }
 
 export async function importHmacKey(keyBytes) {
-  return subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
 }
 
 export async function hmacSha256(key, message) {
@@ -63,7 +69,14 @@ export async function generateSigningKeyPair() {
 
 export async function exportPublicJwk(publicKey, kid) {
   const jwk = await subtle.exportKey('jwk', publicKey);
-  return { kty: jwk.kty, crv: jwk.crv, x: jwk.x, kid, alg: 'EdDSA', use: 'sig' };
+  return {
+    kty: jwk.kty,
+    crv: jwk.crv,
+    x: jwk.x,
+    kid,
+    alg: 'EdDSA',
+    use: 'sig'
+  };
 }
 
 // RFC 8037 registers "EdDSA" as the JWS alg value for Ed25519 keys;
@@ -83,10 +96,14 @@ export async function exportSigningPrivateJwk(privateKey) {
 // Compact JWS with one pinned algorithm (R4). No 'none', no RSA, no
 // algorithm from the token itself is ever honored at verify time.
 export async function signProof(claims, privateKey, kid) {
-  const header = toBase64Url(te.encode(JSON.stringify({ alg: 'EdDSA', kid, typ: 'JWT' })));
+  const header = toBase64Url(
+    te.encode(JSON.stringify({ alg: 'EdDSA', kid, typ: 'JWT' }))
+  );
   const payload = toBase64Url(te.encode(JSON.stringify(claims)));
   const data = te.encode(`${header}.${payload}`);
-  const sig = new Uint8Array(await subtle.sign({ name: 'Ed25519' }, privateKey, data));
+  const sig = new Uint8Array(
+    await subtle.sign({ name: 'Ed25519' }, privateKey, data)
+  );
   return `${header}.${payload}.${toBase64Url(sig)}`;
 }
 
@@ -104,7 +121,12 @@ export async function verifyProofSignature(token, publicKey) {
   }
   if (headerObj.alg !== 'EdDSA') throw new Error('unexpected algorithm');
   const data = te.encode(`${header}.${payload}`);
-  const ok = await subtle.verify({ name: 'Ed25519' }, publicKey, fromBase64Url(signature), data);
+  const ok = await subtle.verify(
+    { name: 'Ed25519' },
+    publicKey,
+    fromBase64Url(signature),
+    data
+  );
   if (!ok) throw new Error('bad signature');
   let claims;
   try {

@@ -9,7 +9,7 @@ const CSP_BASE = [
   "style-src 'self'",
   "img-src 'self'",
   "base-uri 'none'",
-  "frame-ancestors 'none'",
+  "frame-ancestors 'none'"
 ];
 
 // options:
@@ -18,9 +18,15 @@ const CSP_BASE = [
 //   cache         - "no-store" (sign-in and proof responses) or
 //                   { publicSeconds: n } for the key endpoint
 export function securityHeaders(options = {}) {
-  const { connectOrigin = null, formAction = "'none'", cache = 'no-store' } = options;
+  const {
+    connectOrigin = null,
+    formAction = "'none'",
+    cache = 'no-store'
+  } = options;
   const csp = [...CSP_BASE];
-  csp.push(connectOrigin ? `connect-src 'self' ${connectOrigin}` : "connect-src 'self'");
+  csp.push(
+    connectOrigin ? `connect-src 'self' ${connectOrigin}` : "connect-src 'self'"
+  );
   csp.push(`form-action ${formAction}`);
   const h = new Headers({
     'content-security-policy': csp.join('; '),
@@ -29,7 +35,7 @@ export function securityHeaders(options = {}) {
     'referrer-policy': 'no-referrer',
     'strict-transport-security': 'max-age=31536000',
     'permissions-policy': 'camera=(), microphone=(), geolocation=()',
-    'cross-origin-opener-policy': 'same-origin',
+    'cross-origin-opener-policy': 'same-origin'
   });
   if (cache === 'no-store') h.set('cache-control', 'no-store');
   else h.set('cache-control', `public, max-age=${cache.publicSeconds}`);

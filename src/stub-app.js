@@ -4,20 +4,28 @@
 // the replay record. Salutant never sees sessions; this app never sees
 // challenges. No real app is touched.
 
-import { randomId, importHmacKey, hmacSha256, verifyProofSignature, toBase64Url, fromBase64Url, timingSafeEqual } from './crypto.js';
+import {
+  randomId,
+  importHmacKey,
+  hmacSha256,
+  verifyProofSignature,
+  toBase64Url,
+  fromBase64Url,
+  timingSafeEqual
+} from './crypto.js';
 import { DEFAULT_CONFIG } from './service.js';
 
 export class StubApp {
   constructor({
-    origin,              // exact origin, e.g. https://app.example.test
+    origin, // exact origin, e.g. https://app.example.test
     callbackPath = '/auth/callback',
     completePath = '/auth/complete',
-    serviceOrigin,       // expected issuer, e.g. https://salutant.example.test
-    fetchJwks,           // () => Promise<{ keys, epoch }> - one HTTP call to the service
-    store,               // MemoryStore for states, redemptions, sessions
-    stateHmacKeyBytes,   // app-side secret for hashing the pre-auth cookie
+    serviceOrigin, // expected issuer, e.g. https://salutant.example.test
+    fetchJwks, // () => Promise<{ keys, epoch }> - one HTTP call to the service
+    store, // MemoryStore for states, redemptions, sessions
+    stateHmacKeyBytes, // app-side secret for hashing the pre-auth cookie
     clock = () => Date.now(),
-    config = {},
+    config = {}
   }) {
     this.origin = origin;
     this.callbackUrl = origin + callbackPath;
@@ -28,12 +36,19 @@ export class StubApp {
     this.clock = clock;
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.jwksCache = null; // { fetchedAtMs, keys: Map kid -> CryptoKey, epoch }
-    this._keyReady = importHmacKey(stateHmacKeyBytes).then((k) => { this._stateKey = k; });
+    this._keyReady = importHmacKey(stateHmacKeyBytes).then((k) => {
+      this._stateKey = k;
+      return undefined;
+    });
   }
 
-  async ready() { await this._keyReady; }
+  async ready() {
+    await this._keyReady;
+  }
 
-  async _hmac(message) { return toBase64Url(await hmacSha256(this._stateKey, message)); }
+  async _hmac(message) {
+    return toBase64Url(await hmacSha256(this._stateKey, message));
+  }
 
   // Step 1: the person opens the app's sign-in page (top-level GET).
   // The app sets an anonymous pre-auth cookie (host-only, Secure,
@@ -47,7 +62,11 @@ export class StubApp {
     const stateId = randomId(24);
     this.store.transact((s) => {
       s.set(`state:${stateId}`, {
-        stateId, cookieHmac, createdAtMs: this.clock(), verifiedSub: null, consumed: false,
+        stateId,
+        cookieHmac,
+        createdAtMs: this.clock(),
+        verifiedSub: null,
+        consumed: false
       });
     });
     return {
@@ -56,21 +75,32 @@ export class StubApp {
       cookieValue,
       setCookie: isNew
         ? `pre=${cookieValue}; Path=/; Secure; HttpOnly; SameSite=Lax`
-        : null,
+        : null
     };
   }
 
   // Key cache: at most [5 minutes], then refresh or fail closed (R12).
   async _jwks() {
     const now = this.clock();
-    if (this.jwksCache && now - this.jwksCache.fetchedAtMs < this.config.keyCacheMs) {
+    if (
+      this.jwksCache &&
+      now - this.jwksCache.fetchedAtMs < this.config.keyCacheMs
+    ) {
       return this.jwksCache;
     }
     const fresh = await this.fetchJwks(); // a failure here fails closed
     const keys = new Map();
     for (const jwk of fresh.keys) {
-      keys.set(jwk.kid, await globalThis.crypto.subtle.importKey(
-        'jwk', jwk, { name: 'Ed25519' }, false, ['verify']));
+      keys.set(
+        jwk.kid,
+        await globalThis.crypto.subtle.importKey(
+          'jwk',
+          jwk,
+          { name: 'Ed25519' },
+          false,
+          ['verify']
+        )
+      );
     }
     this.jwksCache = { fetchedAtMs: now, keys, epoch: fresh.epoch };
     return this.jwksCache;
@@ -99,10 +129,17 @@ export class StubApp {
     let claims;
     try {
       const parts = proof.split('.');
-      const header = JSON.parse(new TextDecoder().decode(fromBase64Url(parts[0])));
+      const header = JSON.parse(
+        new TextDecoder().decode(fromBase64Url(parts[0]))
+      );
       const cache = await this._jwksWithOneRetry(header.kid);
       const publicKey = cache.keys.get(header.kid);
-      if (!publicKey) return { status: 400, acao: this.serviceOrigin, body: { error: 'unknown_key' } };
+      if (!publicKey)
+        return {
+          status: 400,
+          acao: this.serviceOrigin,
+          body: { error: 'unknown_key' }
+        };
       ({ claims } = await verifyProofSignature(proof, publicKey));
       const now = this.clock();
       const skew = this.config.clockSkewMs;
@@ -110,17 +147,31 @@ export class StubApp {
       // omits exp, nbf, iat or jti is rejected, not waved through by
       // comparisons against undefined (R4).
       const wellFormed =
-        typeof claims.iss === 'string' && typeof claims.aud === 'string' &&
-        typeof claims.sub === 'string' && typeof claims.nonce === 'string' &&
-        typeof claims.jti === 'string' && claims.jti.length > 0 &&
-        typeof claims.exp === 'number' && typeof claims.nbf === 'number' &&
-        typeof claims.iat === 'number' && typeof claims.epoch === 'number';
-      if (!wellFormed) return { status: 400, acao: this.serviceOrigin, body: { error: 'bad_proof' } };
+        typeof claims.iss === 'string' &&
+        typeof claims.aud === 'string' &&
+        typeof claims.sub === 'string' &&
+        typeof claims.nonce === 'string' &&
+        typeof claims.jti === 'string' &&
+        claims.jti.length > 0 &&
+        typeof claims.exp === 'number' &&
+        typeof claims.nbf === 'number' &&
+        typeof claims.iat === 'number' &&
+        typeof claims.epoch === 'number';
+      if (!wellFormed)
+        return {
+          status: 400,
+          acao: this.serviceOrigin,
+          body: { error: 'bad_proof' }
+        };
       // The bounded exchange window runs from proof issuance, not from
       // state creation: a resend (60s cooldown) must still be able to
       // complete a sign-in.
       if (now - claims.iat * 1000 >= 60_000) {
-        return { status: 400, acao: this.serviceOrigin, body: { error: 'bad_proof' } };
+        return {
+          status: 400,
+          acao: this.serviceOrigin,
+          body: { error: 'bad_proof' }
+        };
       }
       const bad =
         claims.iss !== this.serviceOrigin ||
@@ -130,9 +181,18 @@ export class StubApp {
         claims.nbf * 1000 > now + skew ||
         claims.iat * 1000 > now + skew ||
         claims.nonce !== state;
-      if (bad) return { status: 400, acao: this.serviceOrigin, body: { error: 'bad_proof' } };
+      if (bad)
+        return {
+          status: 400,
+          acao: this.serviceOrigin,
+          body: { error: 'bad_proof' }
+        };
     } catch {
-      return { status: 400, acao: this.serviceOrigin, body: { error: 'bad_proof' } };
+      return {
+        status: 400,
+        acao: this.serviceOrigin,
+        body: { error: 'bad_proof' }
+      };
     }
 
     // Replay protection and the state binding are one atomic step: the
@@ -141,9 +201,12 @@ export class StubApp {
     const verdict = this.store.transact((s) => {
       if (s.getRef(`redemption:${claims.jti}`)) return 'replayed';
       const pending = s.getRef(`state:${state}`);
-      if (!pending || pending.consumed || pending.verifiedSub) return 'bad_state';
+      if (!pending || pending.consumed || pending.verifiedSub)
+        return 'bad_state';
       s.set(`redemption:${claims.jti}`, {
-        jti: claims.jti, redeemedAtMs: this.clock(), sessionId: null,
+        jti: claims.jti,
+        redeemedAtMs: this.clock(),
+        sessionId: null
       });
       pending.verifiedSub = claims.sub;
       pending.verifiedEpoch = claims.epoch;
@@ -151,9 +214,17 @@ export class StubApp {
       return 'ok';
     });
     if (verdict !== 'ok') {
-      return { status: 400, acao: this.serviceOrigin, body: { error: verdict } };
+      return {
+        status: 400,
+        acao: this.serviceOrigin,
+        body: { error: verdict }
+      };
     }
-    return { status: 200, acao: this.serviceOrigin, body: { completeUrl: this.completeUrl } };
+    return {
+      status: 200,
+      acao: this.serviceOrigin,
+      body: { completeUrl: this.completeUrl }
+    };
   }
 
   // Step 3: top-level GET navigation. The SameSite=Lax pre-auth cookie
@@ -171,24 +242,42 @@ export class StubApp {
     const cookieHmac = await this._hmac(`pre:${pre}`);
     const now = this.clock();
     return this.store.transact((s) => {
-      const pending = s.keysWithPrefix('state:')
+      const pending = s
+        .keysWithPrefix('state:')
         .map((k) => s.getRef(k))
-        .find((p) => timingSafeEqual(fromBase64Url(p.cookieHmac), fromBase64Url(cookieHmac))
-          && p.verifiedSub && !p.consumed
-          && p.verifiedAtMs && now - p.verifiedAtMs < 60_000); // completion is bounded
-      if (!pending) return { status: 401, body: { error: 'no_verified_signin' } };
+        .find(
+          (p) =>
+            timingSafeEqual(
+              fromBase64Url(p.cookieHmac),
+              fromBase64Url(cookieHmac)
+            ) &&
+            p.verifiedSub &&
+            !p.consumed &&
+            p.verifiedAtMs &&
+            now - p.verifiedAtMs < 60_000
+        ); // completion is bounded
+      if (!pending)
+        return { status: 401, body: { error: 'no_verified_signin' } };
       pending.consumed = true; // one-time
       const sessionId = randomId(24);
       s.set(`session:${sessionId}`, {
-        sessionId, sub: pending.verifiedSub, epoch: pending.verifiedEpoch, createdAtMs: now,
+        sessionId,
+        sub: pending.verifiedSub,
+        epoch: pending.verifiedEpoch,
+        createdAtMs: now
       });
-      const r = s.getRef(`redemption:${[...s.keysWithPrefix('redemption:')]
-        .map((k) => s.getRef(k)).find((x) => x.sessionId === null)?.jti}`);
+      const r = s.getRef(
+        `redemption:${
+          [...s.keysWithPrefix('redemption:')]
+            .map((k) => s.getRef(k))
+            .find((x) => x.sessionId === null)?.jti
+        }`
+      );
       if (r) r.sessionId = sessionId;
       return {
         status: 200,
         body: { sessionId, sub: pending.verifiedSub },
-        setCookie: `sess=${sessionId}; Path=/; Secure; HttpOnly; SameSite=Lax`,
+        setCookie: `sess=${sessionId}; Path=/; Secure; HttpOnly; SameSite=Lax`
       };
     });
   }
@@ -205,6 +294,8 @@ export class StubApp {
   }
 
   sessionExists(sessionId) {
-    return this.store.transact((s) => s.get(`session:${sessionId}`)) !== undefined;
+    return (
+      this.store.transact((s) => s.get(`session:${sessionId}`)) !== undefined
+    );
   }
 }

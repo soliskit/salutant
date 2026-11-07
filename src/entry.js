@@ -33,10 +33,27 @@ export async function importSigningKeys(text) {
   const signingKeys = new Map();
   for (const k of keys) {
     const [publicKey, privateKey] = await Promise.all([
-      crypto.subtle.importKey('jwk', normalizeEd25519Jwk(k.publicJwk), { name: 'Ed25519' }, true, ['verify']),
-      crypto.subtle.importKey('jwk', normalizeEd25519Jwk(k.privateJwk), { name: 'Ed25519' }, true, ['sign']),
+      crypto.subtle.importKey(
+        'jwk',
+        normalizeEd25519Jwk(k.publicJwk),
+        { name: 'Ed25519' },
+        true,
+        ['verify']
+      ),
+      crypto.subtle.importKey(
+        'jwk',
+        normalizeEd25519Jwk(k.privateJwk),
+        { name: 'Ed25519' },
+        true,
+        ['sign']
+      )
     ]);
-    signingKeys.set(k.kid, { publicKey, privateKey, status: k.status, notAfterMs: k.notAfterMs });
+    signingKeys.set(k.kid, {
+      publicKey,
+      privateKey,
+      status: k.status,
+      notAfterMs: k.notAfterMs
+    });
   }
   return { signingKeys, currentKid };
 }
@@ -46,15 +63,22 @@ async function buildService(store, env) {
   const epoch = JSON.parse(env.EPOCH);
   const service = new SalutantService({
     store,
-    mailer: new ResendMailAdapter({ apiKey: env.RESEND_API_KEY, from: env.MAIL_FROM }),
-    epochSource: { async read() { return epoch.value; } },
+    mailer: new ResendMailAdapter({
+      apiKey: env.RESEND_API_KEY,
+      from: env.MAIL_FROM
+    }),
+    epochSource: {
+      async read() {
+        return epoch.value;
+      }
+    },
     allowlist: JSON.parse(env.ALLOWLIST),
     apps: JSON.parse(env.APPS),
     serviceOrigin: env.SERVICE_ORIGIN,
     codeHmacKeyBytes: fromBase64Url(env.CODE_HMAC_KEY),
     stateHmacKeyBytes: fromBase64Url(env.STATE_HMAC_KEY),
     signingKeys,
-    currentKid,
+    currentKid
   });
   await service.ready();
   return service;
@@ -71,8 +95,9 @@ export class SalutantStoreDO extends StoreDO {
 
   async fetch(request) {
     if (!this.workerPromise) {
-      this.workerPromise = buildService(this.store, this.env)
-        .then((service) => createWorker(service));
+      this.workerPromise = buildService(this.store, this.env).then((service) =>
+        createWorker(service)
+      );
     }
     const worker = await this.workerPromise;
     return worker.fetch(request);
@@ -81,7 +106,9 @@ export class SalutantStoreDO extends StoreDO {
 
 export default {
   async fetch(request, env) {
-    const stub = env.SALUTANT_STORE.get(env.SALUTANT_STORE.idFromName('service'));
+    const stub = env.SALUTANT_STORE.get(
+      env.SALUTANT_STORE.idFromName('service')
+    );
     return stub.fetch(request);
-  },
+  }
 };

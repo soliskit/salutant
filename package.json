@@ -5,8 +5,25 @@
   "license": "MIT",
   "type": "module",
   "description": "Email sign-in proofs: a code to your inbox, a signed proof to the app. Phase 1 is local and mocked, with no real sends, no credentials and no network calls.",
-  "engines": { "node": ">=26.7 <27" },
+  "engines": {
+    "node": ">=26.7 <27"
+  },
   "scripts": {
-    "test": "node --test --experimental-test-coverage --test-coverage-include='src/*.js' --test-coverage-include-all --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 tests/*.test.js"
+    "test": "node --test --experimental-test-coverage --test-coverage-include='src/*.js' --test-coverage-include-all --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 tests/*.test.js",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.6.6",
+    "eslint": "10.14.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "5.5.7",
+    "eslint-plugin-promise": "7.3.0",
+    "globals": "17.14.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1"
   }
 }

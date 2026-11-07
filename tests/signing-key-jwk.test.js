@@ -6,7 +6,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { generateSigningKeyPair, exportPublicJwk, exportSigningPrivateJwk, normalizeEd25519Jwk } from '../src/crypto.js';
+import {
+  generateSigningKeyPair,
+  exportPublicJwk,
+  exportSigningPrivateJwk,
+  normalizeEd25519Jwk
+} from '../src/crypto.js';
 import { importSigningKeys } from '../src/entry.js';
 
 test('R2: exportSigningPrivateJwk emits the registered label and preserves the exported key fields', async () => {
@@ -14,8 +19,10 @@ test('R2: exportSigningPrivateJwk emits the registered label and preserves the e
   const raw = await crypto.subtle.exportKey('jwk', privateKey);
   const jwk = await exportSigningPrivateJwk(privateKey);
   assert.equal(jwk.alg, 'EdDSA');
-  const { alg: _a, ...restOut } = jwk;
-  const { alg: _b, ...restRaw } = raw;
+  const restOut = { ...jwk };
+  delete restOut.alg;
+  const restRaw = { ...raw };
+  delete restRaw.alg;
   assert.deepEqual(restOut, restRaw);
 });
 
@@ -23,18 +30,31 @@ test('R2: exportSigningPrivateJwk emits the registered label and preserves the e
 // through the normalizing export. Reads the workflow source as data;
 // does not execute it.
 test('R2: deploy workflow generates the private JWK via exportSigningPrivateJwk', () => {
-  const wf = readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
+  const wf = readFileSync(
+    new URL('../.github/workflows/deploy.yml', import.meta.url),
+    'utf8'
+  );
   assert.match(wf, /exportSigningPrivateJwk\(privateKey\)/);
   assert.doesNotMatch(wf, /exportKey\('jwk', privateKey\)/);
 });
 
 test('R1: normalizeEd25519Jwk rewrites the nonstandard label without mutating the input', () => {
-  const input = { kty: 'OKP', crv: 'Ed25519', x: 'x', d: 'd', alg: 'Ed25519', key_ops: ['sign'], ext: true };
+  const input = {
+    kty: 'OKP',
+    crv: 'Ed25519',
+    x: 'x',
+    d: 'd',
+    alg: 'Ed25519',
+    key_ops: ['sign'],
+    ext: true
+  };
   const out = normalizeEd25519Jwk(input);
   assert.equal(out.alg, 'EdDSA');
   assert.equal(input.alg, 'Ed25519');
-  const { alg: _a, ...restOut } = out;
-  const { alg: _b, ...restIn } = input;
+  const restOut = { ...out };
+  delete restOut.alg;
+  const restIn = { ...input };
+  delete restIn.alg;
   assert.deepEqual(restOut, restIn);
 });
 
@@ -60,10 +80,20 @@ test('R1: importSigningKeys passes only registered-label JWKs to importKey', asy
   };
   try {
     for (const privateJwk of [badLabel, absentLabel]) {
-      await importSigningKeys(JSON.stringify({
-        currentKid: 'k1',
-        keys: [{ kid: 'k1', publicJwk, privateJwk, status: 'active', notAfterMs: Date.now() + 60_000 }],
-      }));
+      await importSigningKeys(
+        JSON.stringify({
+          currentKid: 'k1',
+          keys: [
+            {
+              kid: 'k1',
+              publicJwk,
+              privateJwk,
+              status: 'active',
+              notAfterMs: Date.now() + 60_000
+            }
+          ]
+        })
+      );
     }
   } finally {
     crypto.subtle.importKey = originalImportKey;

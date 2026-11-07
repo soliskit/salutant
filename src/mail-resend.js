@@ -22,7 +22,12 @@ export class ResendMailAdapter {
   // apiKey: the Resend API key (Worker secret). from: the verified
   // sender, e.g. "Salutant <no-reply@example.test>". fetchImpl and
   // timeoutMs are injectable for tests.
-  constructor({ apiKey, from, fetchImpl = fetch, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+  constructor({
+    apiKey,
+    from,
+    fetchImpl = fetch,
+    timeoutMs = DEFAULT_TIMEOUT_MS
+  }) {
     if (!apiKey) throw new Error('adapter contract: apiKey is required');
     if (!from) throw new Error('adapter contract: from is required');
     this.apiKey = apiKey;
@@ -42,7 +47,7 @@ export class ResendMailAdapter {
         method: 'POST',
         headers: this.headers(requestId),
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(this.timeoutMs)
       });
     } catch {
       // Timeout or network failure: the send may or may not have happened.
@@ -67,7 +72,7 @@ export class ResendMailAdapter {
       try {
         res = await this.fetchImpl(`${BASE_URL}/emails/${record.providerId}`, {
           headers: this.headers(),
-          signal: AbortSignal.timeout(this.timeoutMs),
+          signal: AbortSignal.timeout(this.timeoutMs)
         });
       } catch {
         return { state: 'unknown' };
