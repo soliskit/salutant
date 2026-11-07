@@ -516,7 +516,9 @@ export class SalutantService {
       // last-sent time, bumped for every accepted challenge), so a 429
       // here reveals no membership.
       this.log('resend', verdict, sourceHash);
-      return respond(429, { error: verdict });
+      // Record the refusal too: a keyed duplicate must resolve with it,
+      // not wait on a response that never settles (R5).
+      return respondAndRecord(429, { error: verdict });
     }
     if (verdict === 'withheld_send_limit') {
       // Budget refusals use the same uniform withheld path as challenge
