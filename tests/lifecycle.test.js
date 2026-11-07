@@ -264,3 +264,46 @@ test('a resend racing a verify of the old code never leaves both codes working',
   }
   assert.ok(!(oldWorked && newWorked), 'the old and new code do not both succeed');
 });
+
+const HOUR = 3_600_000;
+
+async function seededForPurge() {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const t0 = w.getNow();
+  const create = await browser.postChallenge({ address: OWNER, stateId: start.stateId, idempotencyKey: 'purge-boundary' });
+  const created = await create.json();
+  await w.service.drain();
+  w.advance(1000);
+  const tv = w.getNow();
+  const verify = await browser.verify({ challengeId: created.challengeId, code: w.mailer.lastCode(), address: OWNER });
+  assert.ok((await verify.json()).proof, 'proof issued');
+  return { w, t0, tv };
+}
+
+const PURGE_DEADLINES = [
+  ['challenge:', (t) => t.t0 + 30 * 60_000 + HOUR],
+  ['issuance:', (t) => t.tv + 300_000 + HOUR],
+  ['reservation:', (t) => t.t0 + 24 * HOUR],
+  ['idem:', (t) => t.t0 + 24 * HOUR],
+  ['counter:reqaddr:', (t) => t.t0 + 24 * HOUR],
+];
+
+for (const [prefix, deadlineOf] of PURGE_DEADLINES) {
+  test(`purge keeps ${prefix} records until their configured purge time and removes them at it`, async () => {
+    const t = await seededForPurge();
+    const deadline = deadlineOf(t);
+    const count = (p) => t.w.store.keysWithPrefix(p).length;
+    const others = PURGE_DEADLINES.filter(([p]) => p !== prefix).map(([p, d]) => [p, d(t), count(p)]);
+    const before = count(prefix);
+    assert.equal(before, 1, 'one record to purge');
+    t.w.service.purge(deadline - 1);
+    assert.equal(count(prefix), before, 'kept one millisecond before the purge time');
+    t.w.service.purge(deadline);
+    assert.equal(count(prefix), 0, 'removed at the purge time');
+    for (const [p, d, n] of others) {
+      if (d > deadline) assert.equal(count(p), n, `${p} untouched before its own purge time`);
+    }
+  });
+}
