@@ -2,3 +2,4 @@ node_modules/
 .DS_Store
 *.log
 tests/measurement/fixtures/fixture-src.js
+.stryker-tmp/
