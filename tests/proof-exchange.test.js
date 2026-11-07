@@ -50,7 +50,7 @@ test('many parallel redemptions of one proof give one redemption', async () => {
 
 async function tampered(w, mutate) {
   const r = await honestSignIn(w);
-  const [h, p, s] = r.verified.proof.split('.');
+  const [, p] = r.verified.proof.split('.');
   const claims = JSON.parse(
     new TextDecoder().decode(
       (await import('../src/crypto.js')).fromBase64Url(p)

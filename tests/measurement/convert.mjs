@@ -10,7 +10,7 @@
 import libCoverage from 'istanbul-lib-coverage';
 import V8ToIstanbul from 'v8-to-istanbul';
 
-const { createCoverageMap, createFileCoverage } = libCoverage;
+const { createFileCoverage } = libCoverage;
 
 // merged: { url, source, coverageList: [functions, ...] } ; path for the report
 // V8 lists a function only once it is compiled, so a load where a function
@@ -20,7 +20,7 @@ const { createCoverageMap, createFileCoverage } = libCoverage;
 // functions other loads of the same source observed removes only credit no
 // execution could have produced. This happens at the V8 level because the
 // converter's own function map drops anonymous functions entirely.
-export function completeFunctionLists(coverageList, sourceLength) {
+export function completeFunctionLists(coverageList) {
   const union = new Map();
   for (const functions of coverageList) {
     for (const fn of functions || []) {
@@ -76,8 +76,7 @@ export function completeFunctionLists(coverageList, sourceLength) {
 export async function toFileCoverage(merged, path) {
   const coverages = [];
   for (const functions of completeFunctionLists(
-    merged.coverageList || [merged.functions],
-    (merged.source || '').length
+    merged.coverageList || [merged.functions]
   )) {
     const converter = new V8ToIstanbul(path, 0, {
       sources: { '': merged.source }

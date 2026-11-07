@@ -77,6 +77,7 @@ export class SalutantService {
     ]).then(([codeKey, stateKey]) => {
       this._codeKey = codeKey;
       this._stateKey = stateKey;
+      return undefined;
     });
   }
 

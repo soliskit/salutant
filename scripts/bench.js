@@ -3,12 +3,7 @@
 // verify and session issue. Run: node scripts/bench.js
 // Local numbers say nothing about Workers CPU limits (cloud phase).
 import { performance } from 'node:perf_hooks';
-import {
-  makeWorld,
-  BrowserSession,
-  honestSignIn,
-  OWNER
-} from '../tests/helpers.js';
+import { makeWorld, BrowserSession, honestSignIn } from '../tests/helpers.js';
 
 const RUNS = 20;
 const samples = [];

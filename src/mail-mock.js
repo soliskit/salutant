@@ -4,6 +4,9 @@
 
 export class MockMailAdapter {
   // behavior: "ok" | "uncertain" | "failed" | (message) => outcome
+  /**
+   * @param {{ behavior?: string | ((message: { requestId: string, to: string, subject: string, text: string }) => string) }} [options]
+   */
   constructor({ behavior = 'accepted' } = {}) {
     this.behavior = behavior;
     this.outbox = []; // every accepted message, readable by tests

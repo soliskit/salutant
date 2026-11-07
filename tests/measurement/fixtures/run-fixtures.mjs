@@ -94,7 +94,7 @@ async function withFixtureServer(routes, fn) {
     res.writeHead(200, { 'content-type': route.type });
     res.end(route.body);
   });
-  await new Promise((r) => server.listen(0, r));
+  await new Promise((resolve) => server.listen(0, resolve));
   try {
     await fn(`http://localhost:${server.address().port}`);
   } finally {
@@ -452,7 +452,7 @@ const server = createServer((req, res) => {
   if (p === '/p') { res.end('<html><script src="/before.js"></script></html>'); return }
   res.end('<html></html>')
 })
-await new Promise((r) => server.listen(0, r))
+await new Promise((resolve) => server.listen(0, resolve))
 const base = 'http://localhost:' + server.address().port
 const browser = await chromium.launch()
 const page = await browser.newPage()

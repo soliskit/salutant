@@ -38,6 +38,7 @@ export class StubApp {
     this.jwksCache = null; // { fetchedAtMs, keys: Map kid -> CryptoKey, epoch }
     this._keyReady = importHmacKey(stateHmacKeyBytes).then((k) => {
       this._stateKey = k;
+      return undefined;
     });
   }
 

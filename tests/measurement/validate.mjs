@@ -44,7 +44,7 @@ export function validateServerDir(dir, runStartedAt, serverUrls) {
 
 export function validateBrowserDir(dir) {
   const indexPath = join(dir, 'captures.index');
-  let indexed = [];
+  let indexed;
   try {
     indexed = readFileSync(indexPath, 'utf8')
       .trim()

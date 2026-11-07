@@ -3,7 +3,6 @@
 // only; nothing real is referenced.
 import { DatabaseSync } from 'node:sqlite';
 import { MemoryStore } from '../src/storage.js';
-import { DurableObjectStore } from '../src/do-store.js';
 import { SalutantService } from '../src/service.js';
 import { MockMailAdapter } from '../src/mail-mock.js';
 import { StubApp } from '../src/stub-app.js';
@@ -160,7 +159,7 @@ export class BrowserSession {
     address,
     appOrigin = APP_ORIGIN,
     stateId,
-    idempotencyKey,
+    idempotencyKey = null,
     headers = {}
   }) {
     const res = await this.world.worker.fetch(

@@ -371,7 +371,7 @@ test(
           res.end(Buffer.from(await out.arrayBuffer()));
         }
       );
-      await new Promise((r) => server.listen(0, '127.0.0.1', r));
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
       const origin = `https://localhost:${server.address().port}`;
       browser = await launcher.launch();
       const context = await browser.newContext({ ignoreHTTPSErrors: true });
@@ -507,7 +507,7 @@ test(
           res.end(Buffer.from(await out.arrayBuffer()));
         }
       );
-      await new Promise((r) => server.listen(0, '127.0.0.1', r));
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
       const origin = `https://localhost:${server.address().port}`;
       browser = await launcher.launch();
       const context = await browser.newContext({ ignoreHTTPSErrors: true });
@@ -669,7 +669,7 @@ test(
           res.end(Buffer.from(await out.arrayBuffer()));
         }
       );
-      await new Promise((r) => server.listen(0, '127.0.0.1', r));
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
       const origin = `https://localhost:${server.address().port}`;
       browser = await launcher.launch();
       const context = await browser.newContext({ ignoreHTTPSErrors: true });

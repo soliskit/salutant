@@ -159,7 +159,9 @@ if (process.env.SALUTANT_MEASURE === '1') {
           closing.add(page);
           try {
             await handle.take('context.close');
-          } catch {}
+          } catch {
+            // The page can vanish mid-shutdown; closing continues.
+          }
         }
       }
       return originalClose(...args);
@@ -187,7 +189,9 @@ if (process.env.SALUTANT_MEASURE === '1') {
       for (const context of browser.contexts()) {
         try {
           await context.close();
-        } catch {}
+        } catch {
+          // An already-closed context is fine when tearing down.
+        }
       }
       return originalClose(...closeArgs);
     };

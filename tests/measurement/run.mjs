@@ -130,7 +130,7 @@ async function withVerificationServer(fn) {
     res.statusCode = out.status;
     res.end(Buffer.from(await out.arrayBuffer()));
   });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
     await fn(`http://localhost:${server.address().port}`);
   } finally {
