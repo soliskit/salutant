@@ -176,11 +176,14 @@ export class BrowserSession {
     this._storeCookies(res);
     return res;
   }
-  async resend({ challengeId, address }) {
+  async resend({ challengeId, address, idempotencyKey = null }) {
     const res = await this.world.worker.fetch(
       new Request(`${SERVICE_ORIGIN}/v1/challenges`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {})
+        },
         body: JSON.stringify({ resendOf: challengeId, address })
       })
     );
