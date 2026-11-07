@@ -119,6 +119,22 @@ test('a verify with non-string fields is one counted wrong try, answered generic
   assert.equal(challenge.state, 'open', 'one try does not kill the challenge');
 });
 
+test('a correct code and cookie with a different address is refused and counted', async () => {
+  // The verify body carries the address as well as the code: a code that
+  // is right for the challenge does not verify for another address.
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const created = await (await browser.postChallenge({ address: OWNER, stateId: start.stateId })).json();
+  await w.service.drain();
+  const code = w.mailer.lastCode();
+  const res = await browser.verify({ challengeId: created.challengeId, code, address: 'other@example.test' });
+  assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' }); // R2 generic
+  const challenge = w.store.transact((s) => s.getRef(`challenge:${created.challengeId}`));
+  assert.equal(challenge.attempts, 1, 'one wrong try counted');
+  assert.equal(challenge.state, 'open', 'the challenge is not consumed');
+});
+
 test('a revoked signing key is never published in the key listing', async () => {
   const w = await makeWorld();
   w.service.signingKeys.get('k1').status = 'revoked';
