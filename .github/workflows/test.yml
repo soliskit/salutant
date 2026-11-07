@@ -145,8 +145,11 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: package.json
+      # tsconfig.json is excluded from the mutation sandbox: it is a lint/typecheck
+      # artifact and Stryker's npx environment has no typescript package to process it.
       - run: >
           npx --yes "@stryker-mutator/core@${STRYKER_VERSION}" run
+          --ignorePatterns tsconfig.json
           --testRunner command
           --commandRunner.command "exec node --test tests/*.test.js"
           --mutate "src/${{ matrix.file }}.js"
