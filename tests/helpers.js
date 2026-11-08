@@ -21,9 +21,14 @@ export const ATTACKER = 'attacker@example.test';
 // production storage twin, not only MemoryStore.
 export function makeDOStorage() {
   const db = new DatabaseSync(':memory:');
-  return {
+  const storage = {
+    // Count of non-SELECT statements run, so tests can prove that a
+    // read-only pass writes nothing. Reset it between phases; the
+    // constructor's CREATE TABLE is a write too.
+    writes: 0,
     sql: {
       exec(query, ...params) {
+        if (!/^\s*select/i.test(query)) storage.writes++;
         const stmt = db.prepare(query);
         if (/^\s*select/i.test(query)) {
           const rows = stmt.all(...params);
@@ -45,6 +50,7 @@ export function makeDOStorage() {
       }
     }
   };
+  return storage;
 }
 
 export class ControllableEpoch {

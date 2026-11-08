@@ -768,22 +768,22 @@ export class SalutantService {
   purge(now = this.clock()) {
     this.store.transact((s) => {
       for (const k of s.keysWithPrefix('challenge:')) {
-        if (s.getRef(k).expiresAtMs + this.config.challengePurgeMs <= now)
+        if (s.get(k).expiresAtMs + this.config.challengePurgeMs <= now)
           s.delete(k);
       }
       for (const k of s.keysWithPrefix('counter:')) {
-        if (s.getRef(k).expiresAtMs <= now) s.delete(k);
+        if (s.get(k).expiresAtMs <= now) s.delete(k);
       }
       for (const k of s.keysWithPrefix('reservation:')) {
-        if (s.getRef(k).createdAtMs + this.config.addressStateTtlMs <= now)
+        if (s.get(k).createdAtMs + this.config.addressStateTtlMs <= now)
           s.delete(k);
       }
       for (const k of s.keysWithPrefix('issuance:')) {
-        if (s.getRef(k).expiresAtMs + this.config.challengePurgeMs <= now)
+        if (s.get(k).expiresAtMs + this.config.challengePurgeMs <= now)
           s.delete(k);
       }
       for (const k of s.keysWithPrefix('idem:')) {
-        if (s.getRef(k).createdAtMs + this.config.addressStateTtlMs <= now)
+        if (s.get(k).createdAtMs + this.config.addressStateTtlMs <= now)
           s.delete(k);
       }
     });

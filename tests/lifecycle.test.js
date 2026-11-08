@@ -3,11 +3,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   makeWorld,
+  makeDOStorage,
   BrowserSession,
   honestSignIn,
   OWNER,
   STRANGER
 } from './helpers.js';
+import { DurableObjectStore } from '../src/do-store.js';
 
 test('a correct, unexpired, unused code succeeds exactly once', async () => {
   const w = await makeWorld();
@@ -436,8 +438,8 @@ test('a resend racing a verify of the old code never leaves both codes working',
 
 const HOUR = 3_600_000;
 
-async function seededForPurge() {
-  const w = await makeWorld();
+async function seededForPurge(worldOptions) {
+  const w = await makeWorld(worldOptions);
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
   const t0 = w.getNow();
@@ -491,3 +493,50 @@ for (const [prefix, deadlineOf] of PURGE_DEADLINES) {
     }
   });
 }
+
+const PURGE_FAMILIES = PURGE_DEADLINES.map(([p]) => p);
+
+// Purge reads records to decide; reading must not write. The stand-in is
+// a real SQLite engine behind the store, so its non-SELECT statement
+// count is the witness: zero counted writes while nothing is due, and
+// only the due deletions once a family passes its purge time.
+test('purge writes nothing while every record is kept', async () => {
+  const storage = makeDOStorage();
+  const t = await seededForPurge({
+    storeFactory: () => new DurableObjectStore(storage)
+  });
+  const kept = new Map();
+  for (const p of PURGE_FAMILIES)
+    for (const k of t.w.store.keysWithPrefix(p)) kept.set(k, t.w.store.get(k));
+  assert.ok(kept.size > 0, 'seeded records to keep');
+  storage.writes = 0;
+  t.w.service.purge(t.w.getNow());
+  assert.equal(storage.writes, 0, 'a kept record is never rewritten');
+  for (const [k, v] of kept)
+    assert.deepEqual(t.w.store.get(k), v, `${k} is unchanged`);
+});
+
+test('purge deletes only the due records and writes nothing else', async () => {
+  const storage = makeDOStorage();
+  const t = await seededForPurge({
+    storeFactory: () => new DurableObjectStore(storage)
+  });
+  const deadline = PURGE_DEADLINES.find(([p]) => p === 'challenge:')[1](t);
+  const before = new Map();
+  for (const p of PURGE_FAMILIES)
+    for (const k of t.w.store.keysWithPrefix(p))
+      before.set(k, t.w.store.get(k));
+  storage.writes = 0;
+  t.w.service.purge(deadline);
+  const kept = new Map();
+  for (const p of PURGE_FAMILIES)
+    for (const k of t.w.store.keysWithPrefix(p)) kept.set(k, t.w.store.get(k));
+  assert.ok(kept.size < before.size, 'due records are removed');
+  assert.equal(
+    storage.writes,
+    before.size - kept.size,
+    'only the deletions write; kept records are not rewritten'
+  );
+  for (const [k, v] of kept)
+    assert.deepEqual(v, before.get(k), `${k} is unchanged`);
+});
