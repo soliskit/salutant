@@ -3,8 +3,8 @@ pre-commit:
   parallel: true
   commands:
     eslint:
-      glob: "**/*.{js,mjs,cjs,ts,mts,cts,tsx}"
+      glob: '**/*.{js,mjs,cjs,ts,mts,cts,tsx}'
       run: ./node_modules/.bin/eslint -- {staged_files}
     prettier:
-      glob: "**/*.{js,json,jsonc,md,mjs,yml}"
+      glob: '**/*.{js,json,jsonc,md,mjs,yml}'
       run: ./node_modules/.bin/prettier --check -- {staged_files}
