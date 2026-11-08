@@ -65,3 +65,35 @@ test('the working tree holds no secrets or personal addresses', async () => {
   }
   assert.deepEqual(hits, [], 'scan must be clean');
 });
+
+test('a logged event drops entries older than 14 days and keeps newer ones', async () => {
+  const w = await makeWorld();
+  const day = 24 * 3_600_000;
+  w.service.log('challenge', 'accepted', 'old');
+  w.advance(1 * day);
+  w.service.log('challenge', 'accepted', 'recent');
+  w.advance(14 * day - 1);
+  // The first entry is now 15 days minus 1 ms old, the second is 14 days minus 1 ms old.
+  w.service.log('verify', 'rejected', 'new');
+  assert.deepEqual(
+    w.logSink.map((e) => e.source),
+    ['recent', 'new']
+  );
+  w.advance(2);
+  w.service.log('verify', 'rejected', 'later');
+  assert.deepEqual(
+    w.logSink.map((e) => e.source),
+    ['new', 'later']
+  );
+});
+
+test('an entry exactly 14 days old is kept', async () => {
+  const w = await makeWorld();
+  w.service.log('challenge', 'accepted', 'edge');
+  w.advance(14 * 24 * 3_600_000);
+  w.service.log('verify', 'rejected', 'now');
+  assert.deepEqual(
+    w.logSink.map((e) => e.source),
+    ['edge', 'now']
+  );
+});

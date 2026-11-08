@@ -33,7 +33,8 @@ export const DEFAULT_CONFIG = {
   endpointCacheSeconds: 300,
   keyCacheMs: 5 * 60_000,
   addressStateTtlMs: 24 * 3_600_000,
-  challengePurgeMs: 3_600_000 // one hour after expiry: records never live 24h (R6)
+  challengePurgeMs: 3_600_000, // one hour after expiry: records never live 24h (R6)
+  logRetentionMs: 14 * 24 * 3_600_000 // service logs are kept 14 days
 };
 
 // How long the daily and monthly send totals are kept: two days and 32 days.
@@ -87,7 +88,16 @@ export class SalutantService {
 
   // R13: time, event type, outcome and a hashed source. Never codes,
   // proofs or email addresses.
+  // Entries older than the retention period are dropped when the next
+  // event is logged.
   log(event, outcome, source) {
+    const oldest = this.clock() - this.config.logRetentionMs;
+    while (
+      this.logSink.length > 0 &&
+      Date.parse(this.logSink[0].time) < oldest
+    ) {
+      this.logSink.shift();
+    }
     this.logSink.push({
       time: new Date(this.clock()).toISOString(),
       event,
