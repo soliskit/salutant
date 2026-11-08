@@ -35,6 +35,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: package.json
+          cache: npm
       - run: npm ci
       - run: npm run lint
       - run: npm run format:check
@@ -70,6 +71,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: package.json
+          cache: npm
       - run: npm i --no-save "playwright@${PLAYWRIGHT_VERSION}"
       - run: npx playwright install --with-deps webkit
       - name: Check Playwright package version
@@ -257,6 +259,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: package.json
+          cache: npm
       # tsconfig.json is excluded from the mutation sandbox: it is a lint/typecheck
       # artifact and Stryker's npx environment has no typescript package to process it.
       - run: >
