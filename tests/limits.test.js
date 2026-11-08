@@ -667,8 +667,9 @@ test('rolling sends age out individually at 30 minutes; requests stay hourly', a
     6,
     'both later timestamps age out exactly'
   );
-  // Six creates above; four more exhaust the independent hourly request cap.
-  for (let i = 0; i < 4; i++)
+  // Six creates and two resends above; two more exhaust the hourly request
+  // cap, which resends now share with creation.
+  for (let i = 0; i < 2; i++)
     assert.equal(
       (await b.postChallenge({ address: OWNER, stateId: 's'.repeat(24) }))
         .status,
@@ -913,4 +914,97 @@ test('resends below the daily and monthly send caps send mail and resends at the
       'the withheld resend answers like the sent one'
     );
   }
+});
+
+test('resends count toward the per-source hourly request limit, including made-up targets', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  // Ten requests from one source pass; every fake resend is a request.
+  for (let i = 0; i < 10; i++) {
+    const res = await browser.resend({
+      challengeId: `made-up-${i}`,
+      address: OWNER
+    });
+    assert.equal(res.status, 200, `resend ${i} passes`);
+  }
+  const eleventh = await browser.resend({
+    challengeId: 'made-up-10',
+    address: OWNER
+  });
+  assert.equal(eleventh.status, 429);
+  assert.deepEqual(await eleventh.json(), { error: 'rate_limited' });
+  // The counter is shared with challenge creation: a fresh challenge
+  // from the same source is the twelfth request and is limited too.
+  const start = await w.app.startSignIn(null);
+  const challenge = await browser.postChallenge({
+    address: OWNER,
+    stateId: start.stateId
+  });
+  assert.equal(challenge.status, 429);
+  // A different source claiming a different address is unaffected.
+  const other = await browser.postChallenge({
+    address: STRANGER,
+    stateId: start.stateId,
+    headers: { 'cf-connecting-ip': '203.0.113.77' }
+  });
+  assert.equal(other.status, 200);
+});
+
+test('resends count toward the per-address hourly request limit, shared with creation', async () => {
+  const w = await makeWorld({ config: { requestsPerSourcePerHour: 1000 } });
+  const browser = new BrowserSession(w);
+  // Made-up targets claiming one address still count against that
+  // address: membership is never consulted, so the limit reveals nothing.
+  for (let i = 0; i < 10; i++) {
+    const res = await browser.resend({
+      challengeId: `made-up-${i}`,
+      address: OWNER
+    });
+    assert.equal(res.status, 200, `resend ${i} passes`);
+  }
+  const eleventh = await browser.resend({
+    challengeId: 'made-up-10',
+    address: OWNER
+  });
+  assert.equal(eleventh.status, 429);
+  assert.deepEqual(await eleventh.json(), { error: 'rate_limited' });
+  // A fresh challenge for the same address shares the counter.
+  const start = await w.app.startSignIn(null);
+  const challenge = await browser.postChallenge({
+    address: OWNER,
+    stateId: start.stateId
+  });
+  assert.equal(challenge.status, 429);
+  // A resend claiming a different address is not limited by it.
+  const stranger = await browser.resend({
+    challengeId: 'made-up-x',
+    address: STRANGER
+  });
+  assert.equal(stranger.status, 200);
+  // R3: drive the same request limit for the unlisted address and find
+  // no difference - same status and body as the listed address's 429.
+  for (let i = 0; i < 9; i++) {
+    const res = await browser.resend({
+      challengeId: `stranger-${i}`,
+      address: STRANGER
+    });
+    assert.equal(res.status, 200, `stranger resend ${i} passes`);
+  }
+  const strangerEleventh = await browser.resend({
+    challengeId: 'stranger-9',
+    address: STRANGER
+  });
+  assert.equal(strangerEleventh.status, 429);
+  const strangerBody = await strangerEleventh.json();
+  assert.deepEqual(strangerBody, { error: 'rate_limited' });
+  const listedAgain = await browser.resend({
+    challengeId: 'made-up-11',
+    address: OWNER
+  });
+  assert.equal(listedAgain.status, 429);
+  assert.deepEqual(
+    await listedAgain.json(),
+    strangerBody,
+    'listed and unlisted addresses get identical limit responses (R3)'
+  );
 });
