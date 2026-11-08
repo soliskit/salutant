@@ -439,6 +439,42 @@ export class SalutantService {
     // that challenge's earlier code. It reuses the slot (R8) and obeys
     // the resend cooldown.
     const address = typeof body.address === 'string' ? body.address.trim() : '';
+    const addressHash = await this._hmac(this._stateKey, `addr:${address}`);
+
+    // R6: one synchronous step for the request counters, exactly as on
+    // challenge creation. A resend is a request: it bumps the same
+    // hourly source and address counters, so the request limits hold
+    // across both paths. Listed and unlisted addresses - and made-up
+    // resend targets - count the same way, so a limit response never
+    // reveals an allowed address (R3).
+    const gate = this.store.transact((s) => {
+      if (
+        bump(
+          s,
+          `reqsrc:${sourceHash}`,
+          hourWindow(now),
+          this.config.addressStateTtlMs,
+          now
+        ) > this.config.requestsPerSourcePerHour
+      )
+        return 'rate_limited';
+      if (
+        bump(
+          s,
+          `reqaddr:${addressHash}`,
+          hourWindow(now),
+          this.config.addressStateTtlMs,
+          now
+        ) > this.config.requestsPerAddressPerHour
+      )
+        return 'rate_limited';
+      return null;
+    });
+    if (gate) {
+      this.log('resend', gate, sourceHash);
+      return respondAndRecord(429, { error: gate });
+    }
+
     const peek = this.store.transact((s) =>
       s.get(`challenge:${body.resendOf}`)
     );
@@ -455,13 +491,10 @@ export class SalutantService {
     // mail (R2, R6).
     const requestId = randomId(16);
     const code = generateCode();
-    const [addressHash, codeHmac] = await Promise.all([
-      this._hmac(this._stateKey, `addr:${address}`),
-      this._hmac(
-        this._codeKey,
-        codeHmacMessage(peek.appOrigin, 'signin', peek.id, code)
-      )
-    ]);
+    const codeHmac = await this._hmac(
+      this._codeKey,
+      codeHmacMessage(peek.appOrigin, 'signin', peek.id, code)
+    );
     if (addressHash !== peek.addressHash) {
       return respondAndRecord(200, {
         status: 'ok',
