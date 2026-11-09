@@ -84,7 +84,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     assert.ok(fresh.verified.proof, 'service resumes on the new epoch');
   });
 
-  test(`[${driver}] a restored consumed code is not reusable once the epoch moved`, async () => {
+  test(`[${driver}] an old-epoch code is refused after the epoch is raised`, async () => {
     const w = await makeWorld({ storeFactory });
     const browser = new BrowserSession(w);
     const start = await w.app.startSignIn(null);
@@ -328,6 +328,61 @@ for (const [driver, storeFactory] of DRIVERS) {
     );
     assert.notEqual(closed.status, 200);
     w.app.fetchJwks = realFetch;
+  });
+
+  test(`[${driver}] a store restore does not bring back a revoked signing key`, async () => {
+    const w = await makeWorld({ storeFactory });
+    const snapshot = w.store.snapshot();
+    w.store.transact((s) => s.set('restore-witness', { written: true }));
+
+    // Two fresh sign-ins at the current epoch: one signed by k1, then one
+    // signed by k2 after k2 becomes current.
+    const signedByK1 = await honestSignIn(w, { redeem: false });
+    const k2 = await generateSigningKeyPair();
+    w.service.signingKeys.set('k2', {
+      ...k2,
+      status: 'current',
+      notAfterMs: null
+    });
+    w.service.currentKid = 'k2';
+    const signedByK2 = await honestSignIn(w, { redeem: false });
+
+    // Emergency revoke of k1, then a point-in-time restore of the records.
+    w.service.signingKeys.get('k1').status = 'revoked';
+    w.store.restoreFrom(snapshot);
+    assert.equal(
+      w.store.transact((s) => s.get('restore-witness')),
+      undefined,
+      'the restore ran: a record written after the snapshot is gone'
+    );
+    w.app.jwksCache = null;
+
+    const listed = await (
+      await w.service.fetch(
+        new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
+      )
+    ).json();
+    assert.deepEqual(
+      listed.keys.map((k) => k.kid),
+      ['k2'],
+      'the key list holds the current key and not the revoked one'
+    );
+
+    const refused = await w.app.handleExchange(
+      { proof: signedByK1.verified.proof, state: signedByK1.verified.state },
+      SERVICE_ORIGIN
+    );
+    assert.equal(refused.status, 400);
+    assert.equal(
+      refused.body.error,
+      'unknown_key',
+      'a proof from the revoked key is an unknown key'
+    );
+    const accepted = await w.app.handleExchange(
+      { proof: signedByK2.verified.proof, state: signedByK2.verified.state },
+      SERVICE_ORIGIN
+    );
+    assert.equal(accepted.status, 200, 'a proof from the current key works');
   });
 
   test(`[${driver}] a proof from an earlier epoch is rejected and the app drops earlier sessions`, async () => {
