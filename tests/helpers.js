@@ -26,6 +26,14 @@ export function makeDOStorage() {
     // read-only pass writes nothing. Reset it between phases; the
     // constructor's CREATE TABLE is a write too.
     writes: 0,
+    // Scheduled alarm time in milliseconds, or null when none is set.
+    alarmMs: null,
+    setAlarm(ms) {
+      storage.alarmMs = ms;
+    },
+    async getAlarm() {
+      return storage.alarmMs;
+    },
     sql: {
       exec(query, ...params) {
         if (!/^\s*select/i.test(query)) storage.writes++;

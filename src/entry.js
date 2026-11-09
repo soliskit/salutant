@@ -86,21 +86,55 @@ async function buildService(store, env) {
 
 // Durable Object class bound in wrangler.jsonc. Builds the service once
 // per object instance and reuses it; each request runs through the same
-// createWorker routing the local tests use.
+// createWorker routing the local tests use, and the hourly alarm runs the
+// purge on the same single build. The alarm is the platform's private
+// scheduled invocation: no request route exposes the purge (issue #106).
+const PURGE_INTERVAL_MS = 3_600_000;
+
 export class SalutantStoreDO extends StoreDO {
   constructor(ctx, env) {
     super(ctx, env);
+    this.ctx = ctx;
+    this.servicePromise = null;
     this.workerPromise = null;
+    // Schedule the hourly purge once per stored object. The alarm lives
+    // in the object's own storage; the getAlarm check keeps a wake from
+    // overriding the alarm that is about to run (platform guidance).
+    ctx.blockConcurrencyWhile(async () => {
+      if (!(await ctx.storage.getAlarm())) {
+        await ctx.storage.setAlarm(Date.now() + PURGE_INTERVAL_MS);
+      }
+    });
+  }
+
+  service() {
+    if (!this.servicePromise) {
+      this.servicePromise = buildService(this.store, this.env);
+    }
+    return this.servicePromise;
   }
 
   async fetch(request) {
     if (!this.workerPromise) {
-      this.workerPromise = buildService(this.store, this.env).then((service) =>
+      this.workerPromise = this.service().then((service) =>
         createWorker(service)
       );
     }
     const worker = await this.workerPromise;
     return worker.fetch(request);
+  }
+
+  // Hourly housekeeping (issue #106): deletes every record past its
+  // retention. Rescheduling happens even when the purge fails, so the
+  // next successful run can purge eligible records; repeated failures
+  // can delay cleanup.
+  async alarm() {
+    try {
+      const service = await this.service();
+      service.purge();
+    } finally {
+      await this.ctx.storage.setAlarm(Date.now() + PURGE_INTERVAL_MS);
+    }
   }
 }
 

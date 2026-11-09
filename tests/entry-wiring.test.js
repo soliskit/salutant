@@ -15,6 +15,17 @@ import {
 } from '../src/crypto.js';
 import { makeDOStorage, SERVICE_ORIGIN, APP_ORIGIN, OWNER } from './helpers.js';
 
+// Object context stand-in: storage plus the platform's construction-time
+// gate, which the shim runs immediately.
+function makeCtx() {
+  return {
+    storage: makeDOStorage(),
+    async blockConcurrencyWhile(fn) {
+      await fn();
+    }
+  };
+}
+
 async function makeEnv() {
   const pair = await generateSigningKeyPair();
   const bytes = () =>
@@ -72,10 +83,7 @@ test('the worker forwards every request to the one named object', async () => {
 });
 
 test('the object builds the service once and serves page assets through it', async () => {
-  const object = new SalutantStoreDO(
-    { storage: makeDOStorage() },
-    await makeEnv()
-  );
+  const object = new SalutantStoreDO(makeCtx(), await makeEnv());
   assert.equal(
     object.workerPromise,
     null,
@@ -101,7 +109,7 @@ test('the object builds the service once and serves page assets through it', asy
 test('the object key endpoint returns the epoch from its configured environment', async () => {
   const env = await makeEnv();
   env.EPOCH = JSON.stringify({ value: 7 });
-  const object = new SalutantStoreDO({ storage: makeDOStorage() }, env);
+  const object = new SalutantStoreDO(makeCtx(), env);
   const response = await object.fetch(
     new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
   );
@@ -162,4 +170,59 @@ test('the code-entry page is served for each registered app origin and refused f
     )
   );
   assert.equal(refused.status, 400);
+});
+
+// Issue #106 regression: construction schedules the hourly purge alarm
+// once per stored object, and a later wake does not override it.
+test('construction schedules the hourly alarm once', async () => {
+  const ctx = makeCtx();
+  new SalutantStoreDO(ctx, await makeEnv());
+  await new Promise((resolve) => setImmediate(resolve));
+  const first = await ctx.storage.getAlarm();
+  assert.ok(first > Date.now(), 'the first alarm is in the future');
+  new SalutantStoreDO(ctx, await makeEnv());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    await ctx.storage.getAlarm(),
+    first,
+    'a wake keeps the already scheduled alarm'
+  );
+});
+
+// Issue #106 behavior: the alarm deletes a record already past its
+// retention and reschedules itself; the same service build keeps
+// serving requests afterwards.
+test('the alarm purges a record past its retention and reschedules', async () => {
+  const ctx = makeCtx();
+  const object = new SalutantStoreDO(ctx, await makeEnv());
+  ctx.storage.sql.exec(
+    "INSERT INTO records (key, value) VALUES ('challenge:seed', ?)",
+    JSON.stringify({ expiresAtMs: Date.now() - 2 * 3_600_000 })
+  );
+  await object.alarm();
+  const remaining = ctx.storage.sql
+    .exec("SELECT value FROM records WHERE key = 'challenge:seed'")
+    .toArray();
+  assert.deepEqual(remaining, [], 'the expired record is purged');
+  assert.ok(
+    (await ctx.storage.getAlarm()) > Date.now(),
+    'the next hourly alarm is scheduled'
+  );
+  const page = await object.fetch(new Request(`${SERVICE_ORIGIN}/app.js`));
+  assert.equal(page.status, 200, 'the same build keeps serving');
+});
+
+// Issue #106 resilience: a failing purge still reschedules, so the next
+// successful run can purge eligible records.
+test('a failing purge still reschedules the alarm', async () => {
+  const ctx = makeCtx();
+  const object = new SalutantStoreDO(ctx, await makeEnv());
+  ctx.storage.sql.exec(
+    "INSERT INTO records (key, value) VALUES ('challenge:bad', 'not json')"
+  );
+  await assert.rejects(object.alarm(), SyntaxError);
+  assert.ok(
+    (await ctx.storage.getAlarm()) > Date.now(),
+    'the alarm is rescheduled despite the failure'
+  );
 });
