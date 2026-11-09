@@ -388,3 +388,173 @@ test('after a failed send the provider is called once, and repeating the same re
   await w.service.drain();
   assert.equal(w.mailer.attempts.length, 1, 'the replay sent nothing');
 });
+
+// R5: if a request throws after it registered its idempotency key, a retry
+// with the same key must be answered, not wait on the dead request.
+test('a request that throws after registering its key does not block a same-key retry', async () => {
+  const w = await makeWorld();
+  const browser = new BrowserSession(w);
+  const start = await w.app.startSignIn(null);
+  const key = 'throws-after-register';
+  const original = w.store.transact.bind(w.store);
+  let armed = true;
+  w.store.transact = (fn) =>
+    original((s) => {
+      const set = s.set;
+      s.set = (k, v) => {
+        if (armed && String(k).startsWith('idem:')) {
+          armed = false;
+          throw new Error('injected write failure');
+        }
+        return set.call(s, k, v);
+      };
+      try {
+        return fn(s);
+      } finally {
+        s.set = set;
+      }
+    });
+  const first = await browser.postChallenge({
+    address: OWNER,
+    stateId: start.stateId,
+    idempotencyKey: key
+  });
+  assert.equal(first.status, 500, 'the failed request is closed');
+  const retry = await Promise.race([
+    new BrowserSession(w).postChallenge({
+      address: OWNER,
+      stateId: start.stateId,
+      idempotencyKey: key
+    }),
+    new Promise((resolve) => setTimeout(() => resolve('hung'), 2000))
+  ]);
+  assert.notEqual(retry, 'hung', 'the same-key retry is answered');
+});
+
+test('a request that throws before registering its key leaves no stale entry for a same-key retry', async () => {
+  const w = await makeWorld();
+  const start = await w.app.startSignIn(null);
+  const key = 'throws-before-register';
+  w.epoch.available = false;
+  const first = await new BrowserSession(w).postChallenge({
+    address: OWNER,
+    stateId: start.stateId,
+    idempotencyKey: key
+  });
+  assert.equal(first.status, 500, 'the service stays closed');
+  w.epoch.available = true;
+  const retry = await Promise.race([
+    new BrowserSession(w).postChallenge({
+      address: OWNER,
+      stateId: start.stateId,
+      idempotencyKey: key
+    }),
+    new Promise((resolve) => setTimeout(() => resolve('hung'), 2000))
+  ]);
+  assert.notEqual(retry, 'hung', 'the same-key retry is answered');
+  assert.equal(retry.status, 200, 'and it is a normal first answer');
+});
+
+// Fails a test that waits on a request the service never answers.
+function within(promise, label) {
+  let timer;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label)), 2000);
+  });
+  return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
+}
+
+test('a duplicate already waiting on a request that then throws gets the closed 500, and a later same-key retry works', async () => {
+  const w = await makeWorld();
+  const start = await w.app.startSignIn(null);
+  const key = 'duplicate-waits-then-throws';
+  const body = { address: OWNER, stateId: start.stateId, idempotencyKey: key };
+
+  // Hold the first request at its keyed hashes, after it registered its key.
+  let held = false;
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const hmac = w.service._hmac.bind(w.service);
+  w.service._hmac = async (...args) => {
+    if (!held && w.service._inflight.has(key)) {
+      held = true;
+      await gate;
+    }
+    return hmac(...args);
+  };
+  // Know when the duplicate has joined the first request.
+  let joined;
+  const duplicateJoined = new Promise((resolve) => {
+    joined = resolve;
+  });
+  const log = w.service.log.bind(w.service);
+  w.service.log = (event, outcome, source) => {
+    if (outcome === 'duplicate') joined();
+    return log(event, outcome, source);
+  };
+  // Fail the write of the key's record once the duplicate is waiting.
+  let armed = false;
+  const original = w.store.transact.bind(w.store);
+  w.store.transact = (fn) =>
+    original((s) => {
+      const set = s.set;
+      s.set = (k, v) => {
+        if (armed && String(k).startsWith('idem:')) {
+          armed = false;
+          throw new Error('injected write failure');
+        }
+        return set.call(s, k, v);
+      };
+      try {
+        return fn(s);
+      } finally {
+        s.set = set;
+      }
+    });
+
+  const first = new BrowserSession(w).postChallenge(body);
+  let firstRes;
+  let secondRes;
+  try {
+    for (let turns = 0; !held; turns++) {
+      if (turns > 200) throw new Error('the first request was never held');
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const second = new BrowserSession(w).postChallenge(body);
+    await within(duplicateJoined, 'the duplicate never joined');
+    armed = true;
+    release();
+    [firstRes, secondRes] = await within(
+      Promise.all([first, second]),
+      'a request was not answered'
+    );
+  } finally {
+    release();
+  }
+  assert.equal(firstRes.status, 500, 'the request that threw is closed');
+  assert.deepEqual(await firstRes.json(), { error: 'unavailable' });
+  assert.equal(secondRes.status, 500, 'the waiting duplicate is answered');
+  assert.deepEqual(await secondRes.json(), { error: 'unavailable' });
+
+  // The same key now starts a new request that can sign in.
+  const browser = new BrowserSession(w);
+  const retry = await within(
+    browser.postChallenge(body),
+    'the same-key retry was not answered'
+  );
+  assert.equal(retry.status, 200);
+  const created = await retry.json();
+  await within(w.service.drain(), 'the mail queue did not drain');
+  const verified = await within(
+    browser.verify({
+      challengeId: created.challengeId,
+      code: w.mailer.lastCode(),
+      address: OWNER
+    }),
+    'the verify was not answered'
+  );
+  assert.equal(verified.status, 200);
+  assert.ok((await verified.json()).proof, 'the retry yields a proof');
+});
