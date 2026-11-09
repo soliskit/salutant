@@ -404,7 +404,7 @@ test(
       assert.ok(sb[0].path.endsWith('/verify'));
       await page.fill('#code', w.mailer.lastCode());
       const verified = page.waitForResponse((r) => r.url().includes('/verify'));
-      await page.click('#code-form button');
+      await page.click('#code-form button[type="submit"]');
       assert.equal(
         (await verified).status(),
         200,
@@ -427,7 +427,7 @@ test(
       await w.service.drain();
       await context.clearCookies();
       await page.fill('#code', w.mailer.lastCode());
-      await page.click('#code-form button');
+      await page.click('#code-form button[type="submit"]');
       await page.waitForFunction(() =>
         document.getElementById('message').textContent.includes('did not work')
       );
@@ -533,7 +533,7 @@ test(
       await page.waitForSelector('#code-form:not([hidden])');
       await w.service.drain();
       await page.fill('#code', w.mailer.lastCode());
-      await page.click('#code-form button');
+      await page.click('#code-form button[type="submit"]');
       await page.waitForFunction(
         () =>
           document.getElementById('message').textContent ===
@@ -573,7 +573,7 @@ test(
           'If we can sign you in, a code is on its way.'
       );
       await page.fill('#code', '000000');
-      await page.click('#code-form button');
+      await page.click('#code-form button[type="submit"]');
       await page.waitForFunction(
         () =>
           document.getElementById('message').textContent ===
@@ -588,7 +588,7 @@ test(
       await w.service.drain();
       await page.route('**/v1/challenges/*/verify', (route) => route.abort());
       await page.fill('#code', w.mailer.lastCode());
-      await page.click('#code-form button');
+      await page.click('#code-form button[type="submit"]');
       await page.waitForFunction(
         () =>
           document.getElementById('message').textContent ===
@@ -695,7 +695,7 @@ test(
       // Entering any code goes to an empty challenge id and is refused;
       // the page says so generically and does not navigate.
       await page.fill('#code', '000000');
-      await page.click('#code-form button');
+      await page.click('#code-form button[type="submit"]');
       await page.waitForFunction(() =>
         document.getElementById('message').textContent.includes('did not work')
       );

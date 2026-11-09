@@ -114,8 +114,8 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **Mail acceptance** Provider acceptance does not prove delivery and never produces a proof.
 - **Send reservation** Before calling the mail provider, save a reservation: request ID, address hash, and counters. If saving fails, send nothing. If the send result is unknown, keep the reservation and count it against the budget.
 - **No automatic retry** Do not automatically retry an uncertain send. Check it against the provider's send record.
-- **Double submit** Requests with the same idempotency key, a client-chosen ID that marks a repeat, count as one. The local page does not yet supply that key; double-click protection remains open.
-- **Person sees** The local page shows the same generic message after each request. A cooldown message and resend control remain to be built.
+- **Double submit** Requests with the same idempotency key, a client-chosen ID that marks a repeat, count as one. The local page sends that key with each send and resend, keeps it only after a network failure, and drops it once any response arrives.
+- **Person sees** The local page shows the same generic message after each request. The page has a resend control, and it shows a wait message when a resend is refused.
 
 | ID  | Requirement                                                                                                                                                                                                                                                                                                                                                    |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -174,4 +174,3 @@ This contract covers Milestone 1, First code. The trial is owner-only; estimated
 - **4** Production request and response fields. Phase 1 has concrete fields and status codes in [service.js](../src/service.js); adopting the production contract remains open. No field may reveal whether the address is allowed (R3).
 - **5** Production timing values and the owner's review of the measured values, in the later phases.
 - **6** Bot-check design before opening to others.
-- **7** Local page resend controls and idempotency keys and automatic purge scheduling remain unbuilt. See the [Evidence Record](evidence-record.md).
