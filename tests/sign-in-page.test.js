@@ -27,11 +27,11 @@ function ok(body, status = 200) {
 }
 
 function deferred() {
-  let resolve;
-  const promise = new Promise((r) => {
-    resolve = r;
+  let finish;
+  const promise = new Promise((resolve) => {
+    finish = resolve;
   });
-  return { promise, resolve };
+  return { promise, resolve: finish };
 }
 
 function loadPage(respond) {
