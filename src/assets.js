@@ -27,6 +27,7 @@ export const PAGE_HTML = `<!doctype html>
     <input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}"
            maxlength="6" required>
     <button type="submit">Continue</button>
+    <button type="button" id="resend">Send a new code</button>
   </form>
   <p id="message" role="status"></p>
 </main>
@@ -48,19 +49,39 @@ export const PAGE_JS = `(() => {
   const addressForm = document.getElementById('address-form');
   const codeForm = document.getElementById('code-form');
   const message = document.getElementById('message');
+  const resendButton = document.getElementById('resend');
   let challengeId = '';
   let address = '';
+  // One key per logical request. It lives only in this closure: never in a
+  // URL, storage, the DOM or a log. A key is kept only after a network
+  // failure (no response seen), so the retry is the same request. Once any
+  // response arrives, even an error, the key is dropped: the service
+  // records every response under its key and would replay it.
+  let startKey = '';
+  let startKeyAddress = '';
+  let resendKey = '';
+  let busy = false;
 
   addressForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (busy) return;
+    busy = true;
     message.textContent = '';
     address = document.getElementById('address').value;
     try {
+      if (!startKey || startKeyAddress !== address) {
+        startKey = crypto.randomUUID();
+        startKeyAddress = address;
+      }
       const res = await fetch('/v1/challenges', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': startKey,
+        },
         body: JSON.stringify({ address, appOrigin, stateId }),
       });
+      startKey = '';
       const data = await res.json();
       // Same message either way: the response never says whether the
       // address is on the list (R3).
@@ -70,11 +91,47 @@ export const PAGE_JS = `(() => {
       message.textContent = 'If we can sign you in, a code is on its way.';
     } catch {
       message.textContent = 'Something went wrong. Please try again.';
+    } finally {
+      busy = false;
+    }
+  });
+
+  resendButton.addEventListener('click', async () => {
+    if (busy) return;
+    busy = true;
+    resendButton.disabled = true;
+    message.textContent = '';
+    try {
+      if (!resendKey) resendKey = crypto.randomUUID();
+      const res = await fetch('/v1/challenges', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': resendKey,
+        },
+        body: JSON.stringify({ resendOf: challengeId, address }),
+      });
+      resendKey = '';
+      if (res.status === 429) {
+        message.textContent = 'Please wait a little before asking for another code.';
+      } else if (res.ok) {
+        message.textContent = 'If we can sign you in, a new code is on its way.';
+      } else {
+        message.textContent = 'Something went wrong. Please try again.';
+      }
+    } catch {
+      message.textContent = 'Something went wrong. Please try again.';
+    } finally {
+      busy = false;
+      resendButton.disabled = false;
     }
   });
 
   codeForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (busy) return;
+    busy = true;
+    resendButton.disabled = true;
     message.textContent = '';
     try {
       const res = await fetch('/v1/challenges/' + encodeURIComponent(challengeId) + '/verify', {
@@ -100,6 +157,9 @@ export const PAGE_JS = `(() => {
       location.assign(done.completeUrl);
     } catch {
       message.textContent = 'Something went wrong. Please try again.';
+    } finally {
+      busy = false;
+      resendButton.disabled = false;
     }
   });
 })();
