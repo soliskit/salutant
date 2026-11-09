@@ -458,7 +458,7 @@ test('a request that throws before registering its key leaves no stale entry for
 // Fails a test that waits on a request the service never answers.
 function within(promise, label) {
   let timer;
-  const limit = new Promise((_, reject) => {
+  const limit = new Promise((_resolve, reject) => {
     timer = setTimeout(() => reject(new Error(label)), 2000);
   });
   return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
@@ -472,6 +472,10 @@ test('a duplicate already waiting on a request that then throws gets the closed 
 
   // Hold the first request at its keyed hashes, after it registered its key.
   let held = false;
+  let reachedHold;
+  const holdReached = new Promise((resolve) => {
+    reachedHold = resolve;
+  });
   let release;
   const gate = new Promise((resolve) => {
     release = resolve;
@@ -480,6 +484,7 @@ test('a duplicate already waiting on a request that then throws gets the closed 
   w.service._hmac = async (...args) => {
     if (!held && w.service._inflight.has(key)) {
       held = true;
+      reachedHold();
       await gate;
     }
     return hmac(...args);
@@ -518,10 +523,7 @@ test('a duplicate already waiting on a request that then throws gets the closed 
   let firstRes;
   let secondRes;
   try {
-    for (let turns = 0; !held; turns++) {
-      if (turns > 200) throw new Error('the first request was never held');
-      await new Promise((resolve) => setImmediate(resolve));
-    }
+    await within(holdReached, 'the first request was never held');
     const second = new BrowserSession(w).postChallenge(body);
     await within(duplicateJoined, 'the duplicate never joined');
     armed = true;
