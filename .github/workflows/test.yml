@@ -268,5 +268,5 @@ jobs:
           --testRunner command
           --commandRunner.command "exec node --test tests/*.test.js"
           --mutate "src/${{ matrix.file }}.js"
-          --reporters clear-text --coverageAnalysis off
+          --reporters ${{ matrix.file == 'service' && 'clear-text,progress-append-only,dots' || 'clear-text' }} --coverageAnalysis off
           --concurrency 1 --timeoutMS 20000

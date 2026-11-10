@@ -420,14 +420,17 @@ test('a request that throws after registering its key does not block a same-key 
     idempotencyKey: key
   });
   assert.equal(first.status, 500, 'the failed request is closed');
+  let retryTimer;
   const retry = await Promise.race([
     new BrowserSession(w).postChallenge({
       address: OWNER,
       stateId: start.stateId,
       idempotencyKey: key
     }),
-    new Promise((resolve) => setTimeout(() => resolve('hung'), 2000))
-  ]);
+    new Promise((resolve) => {
+      retryTimer = setTimeout(() => resolve('hung'), 2000);
+    })
+  ]).finally(() => clearTimeout(retryTimer));
   assert.notEqual(retry, 'hung', 'the same-key retry is answered');
 });
 
@@ -443,14 +446,17 @@ test('a request that throws before registering its key leaves no stale entry for
   });
   assert.equal(first.status, 500, 'the service stays closed');
   w.epoch.available = true;
+  let retryTimer;
   const retry = await Promise.race([
     new BrowserSession(w).postChallenge({
       address: OWNER,
       stateId: start.stateId,
       idempotencyKey: key
     }),
-    new Promise((resolve) => setTimeout(() => resolve('hung'), 2000))
-  ]);
+    new Promise((resolve) => {
+      retryTimer = setTimeout(() => resolve('hung'), 2000);
+    })
+  ]).finally(() => clearTimeout(retryTimer));
   assert.notEqual(retry, 'hung', 'the same-key retry is answered');
   assert.equal(retry.status, 200, 'and it is a normal first answer');
 });
