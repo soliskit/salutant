@@ -84,7 +84,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     assert.ok(fresh.verified.proof, 'service resumes on the new epoch');
   });
 
-  test(`[${driver}] a restored consumed code is not reusable once the epoch moved`, async () => {
+  test(`[${driver}] an old-epoch code is refused after the epoch is raised`, async () => {
     const w = await makeWorld({ storeFactory });
     const browser = new BrowserSession(w);
     const start = await w.app.startSignIn(null);
@@ -100,6 +100,151 @@ for (const [driver, storeFactory] of DRIVERS) {
       address: OWNER
     });
     assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' });
+  });
+
+  // R14 local fixture only: restore clears a proven wrong-try lockout.
+  // The existing closed-service and raised-epoch rules must still reject it.
+  // This does not test request/send counters or automatic restore detection.
+  test(`[${driver}] a restored challenge with its wrong-try lockout cleared stays refused through the restore epoch steps`, async () => {
+    const w = await makeWorld({ storeFactory });
+    const browser = new BrowserSession(w);
+    const start = await w.app.startSignIn(null);
+    const create = await browser.postChallenge({
+      address: OWNER,
+      stateId: start.stateId
+    });
+    assert.equal(create.status, 200);
+    const created = await create.json();
+    assert.equal(created.status, 'ok');
+    assert.equal(typeof created.challengeId, 'string');
+    await w.service.drain();
+    const code = w.mailer.lastCode();
+    assert.match(code, /^\d{6}$/);
+    assert.ok(
+      browser.cookies.size > 0,
+      'the original browser holds its binding cookie'
+    );
+
+    const challengeKey = `challenge:${created.challengeId}`;
+    const original = w.store.get(challengeKey);
+    assert.ok(original, 'the challenge was stored');
+    assert.equal(original.listed, true);
+    assert.equal(original.state, 'open');
+    assert.equal(original.attempts, 0);
+    assert.equal(original.epoch, 1);
+    assert.ok(
+      original.expiresAtMs > w.getNow(),
+      'the original code is not expired'
+    );
+    assert.equal(
+      w.store.get(`reservation:${original.requestId}`).outcome,
+      'accepted'
+    );
+    assert.equal(w.store.keysWithPrefix('issuance:').length, 0);
+    const snapshot = w.store.snapshot();
+    const beforeLockout = sortedEntries(snapshot);
+    const maxAttempts = w.service.config.maxAttempts;
+    assert.equal(
+      maxAttempts,
+      3,
+      'this fixture uses the existing default wrong-try limit'
+    );
+    const wrongCode = `${(Number(code[0]) + 1) % 10}${code.slice(1)}`;
+    assert.notEqual(
+      wrongCode,
+      code,
+      'the wrong code differs while retaining six digits'
+    );
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const response = await browser.verify({
+        challengeId: created.challengeId,
+        code: wrongCode,
+        address: OWNER
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        error: 'invalid_or_expired_code'
+      });
+    }
+    const locked = w.store.get(challengeKey);
+    assert.equal(locked.attempts, maxAttempts);
+    assert.equal(
+      locked.state,
+      'dead',
+      'the wrong-try lockout was reached before restore'
+    );
+    const lockedCorrect = await browser.verify({
+      challengeId: created.challengeId,
+      code,
+      address: OWNER
+    });
+    assert.equal(lockedCorrect.status, 200);
+    assert.deepEqual(await lockedCorrect.json(), {
+      error: 'invalid_or_expired_code'
+    });
+    assert.equal(w.store.keysWithPrefix('issuance:').length, 0);
+
+    w.store.restoreFrom(snapshot);
+    assert.deepEqual(
+      sortedEntries(w.store.snapshot()),
+      beforeLockout,
+      'restore replaces the entire stored state with the pre-lockout snapshot'
+    );
+    assert.deepEqual(
+      w.store.get(challengeKey),
+      original,
+      'restore preserves the original code, browser binding, delivery, lifetime and epoch'
+    );
+    assert.equal(w.store.get(challengeKey).attempts, 0);
+    assert.equal(
+      w.store.get(challengeKey).state,
+      'open',
+      'restore actually cleared the lockout'
+    );
+
+    // The owner protocol makes the epoch unreadable until the owner raises it.
+    // No automatic restore detection or production recovery is claimed.
+    w.epoch.available = false;
+    const closed = await browser.verify({
+      challengeId: created.challengeId,
+      code,
+      address: OWNER
+    });
+    assert.equal(closed.status, 500);
+    assert.deepEqual(await closed.json(), { error: 'unavailable' });
+    assert.deepEqual(
+      sortedEntries(w.store.snapshot()),
+      beforeLockout,
+      'the closed service did not consume or relock the restored challenge'
+    );
+
+    w.epoch.value = 2;
+    w.epoch.available = true;
+    assert.ok(
+      w.getNow() < original.expiresAtMs,
+      'expiry cannot explain the refusal'
+    );
+    assert.equal(
+      w.store.get(`reservation:${original.requestId}`).outcome,
+      'accepted',
+      'failed mail cannot explain the refusal'
+    );
+    const oldEpoch = await browser.verify({
+      challengeId: created.challengeId,
+      code,
+      address: OWNER
+    });
+    assert.equal(oldEpoch.status, 200);
+    assert.deepEqual(await oldEpoch.json(), {
+      error: 'invalid_or_expired_code'
+    });
+    assert.deepEqual(
+      sortedEntries(w.store.snapshot()),
+      beforeLockout,
+      'epoch refusal leaves attempts zero, state open, and no proof issuance'
+    );
+    assert.equal(w.store.keysWithPrefix('issuance:').length, 0);
   });
 
   test(`[${driver}] routine rotation: the old key verifies during overlap and is gone after`, async () => {
@@ -183,6 +328,61 @@ for (const [driver, storeFactory] of DRIVERS) {
     );
     assert.notEqual(closed.status, 200);
     w.app.fetchJwks = realFetch;
+  });
+
+  test(`[${driver}] a store restore does not bring back a revoked signing key`, async () => {
+    const w = await makeWorld({ storeFactory });
+    const snapshot = w.store.snapshot();
+    w.store.transact((s) => s.set('restore-witness', { written: true }));
+
+    // Two fresh sign-ins at the current epoch: one signed by k1, then one
+    // signed by k2 after k2 becomes current.
+    const signedByK1 = await honestSignIn(w, { redeem: false });
+    const k2 = await generateSigningKeyPair();
+    w.service.signingKeys.set('k2', {
+      ...k2,
+      status: 'current',
+      notAfterMs: null
+    });
+    w.service.currentKid = 'k2';
+    const signedByK2 = await honestSignIn(w, { redeem: false });
+
+    // Emergency revoke of k1, then a point-in-time restore of the records.
+    w.service.signingKeys.get('k1').status = 'revoked';
+    w.store.restoreFrom(snapshot);
+    assert.equal(
+      w.store.transact((s) => s.get('restore-witness')),
+      undefined,
+      'the restore ran: a record written after the snapshot is gone'
+    );
+    w.app.jwksCache = null;
+
+    const listed = await (
+      await w.service.fetch(
+        new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
+      )
+    ).json();
+    assert.deepEqual(
+      listed.keys.map((k) => k.kid),
+      ['k2'],
+      'the key list holds the current key and not the revoked one'
+    );
+
+    const refused = await w.app.handleExchange(
+      { proof: signedByK1.verified.proof, state: signedByK1.verified.state },
+      SERVICE_ORIGIN
+    );
+    assert.equal(refused.status, 400);
+    assert.equal(
+      refused.body.error,
+      'unknown_key',
+      'a proof from the revoked key is an unknown key'
+    );
+    const accepted = await w.app.handleExchange(
+      { proof: signedByK2.verified.proof, state: signedByK2.verified.state },
+      SERVICE_ORIGIN
+    );
+    assert.equal(accepted.status, 200, 'a proof from the current key works');
   });
 
   test(`[${driver}] a proof from an earlier epoch is rejected and the app drops earlier sessions`, async () => {
