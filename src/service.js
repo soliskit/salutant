@@ -176,6 +176,27 @@ export class SalutantService {
   // response for an allowed and an unlisted address is byte-identical
   // apart from the request id, and never waits on the mail provider.
   async _createChallenge(request) {
+    try {
+      return await this._createChallengeBody(request);
+    } catch (err) {
+      // An entry this request registered must not outlive it: a same-key
+      // retry would wait on it forever (R5). Settle waiters with the same
+      // closed answer a thrown request gets, record nothing, and rethrow.
+      const key = request.headers.get('idempotency-key');
+      const flying = this._inflight.get(key);
+      if (flying && flying.owner === request) {
+        this._inflight.delete(key);
+        flying.settle({
+          status: 500,
+          body: { error: 'unavailable' },
+          setCookie: null
+        });
+      }
+      throw err;
+    }
+  }
+
+  async _createChallengeBody(request) {
     const epoch = await this._epochOrClosed(); // closed if unreadable
     const { tooBig, bad, body } = await this._jsonBody(request);
     if (tooBig || bad) return respond(400, { error: 'bad_request' });
@@ -207,17 +228,20 @@ export class SalutantService {
       const flying = this._inflight.get(idemKey);
       if (flying) {
         this.log('challenge', 'duplicate', sourceHash);
-        return replay(await flying);
+        return replay(await flying.promise);
       }
     }
     let markDone = null;
-    if (idemKey)
-      this._inflight.set(
-        idemKey,
-        new Promise((resolve) => {
-          markDone = resolve;
-        })
-      );
+    if (idemKey) {
+      const promise = new Promise((resolve) => {
+        markDone = resolve;
+      });
+      this._inflight.set(idemKey, {
+        promise,
+        settle: markDone,
+        owner: request
+      });
+    }
     const respondAndRecord = (status, respBody, setCookie = null) => {
       if (idemKey) {
         const recorded = {
