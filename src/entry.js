@@ -25,24 +25,29 @@ import { SalutantService } from './service.js';
 import { SalutantStoreDO as StoreDO } from './do-store.js';
 import { ResendMailAdapter } from './mail-resend.js';
 import { createWorker } from './worker.js';
-import { fromBase64Url, normalizeEd25519Jwk } from './crypto.js';
+import { fromBase64Url, recordOf } from './crypto.js';
 
 // Exported for the signing-key boundary regression (tests/signing-key-jwk.test.js).
+/** @param {string} text */
 export async function importSigningKeys(text) {
-  const { currentKid, keys } = JSON.parse(text);
+  /** @type {unknown} */
+  const parsed = JSON.parse(text);
+  const { currentKid, keys } = recordOf(parsed);
+  /** @type {Map<unknown, import('./service.js').SigningKey>} */
   const signingKeys = new Map();
-  for (const k of keys) {
+  for (const item of iterableJson(keys)) {
+    const k = recordOf(item);
     const [publicKey, privateKey] = await Promise.all([
       crypto.subtle.importKey(
         'jwk',
-        normalizeEd25519Jwk(k.publicJwk),
+        checkedImportJwk(k.publicJwk),
         { name: 'Ed25519' },
         true,
         ['verify']
       ),
       crypto.subtle.importKey(
         'jwk',
-        normalizeEd25519Jwk(k.privateJwk),
+        checkedImportJwk(k.privateJwk),
         { name: 'Ed25519' },
         true,
         ['sign']
@@ -58,8 +63,15 @@ export async function importSigningKeys(text) {
   return { signingKeys, currentKid };
 }
 
+/**
+ * @typedef {{ SIGNING_KEYS: string, EPOCH: string, RESEND_API_KEY: string,
+ * MAIL_FROM: string, ALLOWLIST: string, APPS: string, SERVICE_ORIGIN: string,
+ * CODE_HMAC_KEY: string, STATE_HMAC_KEY: string }} ServiceBindings
+ */
+/** @param {import('./do-store.js').DurableObjectStore} store @param {ServiceBindings} env */
 async function buildService(store, env) {
   const { signingKeys, currentKid } = await importSigningKeys(env.SIGNING_KEYS);
+  /** @type {unknown} */
   const epoch = JSON.parse(env.EPOCH);
   const service = new SalutantService({
     store,
@@ -68,12 +80,15 @@ async function buildService(store, env) {
       from: env.MAIL_FROM
     }),
     epochSource: {
-      async read() {
-        return epoch.value;
+      /** @returns {Promise<unknown>} */
+      read() {
+        return new Promise((resolve) => {
+          resolve(recordOf(epoch).value);
+        });
       }
     },
-    allowlist: JSON.parse(env.ALLOWLIST),
-    apps: JSON.parse(env.APPS),
+    allowlist: iterableOrNull(parseBinding(env.ALLOWLIST)),
+    apps: parseBinding(env.APPS),
     serviceOrigin: env.SERVICE_ORIGIN,
     codeHmacKeyBytes: fromBase64Url(env.CODE_HMAC_KEY),
     stateHmacKeyBytes: fromBase64Url(env.STATE_HMAC_KEY),
@@ -91,16 +106,32 @@ async function buildService(store, env) {
 // scheduled invocation: no request route exposes the purge (issue #106).
 const PURGE_INTERVAL_MS = 3_600_000;
 
+/**
+ * @typedef {import('./do-store.js').DurableStorageLike & {
+ *   getAlarm(): number | null | Promise<number | null>,
+ *   setAlarm(time: number): void | Promise<void>
+ * }} AlarmStorage
+ * @typedef {{ storage: AlarmStorage,
+ *   blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>
+ * }} ServiceContext
+ */
+/** @extends {StoreDO<ServiceBindings>} */
 export class SalutantStoreDO extends StoreDO {
+  /**
+   * @param {ServiceContext} ctx
+   * @param {ServiceBindings} env
+   */
   constructor(ctx, env) {
     super(ctx, env);
     this.ctx = ctx;
+    /** @type {Promise<SalutantService> | null} */
     this.servicePromise = null;
+    /** @type {Promise<ReturnType<typeof createWorker>> | null} */
     this.workerPromise = null;
     // Schedule the hourly purge once per stored object. The alarm lives
     // in the object's own storage; the getAlarm check keeps a wake from
     // overriding the alarm that is about to run (platform guidance).
-    ctx.blockConcurrencyWhile(async () => {
+    void ctx.blockConcurrencyWhile(async () => {
       if (!(await ctx.storage.getAlarm())) {
         await ctx.storage.setAlarm(Date.now() + PURGE_INTERVAL_MS);
       }
@@ -114,6 +145,7 @@ export class SalutantStoreDO extends StoreDO {
     return this.servicePromise;
   }
 
+  /** @param {Request} request */
   async fetch(request) {
     if (!this.workerPromise) {
       this.workerPromise = this.service().then((service) =>
@@ -138,7 +170,14 @@ export class SalutantStoreDO extends StoreDO {
   }
 }
 
+/**
+ * @typedef {{ SALUTANT_STORE: {
+ *   idFromName(name: string): unknown,
+ *   get(id: unknown): { fetch(request: Request): Promise<Response> }
+ * } }} WorkerBindings
+ */
 export default {
+  /** @param {Request} request @param {WorkerBindings} env */
   async fetch(request, env) {
     const stub = env.SALUTANT_STORE.get(
       env.SALUTANT_STORE.idFromName('service')
@@ -146,3 +185,94 @@ export default {
     return stub.fetch(request);
   }
 };
+
+/** @param {unknown} value @returns {Iterable<unknown>} */
+function iterableJson(value) {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    const rows = /** @type {unknown[]} */ (value);
+    return rows;
+  }
+  throw new TypeError('JSON value is not iterable');
+}
+
+/** @param {unknown} value @returns {JsonWebKey} */
+function checkedImportJwk(value) {
+  // Preserve the former spread, then WebIDL's dictionary member conversions.
+  const fields = { ...(value === null ? {} : recordOf(value)) };
+  /** @type {JsonWebKey} */
+  const jwk = { alg: 'EdDSA' };
+  for (const key of /** @type {const} */ ([
+    'crv',
+    'd',
+    'dp',
+    'dq',
+    'e',
+    'ext',
+    'k',
+    'key_ops',
+    'kty',
+    'n',
+    'oth',
+    'p',
+    'q',
+    'qi',
+    'use',
+    'x',
+    'y'
+  ])) {
+    const member = fields[key];
+    if (member === undefined) continue;
+    if (key === 'ext') jwk.ext = Boolean(member);
+    else if (key === 'key_ops')
+      jwk.key_ops = jsonSequence(member).map((op) => jwkString(op));
+    else if (key === 'oth') jwk.oth = checkedOtherPrimes(member);
+    else jwk[key] = jwkString(member);
+  }
+  return jwk;
+}
+
+/** @param {unknown} value @returns {unknown[]} */
+function jsonSequence(value) {
+  if (!Array.isArray(value))
+    throw new TypeError('JSON sequence is not an array');
+  return /** @type {unknown[]} */ (value);
+}
+
+/** @param {string} value @returns {unknown} */
+function parseBinding(value) {
+  return JSON.parse(value);
+}
+/** @param {unknown} value @returns {Iterable<unknown> | null} */
+function iterableOrNull(value) {
+  if (value === null) return null;
+  return lazyJsonIterable(value);
+}
+
+/** @param {unknown} value @returns {RsaOtherPrimesInfo[]} */
+function checkedOtherPrimes(value) {
+  return jsonSequence(value).map((row) => {
+    if (row !== null && typeof row !== 'object')
+      throw new TypeError('JWK other-prime member is not a dictionary');
+    const fields = row === null ? {} : recordOf(row);
+    /** @type {RsaOtherPrimesInfo} */
+    const item = {};
+    for (const key of /** @type {const} */ (['d', 'r', 't'])) {
+      const member = fields[key];
+      if (member !== undefined) item[key] = jwkString(member);
+    }
+    return item;
+  });
+}
+
+/** @param {unknown} value @returns {IterableIterator<unknown>} */
+function* lazyJsonIterable(value) {
+  yield* iterableJson(value);
+}
+
+/** @param {unknown} value @returns {string} */
+function jwkString(value) {
+  if (value !== null && typeof value === 'object')
+    throw new TypeError('JWK string member must be a JSON scalar');
+  return String(value);
+}

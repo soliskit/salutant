@@ -9,39 +9,70 @@ export class MockMailAdapter {
    */
   constructor({ behavior = 'accepted' } = {}) {
     this.behavior = behavior;
+    /** @type {Array<{ requestId: string, providerId: string, to: string, subject: string, text: string, acceptedAt: number }>} */
     this.outbox = []; // every accepted message, readable by tests
+    /** @type {Array<{ requestId: string, to: string, subject: string, outcome: string }>} */
     this.attempts = []; // every send call, including uncertain/failed
+    /** @type {string[]} */
     this.reconciliations = [];
   }
 
-  async send({ requestId, to, subject, text }) {
-    if (!requestId) throw new Error('adapter contract: requestId is required');
-    const outcome =
-      typeof this.behavior === 'function'
-        ? this.behavior({ requestId, to, subject, text })
-        : this.behavior;
-    this.attempts.push({ requestId, to, subject, outcome });
-    if (outcome === 'accepted') {
-      const providerId = `mock-${this.outbox.length + 1}`;
-      this.outbox.push({
-        requestId,
-        providerId,
-        to,
-        subject,
-        text,
-        acceptedAt: Date.now()
-      });
-      return { outcome: 'accepted', providerId };
+  /**
+   * @param {{ requestId: string, to: string, subject: string, text: string }} message
+   * @returns {Promise<{ outcome: 'accepted', providerId: string } | { outcome: 'uncertain' } | { outcome: 'failed' }>}
+   */
+  send(message) {
+    try {
+      const { requestId, to, subject, text } = message;
+      if (!requestId)
+        throw new Error('adapter contract: requestId is required');
+      const outcome =
+        typeof this.behavior === 'function'
+          ? this.behavior({ requestId, to, subject, text })
+          : this.behavior;
+      this.attempts.push({ requestId, to, subject, outcome });
+      if (outcome === 'accepted') {
+        const providerId = `mock-${String(this.outbox.length + 1)}`;
+        this.outbox.push({
+          requestId,
+          providerId,
+          to,
+          subject,
+          text,
+          acceptedAt: Date.now()
+        });
+        return Promise.resolve({ outcome: 'accepted', providerId });
+      }
+      if (outcome === 'uncertain')
+        return Promise.resolve({ outcome: 'uncertain' });
+      return Promise.resolve({ outcome: 'failed' });
+    } catch (error) {
+      const reason =
+        error instanceof Error
+          ? error
+          : new Error('mock mail adapter failed', { cause: error });
+      return Promise.reject(reason);
     }
-    if (outcome === 'uncertain') return { outcome: 'uncertain' };
-    return { outcome: 'failed' };
   }
 
-  async reconcile(requestId) {
-    this.reconciliations.push(requestId);
-    const hit = this.outbox.find((m) => m.requestId === requestId);
-    if (hit) return { state: 'sent', providerId: hit.providerId };
-    return { state: 'absent' };
+  /**
+   * @param {string} requestId
+   * @returns {Promise<{ state: 'sent', providerId: string } | { state: 'absent' } | { state: 'unknown' }>}
+   */
+  reconcile(requestId) {
+    try {
+      this.reconciliations.push(requestId);
+      const hit = this.outbox.find((m) => m.requestId === requestId);
+      if (hit)
+        return Promise.resolve({ state: 'sent', providerId: hit.providerId });
+      return Promise.resolve({ state: 'absent' });
+    } catch (error) {
+      const reason =
+        error instanceof Error
+          ? error
+          : new Error('mock mail adapter failed', { cause: error });
+      return Promise.reject(reason);
+    }
   }
 
   lastCode() {

@@ -7,8 +7,18 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "skipLibCheck": true,
-    "strict": false,
-    "types": ["node"]
+    "strict": true,
+    "types": ["node"],
+    "strictNullChecks": true,
+    "lib": [
+      "es2022",
+      "dom",
+      "webworker.importscripts",
+      "scripthost",
+      "dom.iterable",
+      "dom.asynciterable",
+      "es2024.promise"
+    ]
   },
   "include": ["src/**/*.js", "scripts/**/*.js"],
   "exclude": ["node_modules"]

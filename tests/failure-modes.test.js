@@ -340,6 +340,37 @@ test('mock mail adapter: request id required, accepted sends, reconcile results,
   assert.equal(mail.lastCode(), '654321');
 });
 
+// The adapter contract promises Promise returns (docs/mail/mock-mail-adapter-contract.md);
+// failures reject instead of throwing synchronously, even when the failure comes from
+// inside the mock's own state.
+test('mock mail adapter: internal failures reject, never throw synchronously', async () => {
+  const mail = new MockMailAdapter({
+    behavior: () => {
+      throw new Error('provider exploded');
+    }
+  });
+  const sendResult = mail.send({
+    requestId: 'r1',
+    to: OWNER,
+    subject: 's',
+    text: 't'
+  });
+  assert.ok(sendResult instanceof Promise, 'send returns a promise');
+  await assert.rejects(sendResult, /provider exploded/);
+
+  const poisoned = new MockMailAdapter();
+  poisoned.outbox = /** @type {typeof poisoned.outbox} */ (
+    /** @type {unknown} */ ({
+      find() {
+        throw new Error('corrupt outbox');
+      }
+    })
+  );
+  const reconcileResult = poisoned.reconcile('r1');
+  assert.ok(reconcileResult instanceof Promise, 'reconcile returns a promise');
+  await assert.rejects(reconcileResult, /corrupt outbox/);
+});
+
 // R5: sending fails after the reservation is written. The provider is called
 // once and reports failure; repeating the same request (same idempotency key)
 // returns the same answer and sends nothing. The existing test 'a failed send
@@ -565,4 +596,57 @@ test('a duplicate already waiting on a request that then throws gets the closed 
   );
   assert.equal(verified.status, 200);
   assert.ok((await verified.json()).proof, 'the retry yields a proof');
+});
+
+const SERVICE = 'https://salutant.example.test';
+const post = (w, path, body, headers = {}) =>
+  w.worker.fetch(
+    new Request(`${SERVICE}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      ...(body === undefined ? {} : { body })
+    })
+  );
+
+test('a JSON null body or a missing body closes create and verify and does not block a same-key retry', async () => {
+  const w = await makeWorld();
+  const start = await w.app.startSignIn(null);
+  for (const [key, body] of [
+    ['null-body', 'null'],
+    ['no-body', undefined]
+  ]) {
+    const create = await within(
+      post(w, '/v1/challenges', body, { 'idempotency-key': key }),
+      `${key}: the keyed create was never answered`
+    );
+    assert.equal(create.status, 500, `${key}: create is closed`);
+    assert.deepEqual(await create.json(), { error: 'unavailable' });
+    const retry = await within(
+      new BrowserSession(w).postChallenge({
+        address: OWNER,
+        stateId: start.stateId,
+        idempotencyKey: key
+      }),
+      `${key}: the same-key retry was never answered`
+    );
+    assert.equal(retry.status, 200, `${key}: and it is a normal first answer`);
+    await within(w.service.drain(), `${key}: the mail queue did not drain`);
+    const verify = await post(w, '/v1/challenges/x/verify', body);
+    assert.equal(verify.status, 500, `${key}: verify is closed`);
+    assert.deepEqual(await verify.json(), { error: 'unavailable' });
+  }
+});
+
+test('JSON primitive and array bodies behave like an empty object', async () => {
+  const w = await makeWorld();
+  const empty = await post(w, '/v1/challenges', '{}');
+  const emptyVerify = await post(w, '/v1/challenges/x/verify', '{}');
+  for (const body of ['5', '"text"', 'true', '[]']) {
+    const create = await post(w, '/v1/challenges', body);
+    assert.equal(create.status, empty.status);
+    assert.deepEqual(await create.json(), await empty.clone().json());
+    const verify = await post(w, '/v1/challenges/x/verify', body);
+    assert.equal(verify.status, emptyVerify.status);
+    assert.deepEqual(await verify.json(), await emptyVerify.clone().json());
+  }
 });

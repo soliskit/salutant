@@ -173,3 +173,13 @@ test('a non-JSON provider body is uncertain, not accepted', async () => {
   assert.deepEqual(await a.reconcile('req-1'), { state: 'unknown' });
   assert.equal(f.calls.length, 1);
 });
+
+test('an accepted response rejects if the send record disappeared while awaiting fetch', async () => {
+  const f = stubFetch([{ status: 200, body: { id: 'prov-1' } }]);
+  const a = adapter(async (url, opts) => {
+    assert.equal(a.sends.delete(MSG.requestId), true);
+    return f(url, opts);
+  });
+  await assert.rejects(() => a.send(MSG), TypeError);
+  assert.equal(f.calls.length, 1);
+});
