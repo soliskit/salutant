@@ -170,7 +170,7 @@ export class BrowserSession {
   }
   /** @param {Response} response */
   _storeCookies(response) {
-    const setC = response.headers.getSetCookie?.() ?? [];
+    const setC = response.headers.getSetCookie();
     for (const line of setC) {
       const [pair, ...attrs] = line.split(';').map((s) => s.trim());
       const [name, value] = pair.split('=');
@@ -256,8 +256,67 @@ export class BrowserSession {
 
 /**
  * @typedef {{ status: number }} CompleteResult
- * @typedef {{ complete: CompleteResult | null, [field: string]: unknown }} HonestSignInResult
+ * @typedef {{ challengeId: string, [field: string]: unknown }} CreatedBody
+ * @typedef {{ proof: string, state: string, [field: string]: unknown }} VerifiedBody
+ * @typedef {{ complete: CompleteResult | null, created: CreatedBody, verified: VerifiedBody, [field: string]: unknown }} HonestSignInResult
  */
+
+/**
+ * @param {unknown} body
+ * @returns {body is CreatedBody}
+ */
+function isCreatedBody(body) {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    'challengeId' in body &&
+    typeof body.challengeId === 'string'
+  );
+}
+
+/**
+ * @param {unknown} body
+ * @returns {body is VerifiedBody}
+ */
+function isVerifiedBody(body) {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    'proof' in body &&
+    typeof body.proof === 'string' &&
+    'state' in body &&
+    typeof body.state === 'string'
+  );
+}
+
+/**
+ * Reads a body expected to carry a string challengeId. Returns the same
+ * parsed object, extras kept. Invalid JSON still fails in json().
+ * @param {Response} response
+ * @returns {Promise<CreatedBody>}
+ */
+export async function readCreated(response) {
+  /** @type {unknown} */
+  const body = await response.json();
+  if (!isCreatedBody(body)) {
+    throw new TypeError('challenge response has no string challengeId');
+  }
+  return body;
+}
+
+/**
+ * Reads a body expected to carry string proof and state.
+ * @param {Response} response
+ * @returns {Promise<VerifiedBody>}
+ */
+export async function readVerified(response) {
+  /** @type {unknown} */
+  const body = await response.json();
+  if (!isVerifiedBody(body)) {
+    throw new TypeError('verify response has no string proof and state');
+  }
+  return body;
+}
 
 // Drive a whole sign-in the honest way. Returns every artifact.
 /** @param {Awaited<ReturnType<typeof makeWorld>>} world @returns {Promise<HonestSignInResult>} */
@@ -271,7 +330,11 @@ export async function honestSignIn(
     address,
     stateId: start.stateId
   });
+  /** @type {unknown} */
   const created = await create.json();
+  if (!isCreatedBody(created)) {
+    throw new TypeError('challenge response has no string challengeId');
+  }
   await world.service.drain();
   const code = world.mailer.lastCode();
   const verify = await browser.verify({
@@ -279,7 +342,11 @@ export async function honestSignIn(
     code,
     address
   });
+  /** @type {unknown} */
   const verified = await verify.json();
+  if (!isVerifiedBody(verified)) {
+    throw new TypeError('verify response has no string proof and state');
+  }
   let exchange = null;
   let complete = null;
   if (verified.proof && redeem) {

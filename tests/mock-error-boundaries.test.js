@@ -9,7 +9,7 @@ const message = {
   text: 'text'
 };
 
-test('mock send preserves Error identity and wraps other thrown reasons without converting them', async () => {
+void test('mock send preserves Error identity and wraps other thrown reasons without converting them', async () => {
   for (const thrown of [
     new Error('original'),
     undefined,
@@ -39,7 +39,7 @@ test('mock send preserves Error identity and wraps other thrown reasons without 
   }
 });
 
-test('mock reconcile preserves Error identity and wraps non-Error reasons after recording its read attempt', async () => {
+void test('mock reconcile preserves Error identity and wraps non-Error reasons after recording its read attempt', async () => {
   for (const thrown of [
     new Error('original'),
     undefined,

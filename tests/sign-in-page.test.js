@@ -52,7 +52,7 @@ function loadPage(respond) {
   const context = vm.createContext({
     document: { getElementById: (id) => elements[id] },
     location: { search: '?app=https%3A%2F%2Fapp.example.test&state=s' },
-    crypto: { randomUUID: () => `key-${++keyCount}` },
+    crypto: { randomUUID: () => `key-${String(++keyCount)}` },
     URLSearchParams,
     encodeURIComponent,
     JSON,
@@ -74,7 +74,7 @@ async function reachCodeStage(page) {
   await page.elements['address-form'].fire('submit');
 }
 
-test('the first send carries an idempotency key and a network failure retries with the same key', async () => {
+void test('the first send carries an idempotency key and a network failure retries with the same key', async () => {
   let attempt = 0;
   const page = loadPage(async () => {
     attempt += 1;
@@ -91,7 +91,7 @@ test('the first send carries an idempotency key and a network failure retries wi
   assert.equal(page.elements['code-form'].hidden, false);
 });
 
-test('a changed address or any received response gets a new key', async () => {
+void test('a changed address or any received response gets a new key', async () => {
   let attempt = 0;
   const page = loadPage(async () => {
     attempt += 1;
@@ -111,7 +111,7 @@ test('a changed address or any received response gets a new key', async () => {
   );
 });
 
-test('a resend names its challenge, has its own key and shows the wait message on a refusal', async () => {
+void test('a resend names its challenge, has its own key and shows the wait message on a refusal', async () => {
   const page = loadPage(async (url, n) => {
     if (n === 1) return ok({ challengeId: 'c1' });
     return n === 2 ? ok({ error: 'cooldown' }, 429) : ok({}, 200);
@@ -129,7 +129,7 @@ test('a resend names its challenge, has its own key and shows the wait message o
   assert.match(page.elements.message.textContent, /new code is on its way/);
 });
 
-test('a double-click on Continue sends one verify and resend is blocked while it runs', async () => {
+void test('a double-click on Continue sends one verify and resend is blocked while it runs', async () => {
   const verify = deferred();
   const page = loadPage((url) =>
     url.includes('/verify') ? verify.promise : ok({ challengeId: 'c1' })

@@ -4,8 +4,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateCode } from '../src/crypto.js';
 
-test('a draw exactly at the rejection limit is rejected; the next valid draw yields the code', () => {
-  const original = globalThis.crypto.getRandomValues;
+void test('a draw exactly at the rejection limit is rejected; the next valid draw yields the code', () => {
+  const original = Object.getOwnPropertyDescriptor(
+    globalThis.crypto,
+    'getRandomValues'
+  );
   // 4_294_000_000 is the exact rejection limit (largest multiple of 10^6 below
   // 2^32): the original redraws it; mutants that accept it yield '000000'.
   const draws = [4_294_000_000, 1];
@@ -20,6 +23,10 @@ test('a draw exactly at the rejection limit is rejected; the next valid draw yie
     assert.equal(generateCode(), '000001');
     assert.equal(calls, 2);
   } finally {
-    globalThis.crypto.getRandomValues = original;
+    if (original) {
+      Object.defineProperty(globalThis.crypto, 'getRandomValues', original);
+    } else {
+      Reflect.deleteProperty(globalThis.crypto, 'getRandomValues');
+    }
   }
 });

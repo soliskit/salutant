@@ -20,6 +20,10 @@
       "es2024.promise"
     ]
   },
-  "include": ["src/**/*.js", "scripts/**/*.js"],
+  "include": [
+    "src/**/*.js",
+    "scripts/**/*.js",
+    "tests/measurement/v8merge.mjs"
+  ],
   "exclude": ["node_modules"]
 }

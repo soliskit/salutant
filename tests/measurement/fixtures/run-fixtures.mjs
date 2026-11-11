@@ -56,9 +56,13 @@ async function nodeCoverageFor(fileAbs) {
       env: { ...process.env, NODE_V8_COVERAGE: dir },
       stdio: 'ignore'
     });
-    child.on('exit', (code) =>
-      code === 0 ? resolve() : reject(new Error(`fixture exited ${code}`))
-    );
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`fixture exited ${code}`));
+      }
+    });
   });
   const url = 'file://' + fileAbs;
   const entries = [];
@@ -476,9 +480,13 @@ console.log('child done')
           },
           stdio: ['ignore', 'pipe', 'pipe']
         });
-        proc.on('exit', (code) =>
-          code === 0 ? resolve() : reject(new Error(`child exited ${code}`))
-        );
+        proc.on('exit', (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`child exited ${code}`));
+          }
+        });
         proc.on('error', reject);
       });
     } finally {
@@ -551,10 +559,11 @@ await proof(
   'a served script differing from its checked-in source fails the run',
   async () => {
     assert.throws(
-      () =>
+      () => {
         checkServedScripts([
           { url: 'https://localhost:1/app.js', source: 'tampered()' }
-        ]),
+        ]);
+      },
       (e) => e instanceof MeasurementFailure && e.message.includes('/app.js')
     );
   }
@@ -694,7 +703,7 @@ await proof(
     );
     assert(
       lines[firedCatch] > 0,
-      `line ${firedCatch} (the fired catch) must be covered`
+      `line ${String(firedCatch)} (the fired catch) must be covered`
     );
   }
 );
@@ -710,12 +719,12 @@ await proof(
     assert.equal(
       lines[unfiredCatch] ?? 0,
       0,
-      `line ${unfiredCatch} (the never-fired catch) must stay uncovered`
+      `line ${String(unfiredCatch)} (the never-fired catch) must stay uncovered`
     );
   }
 );
 
 console.log(results.join('\n'));
 console.log(
-  `${results.filter((r) => r.startsWith('ok')).length}/${results.length} fixture proofs passed`
+  `${String(results.filter((r) => r.startsWith('ok')).length)}/${String(results.length)} fixture proofs passed`
 );

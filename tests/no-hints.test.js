@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { makeWorld, BrowserSession, OWNER, STRANGER } from './helpers.js';
 
-test('responses for allowed and unlisted addresses differ only in the permitted fields', async () => {
+void test('responses for allowed and unlisted addresses differ only in the permitted fields', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn(null);
   const mk = () => new BrowserSession(w);
@@ -43,7 +43,7 @@ test('responses for allowed and unlisted addresses differ only in the permitted 
   }
 });
 
-test('quota-state: driving the limits leaves allowed and unlisted classes indistinguishable', async () => {
+void test('quota-state: driving the limits leaves allowed and unlisted classes indistinguishable', async () => {
   const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 1000 } });
   const start = await w.app.startSignIn(null);
   const run = async (address) => {
@@ -53,10 +53,10 @@ test('quota-state: driving the limits leaves allowed and unlisted classes indist
       const res = await browser.postChallenge({
         address,
         stateId: start.stateId,
-        headers: { 'cf-connecting-ip': `192.0.2.${i}` }
+        headers: { 'cf-connecting-ip': `192.0.2.${String(i)}` }
       });
       out.push(
-        `${res.status}:${JSON.stringify(await res.json()).replace(/"(requestId|challengeId)":"[^"]+"/g, '"$1":"x"')}`
+        `${String(res.status)}:${JSON.stringify(await res.json()).replace(/"(requestId|challengeId)":"[^"]+"/g, '"$1":"x"')}`
       );
     }
     return out;
@@ -68,7 +68,7 @@ test('quota-state: driving the limits leaves allowed and unlisted classes indist
   );
 });
 
-test('timing protocol: 200 interleaved requests per class, 3 runs, within tolerance', async () => {
+void test('timing protocol: 200 interleaved requests per class, 3 runs, within tolerance', async () => {
   const RUNS = 3;
   const PER_CLASS = 200;
   const HARD_MAX_MS = 50;
@@ -97,7 +97,7 @@ test('timing protocol: 200 interleaved requests per class, 3 runs, within tolera
         const res = await browser.postChallenge({
           address,
           stateId: start.stateId,
-          headers: { 'cf-connecting-ip': `192.0.2.${i % 250}` }
+          headers: { 'cf-connecting-ip': `192.0.2.${String(i % 250)}` }
         });
         await res.json();
         samples[klass].push(performance.now() - t0);
@@ -125,16 +125,16 @@ test('timing protocol: 200 interleaved requests per class, 3 runs, within tolera
   );
   assert.ok(
     withinClass <= HARD_MAX_MS,
-    `inconclusive: same-class run-to-run difference ${withinClass}ms over ${HARD_MAX_MS}ms`
+    `inconclusive: same-class run-to-run difference ${String(withinClass)}ms over ${String(HARD_MAX_MS)}ms`
   );
   for (const [run, gap] of gaps.entries()) {
     assert.ok(
       gap.median <= tolerance && gap.median <= HARD_MAX_MS,
-      `run ${run}: median gap ${gap.median}ms`
+      `run ${String(run)}: median gap ${String(gap.median)}ms`
     );
     assert.ok(
       gap.p95 <= tolerance && gap.p95 <= HARD_MAX_MS,
-      `run ${run}: p95 gap ${gap.p95}ms`
+      `run ${String(run)}: p95 gap ${String(gap.p95)}ms`
     );
   }
 });

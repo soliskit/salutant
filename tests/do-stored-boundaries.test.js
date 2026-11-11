@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { DurableObjectStore } from '../src/do-store.js';
 import { makeDOStorage } from './helpers.js';
 
-test('DO SQL ArrayBuffer values fail JSON decoding before a value is returned', () => {
+void test('DO SQL ArrayBuffer values fail JSON decoding before a value is returned', () => {
   const storage = makeDOStorage();
   const store = new DurableObjectStore(storage);
-  const realExec = storage.sql.exec;
+  const realExec = storage.sql.exec.bind(storage.sql);
   storage.sql.exec = (query, ...params) =>
     /^SELECT value FROM/.test(query)
       ? { toArray: () => [{ value: new ArrayBuffer(0) }] }
@@ -14,7 +14,7 @@ test('DO SQL ArrayBuffer values fail JSON decoding before a value is returned', 
   assert.throws(() => store.get('bad'), SyntaxError);
 });
 
-test('DO invalid restore iterables fail only after transaction replacement setup [R14 local]', () => {
+void test('DO invalid restore iterables fail only after transaction replacement setup [R14 local]', () => {
   for (const [snapshot, expected] of [
     ['null', []],
     ['{}', []],
@@ -26,14 +26,16 @@ test('DO invalid restore iterables fail only after transaction replacement setup
     store.set('old', 1);
     store.transact((s) => {
       s.set('new-before-restore', 2);
-      assert.throws(() => s.restoreFrom(snapshot), TypeError);
+      assert.throws(() => {
+        s.restoreFrom(snapshot);
+      }, TypeError);
       assert.deepEqual(s.keysWithPrefix(''), expected);
     });
     assert.deepEqual(store.keysWithPrefix(''), expected);
   }
 });
 
-test('DO restore retains original two-item string destructuring and empty string root', () => {
+void test('DO restore retains original two-item string destructuring and empty string root', () => {
   const store = new DurableObjectStore(makeDOStorage());
   store.restoreFrom(JSON.stringify(['ab', '😀z']));
   assert.equal(store.get('a'), 'b');
@@ -42,7 +44,7 @@ test('DO restore retains original two-item string destructuring and empty string
   assert.deepEqual(store.keysWithPrefix(''), []);
 });
 
-test('DO transaction prefix lookup fails at a non-string key without rejecting its insertion', () => {
+void test('DO transaction prefix lookup fails at a non-string key without rejecting its insertion', () => {
   const store = new DurableObjectStore(makeDOStorage());
   store.transact((s) => {
     s.set(7, 'kept-until-rollback');
@@ -52,14 +54,12 @@ test('DO transaction prefix lookup fails at a non-string key without rejecting i
   });
 });
 
-test('DO a missing cache entry from the public cache seam still fails at member use', () => {
+void test('DO a missing cache entry from the public cache seam still fails at member use', () => {
   const store = new DurableObjectStore(makeDOStorage());
-  assert.throws(
-    () =>
-      store.transact((s) => {
-        s.tx.set('k', undefined);
-        s.get('k');
-      }),
-    TypeError
-  );
+  assert.throws(() => {
+    store.transact((s) => {
+      s.tx.set('k', undefined);
+      s.get('k');
+    });
+  }, TypeError);
 });
