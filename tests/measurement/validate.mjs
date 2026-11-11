@@ -15,10 +15,26 @@ function isRecord(value) {
   return typeof value === 'object' && value !== null;
 }
 
+// Reads a property the way plain property access did: null throws the same
+// TypeError, any other non-object has no such property.
+/**
+ * @param {unknown} value
+ * @param {string} key
+ * @returns {unknown}
+ */
+function field(value, key) {
+  if (value === null || value === undefined) {
+    throw new TypeError(
+      `Cannot read properties of ${String(value)} (reading '${key}')`
+    );
+  }
+  return isRecord(value) ? value[key] : undefined;
+}
+
 /**
  * @param {string} dir
  * @param {number} runStartedAt
- * @param {Set<string>} serverUrls
+ * @param {Set<unknown>} serverUrls
  */
 export function validateServerDir(dir, runStartedAt, serverUrls) {
   const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
@@ -42,14 +58,13 @@ export function validateServerDir(dir, runStartedAt, serverUrls) {
         `cut-off or unreadable coverage report rejected: ${f}`
       );
     }
-    if (!isRecord(parsed) || !Array.isArray(parsed.result)) {
+    const result = field(parsed, 'result');
+    if (!Array.isArray(result)) {
       throw new MeasurementFailure(`coverage report has no result array: ${f}`);
     }
     /** @type {unknown[]} */
-    const results = parsed.result;
-    const appEntries = results.filter(
-      (r) => isRecord(r) && typeof r.url === 'string' && serverUrls.has(r.url)
-    );
+    const results = result;
+    const appEntries = results.filter((r) => serverUrls.has(field(r, 'url')));
     if (appEntries.length > 0) filesWithApp++;
     for (const r of appEntries) entries.push(r);
   }
@@ -106,12 +121,13 @@ export function validateBrowserDir(dir) {
         `cut-off or unreadable browser capture rejected: ${name}`
       );
     }
-    if (!isRecord(parsed) || !Array.isArray(parsed.entries)) {
+    const found = field(parsed, 'entries');
+    if (!Array.isArray(found)) {
       throw new MeasurementFailure(`browser capture has no entries: ${name}`);
     }
     /** @type {unknown[]} */
-    const found = parsed.entries;
-    entries.push(...found);
+    const items = found;
+    entries.push(...items);
   }
   return entries;
 }
@@ -122,35 +138,44 @@ export function validateBrowserDir(dir) {
 // coverage.
 /** @param {string} dir */
 export function checkNavigationCoverage(dir) {
-  /** @type {Record<string, unknown>[]} */
-  const captures = [];
+  const names = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  /** @type {unknown[]} */
+  const captures = names.map((f) => {
+    /** @type {unknown} */
+    const parsed = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+    return parsed;
+  });
   /** @type {number[]} */
   const takes = [];
-  for (const f of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
-    /** @type {unknown} */
-    const capture = JSON.parse(readFileSync(join(dir, f), 'utf8'));
-    if (!isRecord(capture) || typeof capture.at !== 'number') {
-      throw new MeasurementFailure(`capture has no numeric time: ${f}`);
+  captures.forEach((c, index) => {
+    const at = field(c, 'at');
+    if (typeof at !== 'number') {
+      throw new MeasurementFailure(
+        `capture has no numeric time: ${names[index] ?? ''}`
+      );
     }
-    captures.push(capture);
-    takes.push(capture.at);
-  }
+    takes.push(at);
+  });
   takes.sort((a, b) => a - b);
   for (const capture of captures) {
-    /** @type {unknown[]} */
-    const navs = Array.isArray(capture.navigations) ? capture.navigations : [];
-    for (let i = 1; i < navs.length; i++) {
-      const nav = navs[i];
-      if (!isRecord(nav) || typeof nav.at !== 'number') {
+    const navs = field(capture, 'navigations');
+    if (!navs) continue;
+    const length = Number(
+      typeof navs === 'string' ? navs.length : field(navs, 'length')
+    );
+    for (let i = 1; i < length; i++) {
+      const nav =
+        typeof navs === 'string' ? navs.charAt(i) : field(navs, String(i));
+      const at = field(nav, 'at');
+      if (typeof at !== 'number') {
         throw new MeasurementFailure(
           `navigation ${String(i)} has no numeric time`
         );
       }
-      const at = nav.at;
       const covered = takes.some((t) => t <= at && t >= at - 600);
       if (!covered) {
         throw new MeasurementFailure(
-          `coverage data is missing across a navigation to ${String(nav.url)}: no capture in the 600ms before it`
+          `coverage data is missing across a navigation to ${String(field(nav, 'url'))}: no capture in the 600ms before it`
         );
       }
     }
