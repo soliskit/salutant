@@ -14,13 +14,23 @@ export default defineConfig(
   {
     // tsconfig.json covers src and scripts with checkJs, so the project
     // service can type them.
-    files: ['src/**/*.js', 'scripts/**/*.js', 'tests/measurement/v8merge.mjs'],
+    files: [
+      'src/**/*.js',
+      'scripts/**/*.js',
+      'tests/measurement/v8merge.mjs',
+      'tests/measurement/validate.mjs'
+    ],
     extends: [
       ...tseslint.configs.recommendedTypeChecked,
       ...tseslint.configs.strictTypeChecked
     ].map((config) => ({
       ...config,
-      files: ['src/**/*.js', 'scripts/**/*.js', 'tests/measurement/v8merge.mjs']
+      files: [
+        'src/**/*.js',
+        'scripts/**/*.js',
+        'tests/measurement/v8merge.mjs',
+        'tests/measurement/validate.mjs'
+      ]
     })),
     languageOptions: {
       parserOptions: { projectService: true }
@@ -29,7 +39,10 @@ export default defineConfig(
   {
     // JS files no tsconfig covers get untyped rules only.
     files: ['tests/**/*.js', 'tests/**/*.mjs', '*.mjs'],
-    ignores: ['tests/measurement/v8merge.mjs'],
+    ignores: [
+      'tests/measurement/v8merge.mjs',
+      'tests/measurement/validate.mjs'
+    ],
     extends: [tseslint.configs.disableTypeChecked].map((config) => ({
       ...config,
       files: ['tests/**/*.js', 'tests/**/*.mjs', '*.mjs']
