@@ -7,11 +7,12 @@ import {
   BrowserSession,
   honestSignIn,
   OWNER,
-  STRANGER
+  STRANGER,
+  readCreated
 } from './helpers.js';
 import { DurableObjectStore } from '../src/do-store.js';
 
-test('a correct, unexpired, unused code succeeds exactly once', async () => {
+void test('a correct, unexpired, unused code succeeds exactly once', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w);
   assert.equal(r.verify.status, 200);
@@ -25,13 +26,13 @@ test('a correct, unexpired, unused code succeeds exactly once', async () => {
   assert.deepEqual(await again.json(), { error: 'invalid_or_expired_code' });
 });
 
-test('a wrong code gives one generic error and counts a try', async () => {
+void test('a wrong code gives one generic error and counts a try', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   const wrong = await browser.verify({
     challengeId: created.challengeId,
     code: '000000',
@@ -42,13 +43,13 @@ test('a wrong code gives one generic error and counts a try', async () => {
   assert.equal(c.attempts, 1);
 });
 
-test('an expired code fails', async () => {
+void test('an expired code fails', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const code = w.mailer.lastCode();
   w.advance(30 * 60_000 + 1);
@@ -60,13 +61,13 @@ test('an expired code fails', async () => {
   assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' });
 });
 
-test('three wrong tries end the challenge; a correct fourth try fails', async () => {
+void test('three wrong tries end the challenge; a correct fourth try fails', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const code = w.mailer.lastCode();
   const wrongCode = code === '000000' ? '000001' : '000000';
@@ -79,7 +80,7 @@ test('three wrong tries end the challenge; a correct fourth try fails', async ()
     assert.deepEqual(
       await wrong.json(),
       { error: 'invalid_or_expired_code' },
-      `wrong try ${i + 1} must fail`
+      `wrong try ${String(i + 1)} must fail`
     );
   }
   const fourth = await browser.verify({
@@ -90,13 +91,13 @@ test('three wrong tries end the challenge; a correct fourth try fails', async ()
   assert.deepEqual(await fourth.json(), { error: 'invalid_or_expired_code' });
 });
 
-test('a correct third try still succeeds after two wrong tries', async () => {
+void test('a correct third try still succeeds after two wrong tries', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const code = w.mailer.lastCode();
   const wrongCode = code === '000000' ? '000001' : '000000';
@@ -109,7 +110,7 @@ test('a correct third try still succeeds after two wrong tries', async () => {
     assert.deepEqual(
       await wrong.json(),
       { error: 'invalid_or_expired_code' },
-      `wrong try ${i + 1} must fail`
+      `wrong try ${String(i + 1)} must fail`
     );
   }
   const third = await browser.verify({
@@ -121,13 +122,13 @@ test('a correct third try still succeeds after two wrong tries', async () => {
   assert.ok(body.proof, 'the correct code on the third try must issue a proof');
 });
 
-test('many simultaneous submits of one correct code give exactly one success', async () => {
+void test('many simultaneous submits of one correct code give exactly one success', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const code = w.mailer.lastCode();
   const results = await Promise.all(
@@ -141,11 +142,11 @@ test('many simultaneous submits of one correct code give exactly one success', a
   assert.equal(
     proofs.length,
     1,
-    `expected exactly one success, got ${proofs.length}`
+    `expected exactly one success, got ${String(proofs.length)}`
   );
 });
 
-test('a resend gives the challenge a new code and kills only its earlier code', async () => {
+void test('a resend gives the challenge a new code and kills only its earlier code', async () => {
   const w = await makeWorld();
   const browserA = new BrowserSession(w);
   const browserB = new BrowserSession(w);
@@ -185,13 +186,13 @@ test('a resend gives the challenge a new code and kills only its earlier code', 
   assert.ok((await bTry.json()).proof, 'separate challenge coexists');
 });
 
-test('a resend before the cooldown is refused', async () => {
+void test('a resend before the cooldown is refused', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   const res = await browser.resend({
     challengeId: created.challengeId,
     address: OWNER
@@ -200,7 +201,7 @@ test('a resend before the cooldown is refused', async () => {
   assert.deepEqual(await res.json(), { error: 'cooldown' });
 });
 
-test('codes bind to their challenge: a code from one fails on another', async () => {
+void test('codes bind to their challenge: a code from one fails on another', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const s1 = await w.app.startSignIn(null);
@@ -208,9 +209,9 @@ test('codes bind to their challenge: a code from one fails on another', async ()
   const c1 = await (
     await browser.postChallenge({ address: OWNER, stateId: s1.stateId })
   ).json();
-  const c2 = await (
+  const c2 = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: s2.stateId })
-  ).json();
+  );
   await w.service.drain();
   const code1 = w.mailer.outbox
     .find((m) => m.requestId === c1.requestId)
@@ -223,13 +224,13 @@ test('codes bind to their challenge: a code from one fails on another', async ()
   assert.deepEqual(await cross.json(), { error: 'invalid_or_expired_code' });
 });
 
-test('codes bind to the browser: verify without the binding cookie fails', async () => {
+void test('codes bind to the browser: verify without the binding cookie fails', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const code = w.mailer.lastCode();
   const noCookie = await browser.verify({
@@ -248,7 +249,7 @@ test('codes bind to the browser: verify without the binding cookie fails', async
   assert.ok((await ok.json()).proof);
 });
 
-test('at most two active challenges per address; a third is refused with the same message and sends no mail', async () => {
+void test('at most two active challenges per address; a third is refused with the same message and sends no mail', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const s1 = await w.app.startSignIn(null);
@@ -270,7 +271,7 @@ test('at most two active challenges per address; a third is refused with the sam
   assert.equal(w.mailer.outbox.length, 2, 'the refused request sent no mail');
 });
 
-test('no plain code or address is stored; purge removes expired challenges', async () => {
+void test('no plain code or address is stored; purge removes expired challenges', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w);
   const dump = JSON.stringify([...w.store.records]);
@@ -281,7 +282,7 @@ test('no plain code or address is stored; purge removes expired challenges', asy
   assert.equal(w.store.keysWithPrefix('challenge:').length, 0);
 });
 
-test('idempotency records are purged with the address-state window', async () => {
+void test('idempotency records are purged with the address-state window', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -296,7 +297,7 @@ test('idempotency records are purged with the address-state window', async () =>
   assert.equal(w.store.keysWithPrefix('idem:').length, 0);
 });
 
-test('an unlisted address gets the same response shape and no mail', async () => {
+void test('an unlisted address gets the same response shape and no mail', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -311,7 +312,7 @@ test('an unlisted address gets the same response shape and no mail', async () =>
   assert.equal(w.mailer.outbox.length, 0, 'no mail quota used');
 });
 
-test('a request body that is not valid JSON is refused and sends nothing [R6]', async () => {
+void test('a request body that is not valid JSON is refused and sends nothing [R6]', async () => {
   const w = await makeWorld();
   const create = await w.worker.fetch(
     new Request('https://salutant.example.test/v1/challenges', {
@@ -334,13 +335,13 @@ test('a request body that is not valid JSON is refused and sends nothing [R6]', 
   assert.equal(w.mailer.attempts.length, 0);
 });
 
-test('a resend that cannot be honored answers like one that can, and sends nothing extra [R3]', async () => {
+void test('a resend that cannot be honored answers like one that can, and sends nothing extra [R3]', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   w.advance(61_000);
   const honest = await browser.resend({
@@ -398,13 +399,13 @@ test('a resend that cannot be honored answers like one that can, and sends nothi
 
 // R2: a resend and a verify of the old code at the same moment. The old and
 // new code of one challenge must never both succeed.
-test('a resend racing a verify of the old code never leaves both codes working', async () => {
+void test('a resend racing a verify of the old code never leaves both codes working', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const oldCode = w.mailer.lastCode();
   const sentBefore = w.mailer.outbox.length;
@@ -448,7 +449,7 @@ async function seededForPurge(worldOptions) {
     stateId: start.stateId,
     idempotencyKey: 'purge-boundary'
   });
-  const created = await create.json();
+  const created = await readCreated(create);
   await w.service.drain();
   w.advance(1000);
   const tv = w.getNow();
@@ -470,7 +471,7 @@ const PURGE_DEADLINES = [
 ];
 
 for (const [prefix, deadlineOf] of PURGE_DEADLINES) {
-  test(`purge keeps ${prefix} records until their configured purge time and removes them at it`, async () => {
+  void test(`purge keeps ${prefix} records until their configured purge time and removes them at it`, async () => {
     const t = await seededForPurge();
     const deadline = deadlineOf(t);
     const count = (p) => t.w.store.keysWithPrefix(p).length;
@@ -500,7 +501,7 @@ const PURGE_FAMILIES = PURGE_DEADLINES.map(([p]) => p);
 // a real SQLite engine behind the store, so its non-SELECT statement
 // count is the witness: zero counted writes while nothing is due, and
 // only the due deletions once a family passes its purge time.
-test('purge writes nothing while every record is kept', async () => {
+void test('purge writes nothing while every record is kept', async () => {
   const storage = makeDOStorage();
   const t = await seededForPurge({
     storeFactory: () => new DurableObjectStore(storage)
@@ -516,7 +517,7 @@ test('purge writes nothing while every record is kept', async () => {
     assert.deepEqual(t.w.store.get(k), v, `${k} is unchanged`);
 });
 
-test('purge deletes only the due records and writes nothing else', async () => {
+void test('purge deletes only the due records and writes nothing else', async () => {
   const storage = makeDOStorage();
   const t = await seededForPurge({
     storeFactory: () => new DurableObjectStore(storage)

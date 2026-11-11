@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeWorld, honestSignIn, SERVICE_ORIGIN } from './helpers.js';
 
-test('nullish stored states fail completion before a session is created [R5]', async () => {
+void test('nullish stored states fail completion before a session is created [R5]', async () => {
   for (const value of [null, undefined]) {
     const w = await makeWorld();
     const start = await w.app.startSignIn(null);
@@ -16,7 +16,7 @@ test('nullish stored states fail completion before a session is created [R5]', a
   }
 });
 
-test('a truthy primitive state fails at the original exchange write point [R5]', async () => {
+void test('a truthy primitive state fails at the original exchange write point [R5]', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
   w.appStore.set(`state:${r.start.stateId}`, true);
@@ -32,7 +32,7 @@ test('a truthy primitive state fails at the original exchange write point [R5]',
   assert.equal(w.appStore.get(`state:${r.start.stateId}`), true);
 });
 
-test('a non-string stored cookie HMAC fails at decoder use before session creation [R5]', async () => {
+void test('a non-string stored cookie HMAC fails at decoder use before session creation [R5]', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn(null);
   const pending = w.appStore.getRef(`state:${start.stateId}`);
@@ -44,7 +44,7 @@ test('a non-string stored cookie HMAC fails at decoder use before session creati
   assert.deepEqual(w.appStore.keysWithPrefix('session:'), []);
 });
 
-test('completion retains unknown stored identity and epoch fields without asserting their types', async () => {
+void test('completion retains unknown stored identity and epoch fields without asserting their types', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
   const exchange = await w.app.handleExchange(

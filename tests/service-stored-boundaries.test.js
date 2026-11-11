@@ -5,9 +5,14 @@ import {
   BrowserSession,
   OWNER,
   SERVICE_ORIGIN,
-  APP_ORIGIN
+  APP_ORIGIN,
+  readCreated
 } from './helpers.js';
 
+/**
+ * @param {Awaited<ReturnType<typeof makeWorld>>} w
+ * @param {string | null} [key]
+ */
 function create(w, key = null) {
   return w.service.fetch(
     new Request(`${SERVICE_ORIGIN}/v1/challenges`, {
@@ -34,12 +39,12 @@ async function createdWorld() {
     stateId: start.stateId
   });
   assert.equal(response.status, 200);
-  const created = await response.json();
+  const created = await readCreated(response);
   await w.service.drain();
   return { w, browser, created };
 }
 
-test('stored replay bodies keep JSON and injected-scalar response conversion with undefined status defaults', async () => {
+void test('stored replay bodies keep JSON and injected-scalar response conversion with undefined status defaults', async () => {
   for (const [body, text] of [
     [null, ''],
     [undefined, ''],
@@ -66,7 +71,7 @@ test('stored replay bodies keep JSON and injected-scalar response conversion wit
   }
 });
 
-test('injected replay function and symbol bodies fail at response use without sending mail [R5]', async () => {
+void test('injected replay function and symbol bodies fail at response use without sending mail [R5]', async () => {
   for (const body of [() => {}, Symbol('body')]) {
     const w = await makeWorld();
     w.store.get = () => ({ status: 200, body, setCookie: null });
@@ -77,7 +82,7 @@ test('injected replay function and symbol bodies fail at response use without se
   }
 });
 
-test('malformed additive operands close counter requests and stop purge at use; JSON scalar addition is retained', async () => {
+void test('malformed additive operands close counter requests and stop purge at use; JSON scalar addition is retained', async () => {
   for (const [value, expected] of [
     [{}, 'reject'],
     [[], 'reject'],
@@ -119,7 +124,9 @@ test('malformed additive operands close counter requests and stop purge at use; 
       w.store.set(`${prefix}:before`, { [field]: 0 });
       w.store.set(`${prefix}:bad`, bad);
       w.store.set(`${prefix}:after`, { [field]: 0 });
-      assert.throws(() => w.service.purge(w.getNow()), TypeError);
+      assert.throws(() => {
+        w.service.purge(w.getNow());
+      }, TypeError);
       assert.equal(
         w.store.get(`${prefix}:before`),
         undefined,
@@ -141,7 +148,7 @@ test('malformed additive operands close counter requests and stop purge at use; 
   }
 });
 
-test('nullish challenge members fail at their first read and a primitive reservation fails after the adapter call [R5]', async () => {
+void test('nullish challenge members fail at their first read and a primitive reservation fails after the adapter call [R5]', async () => {
   for (const value of [null, undefined]) {
     const w = await makeWorld();
     w.store.set('challenge:malformed', value);
@@ -163,7 +170,7 @@ test('nullish challenge members fail at their first read and a primitive reserva
   assert.equal(w.store.get('reservation:primitive'), true);
 });
 
-test('stored non-string code and binding HMACs fail at decoder use before consumption [R5]', async () => {
+void test('stored non-string code and binding HMACs fail at decoder use before consumption [R5]', async () => {
   for (const field of ['codeHmac', 'bindingHmac']) {
     const { w, browser, created } = await createdWorld();
     const record = w.store.getRef(`challenge:${created.challengeId}`);
@@ -196,7 +203,7 @@ test('stored non-string code and binding HMACs fail at decoder use before consum
   }
 });
 
-test('rolling timestamp reads keep nullish defaults and raw retained values, but reject a non-array at filter use', async () => {
+void test('rolling timestamp reads keep nullish defaults and raw retained values, but reject a non-array at filter use', async () => {
   for (const shape of [
     'null-record',
     'undefined-record',
@@ -258,7 +265,7 @@ test('rolling timestamp reads keep nullish defaults and raw retained values, but
   }
 });
 
-test('apps remain unchecked until the original route use; some skips sparse slots and nullish members still fail', async () => {
+void test('apps remain unchecked until the original route use; some skips sparse slots and nullish members still fail', async () => {
   for (const apps of [null, {}, 'bad']) {
     const w = await makeWorld();
     w.service.apps = apps;
@@ -305,7 +312,7 @@ test('apps remain unchecked until the original route use; some skips sparse slot
   );
 });
 
-test('a missing current signing key fails at proof signing after consumption without recording issuance [R5]', async () => {
+void test('a missing current signing key fails at proof signing after consumption without recording issuance [R5]', async () => {
   const { w, browser, created } = await createdWorld();
   w.service.signingKeys.delete(w.service.currentKid);
   const response = await browser.verify({

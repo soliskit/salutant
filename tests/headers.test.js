@@ -20,6 +20,10 @@ const REQUIRED = {
   'cross-origin-opener-policy': 'same-origin'
 };
 
+/**
+ * @param {Response} res
+ * @param {string} label
+ */
 function assertHeaderSet(res, label) {
   for (const [name, value] of Object.entries(REQUIRED)) {
     assert.equal(res.headers.get(name), value, `${label}: ${name}`);
@@ -36,7 +40,7 @@ function assertHeaderSet(res, label) {
   }
 }
 
-test('every route type carries the full header set', async () => {
+void test('every route type carries the full header set', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -84,7 +88,7 @@ test('every route type carries the full header set', async () => {
   );
 });
 
-test('a proof response carries no-store and the page limits connect-src to the one exact origin', async () => {
+void test('a proof response carries no-store and the page limits connect-src to the one exact origin', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w);
   assert.equal(r.verify.headers.get('cache-control'), 'no-store');
@@ -101,7 +105,7 @@ test('a proof response carries no-store and the page limits connect-src to the o
   assert.equal(unknown.status, 400, 'lookalike origin is not served the page');
 });
 
-test('the policy header has exactly the documented directives, semicolon separated, none empty', () => {
+void test('the policy header has exactly the documented directives, semicolon separated, none empty', () => {
   const parse = (h) =>
     h
       .get('content-security-policy')
@@ -130,7 +134,7 @@ test('the policy header has exactly the documented directives, semicolon separat
   );
 });
 
-test('respond: objects become JSON with a JSON content type, text and empty bodies pass through unchanged', async () => {
+void test('respond: objects become JSON with a JSON content type, text and empty bodies pass through unchanged', async () => {
   const obj = respond(200, { a: 1 });
   assert.equal(
     obj.headers.get('content-type'),
@@ -150,7 +154,7 @@ test('respond: objects become JSON with a JSON content type, text and empty bodi
   assert.equal(empty.headers.get('content-type'), null);
 });
 
-test('the page, script and style are real content with the right types', async () => {
+void test('the page, script and style are real content with the right types', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -188,10 +192,12 @@ test('the page, script and style are real content with the right types', async (
     'style sets the body font'
   );
 });
-test('the page routes answer only their own path and method, with the right content type', async () => {
+void test('the page routes answer only their own path and method, with the right content type', async () => {
   const w = await makeWorld();
   const base = 'https://salutant.example.test';
+  /** @param {string} path */
   const get = (path) => w.worker.fetch(new Request(base + path));
+  /** @param {string} path */
   const post = (path) =>
     w.worker.fetch(new Request(base + path, { method: 'POST', body: '{}' }));
 
