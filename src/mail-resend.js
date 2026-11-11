@@ -16,12 +16,27 @@
 // reconcile never relies on it and never issues a POST.
 
 const BASE_URL = 'https://api.resend.com';
+
+/**
+ * @typedef {{ outcome: 'accepted', providerId: string }
+ *   | { outcome: 'uncertain' }
+ *   | { outcome: 'failed' }} SendResult
+ */
+/**
+ * @typedef {{ state: 'sent', providerId: string }
+ *   | { state: 'absent' }
+ *   | { state: 'unknown' }} ReconcileResult
+ */
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 export class ResendMailAdapter {
   // apiKey: the Resend API key (Worker secret). from: the verified
   // sender, e.g. "Salutant <no-reply@example.test>". fetchImpl and
   // timeoutMs are injectable for tests.
+  /**
+   * @param {{ apiKey: string, from: string, fetchImpl?: typeof fetch,
+   *   timeoutMs?: number }} options
+   */
   constructor({
     apiKey,
     from,
@@ -34,9 +49,14 @@ export class ResendMailAdapter {
     this.from = from;
     this.fetchImpl = fetchImpl;
     this.timeoutMs = timeoutMs;
+    /** @type {Map<string, { payload: object, providerId?: string }>} */
     this.sends = new Map(); // requestId -> { payload, providerId? }
   }
 
+  /**
+   * @param {{ requestId: string, to: string, subject: string, text: string }} message
+   * @returns {Promise<SendResult>}
+   */
   async send({ requestId, to, subject, text }) {
     if (!requestId) throw new Error('adapter contract: requestId is required');
     const payload = { from: this.from, to: [to], subject, text };
@@ -54,8 +74,18 @@ export class ResendMailAdapter {
       return { outcome: 'uncertain' };
     }
     const body = await this.readJson(res);
-    if (res.ok && body && typeof body.id === 'string') {
-      this.sends.get(requestId).providerId = body.id;
+    if (
+      res.ok &&
+      typeof body === 'object' &&
+      body !== null &&
+      'id' in body &&
+      typeof body.id === 'string'
+    ) {
+      const record = this.sends.get(requestId);
+      // The record was set above. A missing record rejects here, as the
+      // unguarded property write did.
+      if (record === undefined) throw new TypeError('send record is missing');
+      record.providerId = body.id;
       return { outcome: 'accepted', providerId: body.id };
     }
     if (res.ok || res.status >= 500) return { outcome: 'uncertain' };
@@ -63,6 +93,10 @@ export class ResendMailAdapter {
     return { outcome: 'failed' };
   }
 
+  /**
+   * @param {string} requestId
+   * @returns {Promise<ReconcileResult>}
+   */
   async reconcile(requestId) {
     if (!requestId) throw new Error('adapter contract: requestId is required');
     const record = this.sends.get(requestId);
@@ -86,7 +120,9 @@ export class ResendMailAdapter {
     return { state: 'unknown' };
   }
 
+  /** @param {string} [idempotencyKey] */
   headers(idempotencyKey) {
+    /** @type {Record<string, string>} */
     const h = { authorization: `Bearer ${this.apiKey}` };
     if (idempotencyKey) {
       h['content-type'] = 'application/json';
@@ -95,9 +131,15 @@ export class ResendMailAdapter {
     return h;
   }
 
+  /**
+   * @param {Response} res
+   * @returns {Promise<unknown>}
+   */
   async readJson(res) {
     try {
-      return await res.json();
+      /** @type {unknown} */
+      const value = await res.json();
+      return value;
     } catch {
       return undefined;
     }

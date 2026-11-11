@@ -75,3 +75,50 @@ test('StubApp uses the wall clock when no clock is injected', async () => {
     `createdAtMs ${pending.createdAtMs} not between ${before} and ${after}`
   );
 });
+
+test('MemoryStore snapshot decoding preserves the JSON-domain Map behavior', () => {
+  for (const value of [
+    null,
+    '',
+    'a',
+    0,
+    {},
+    [],
+    ['ab'],
+    [null],
+    [0],
+    [{}],
+    [{ 0: 'a', 1: 3 }],
+    [[1]],
+    [[1, 2, 3]]
+  ]) {
+    const snapshot = JSON.stringify(value);
+    let expected;
+    try {
+      expected = new Map(JSON.parse(snapshot));
+    } catch (error) {
+      assert.ok(error instanceof TypeError);
+      assert.throws(() => new MemoryStore(snapshot), TypeError, snapshot);
+      const target = new MemoryStore();
+      target.set('keep', 7);
+      assert.throws(() => target.restoreFrom(snapshot), TypeError, snapshot);
+      assert.equal(target.get('keep'), 7, 'failed restore leaves the old map');
+      continue;
+    }
+    assert.deepEqual(new MemoryStore(snapshot).records, expected, snapshot);
+    const target = new MemoryStore();
+    target.set('replace', true);
+    target.restoreFrom(snapshot);
+    assert.deepEqual(target.records, expected, snapshot);
+  }
+});
+
+test('MemoryStore prefix lookup fails at a restored non-string key', () => {
+  const store = new MemoryStore('[["a",1],[2,3]]');
+  assert.throws(() => store.keysWithPrefix('a'), TypeError);
+  assert.equal(
+    store.get(2),
+    3,
+    'restore does not reject or drop the numeric key'
+  );
+});

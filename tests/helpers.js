@@ -27,7 +27,8 @@ export function makeDOStorage() {
     // constructor's CREATE TABLE is a write too.
     writes: 0,
     // Scheduled alarm time in milliseconds, or null when none is set.
-    alarmMs: null,
+    alarmMs: /** @type {number | null} */ (null),
+    /** @param {number} ms */
     setAlarm(ms) {
       storage.alarmMs = ms;
     },
@@ -35,6 +36,7 @@ export function makeDOStorage() {
       return storage.alarmMs;
     },
     sql: {
+      /** @param {string} query @param {import("node:sqlite").SQLInputValue[]} params */
       exec(query, ...params) {
         if (!/^\s*select/i.test(query)) storage.writes++;
         const stmt = db.prepare(query);
@@ -46,6 +48,7 @@ export function makeDOStorage() {
         return { toArray: () => [] };
       }
     },
+    /** @template T @param {() => T} fn @returns {T} */
     transactionSync(fn) {
       db.exec('BEGIN');
       try {
@@ -90,6 +93,7 @@ export async function makeWorld({
   const signingKeys = new Map([
     ['k1', { ...keyPair, status: 'current', notAfterMs: null }]
   ]);
+  /** @type {NonNullable<import("../src/service.js").ServiceOptions["logSink"]>} */
   const logSink = [];
   const service = new SalutantService({
     store,
@@ -134,9 +138,11 @@ export async function makeWorld({
     epoch,
     logSink,
     clock,
+    /** @param {number} ms */
     advance: (ms) => {
       clockNow += ms;
     },
+    /** @param {number} v */
     setNow: (v) => {
       clockNow = v;
     },
@@ -147,10 +153,13 @@ export async function makeWorld({
 // A minimal browser: a cookie jar plus the fetch calls the page script
 // would make. Never puts codes, proofs or addresses in URLs.
 export class BrowserSession {
+  /** @param {Awaited<ReturnType<typeof makeWorld>>} world */
   constructor(world) {
     this.world = world;
+    /** @type {Map<string, { value: string, path: string }>} */
     this.cookies = new Map(); // name -> { value, path }
   }
+  /** @param {string} path */
   _cookieHeaderFor(path) {
     return (
       [...this.cookies.entries()]
@@ -159,6 +168,7 @@ export class BrowserSession {
         .join('; ') || null
     );
   }
+  /** @param {Response} response */
   _storeCookies(response) {
     const setC = response.headers.getSetCookie?.() ?? [];
     for (const line of setC) {
@@ -169,6 +179,14 @@ export class BrowserSession {
       this.cookies.set(name, { value, path });
     }
   }
+  /**
+   * @param {object} options
+   * @param {string} options.address
+   * @param {string} [options.appOrigin]
+   * @param {string} options.stateId
+   * @param {string | null} [options.idempotencyKey]
+   * @param {Record<string, string>} [options.headers]
+   */
   async postChallenge({
     address,
     appOrigin = APP_ORIGIN,
@@ -190,6 +208,12 @@ export class BrowserSession {
     this._storeCookies(res);
     return res;
   }
+  /**
+   * @param {object} options
+   * @param {string} options.challengeId
+   * @param {string} options.address
+   * @param {string | null} [options.idempotencyKey]
+   */
   async resend({ challengeId, address, idempotencyKey = null }) {
     const res = await this.world.worker.fetch(
       new Request(`${SERVICE_ORIGIN}/v1/challenges`, {
@@ -204,8 +228,10 @@ export class BrowserSession {
     this._storeCookies(res);
     return res;
   }
+  /** @param {{challengeId: string, code: string | null | undefined, address: string, omitCookies?: boolean}} options */
   async verify({ challengeId, code, address, omitCookies = false }) {
     const path = `/v1/challenges/${encodeURIComponent(challengeId)}/verify`;
+    /** @type {Record<string, string>} */
     const headers = { 'content-type': 'application/json' };
     if (!omitCookies) {
       const c = this._cookieHeaderFor(path);
@@ -228,7 +254,13 @@ export class BrowserSession {
   }
 }
 
+/**
+ * @typedef {{ status: number }} CompleteResult
+ * @typedef {{ complete: CompleteResult | null, [field: string]: unknown }} HonestSignInResult
+ */
+
 // Drive a whole sign-in the honest way. Returns every artifact.
+/** @param {Awaited<ReturnType<typeof makeWorld>>} world @returns {Promise<HonestSignInResult>} */
 export async function honestSignIn(
   world,
   { address = OWNER, browser = new BrowserSession(world), redeem = true } = {}
@@ -273,6 +305,7 @@ export async function honestSignIn(
   };
 }
 
+/** @param {Response} response */
 export function bodyText(response) {
   return response.text();
 }

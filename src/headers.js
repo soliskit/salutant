@@ -17,6 +17,10 @@ const CSP_BASE = [
 //   formAction    - CSP form-action value ("'none'" by default)
 //   cache         - "no-store" (sign-in and proof responses) or
 //                   { publicSeconds: n } for the key endpoint
+/**
+ * @param {{ connectOrigin?: string | null, formAction?: string,
+ *   cache?: 'no-store' | { publicSeconds: number } }} [options]
+ */
 export function securityHeaders(options = {}) {
   const {
     connectOrigin = null,
@@ -38,16 +42,22 @@ export function securityHeaders(options = {}) {
     'cross-origin-opener-policy': 'same-origin'
   });
   if (cache === 'no-store') h.set('cache-control', 'no-store');
-  else h.set('cache-control', `public, max-age=${cache.publicSeconds}`);
+  else h.set('cache-control', `public, max-age=${String(cache.publicSeconds)}`);
   return h;
 }
 
+/**
+ * @param {number | undefined} status
+ * @param {string | Record<string, unknown> | null | undefined} body
+ * @param {Parameters<typeof securityHeaders>[0]} [options]
+ */
 export function respond(status, body, options = {}) {
   const headers = securityHeaders(options);
-  let payload = body;
+  /** @type {string | null | undefined} */
+  let payload;
   if (typeof body === 'object' && body !== null) {
     payload = JSON.stringify(body);
     headers.set('content-type', 'application/json; charset=utf-8');
-  }
+  } else payload = body;
   return new Response(payload, { status, headers });
 }

@@ -16,7 +16,8 @@ for (let i = 0; i < RUNS; i++) {
   const cpu0 = process.cpuUsage();
   const r = await honestSignIn(w, { browser: new BrowserSession(w) });
   const cpu = process.cpuUsage(cpu0);
-  if (r.complete.status !== 200) throw new Error('sign-in failed during bench');
+  if (!r.complete || r.complete.status !== 200)
+    throw new Error('sign-in failed during bench');
   samples.push((cpu.user + cpu.system) / 1000);
 }
 // Key endpoint sample
@@ -35,7 +36,7 @@ console.log(
       signInCpuMs: {
         min: samples[0].toFixed(2),
         median: median.toFixed(2),
-        max: samples.at(-1).toFixed(2)
+        max: samples[samples.length - 1].toFixed(2)
       },
       firstRunKeygenWallMs: firstKeygenMs.toFixed(1),
       jwksCpuMs: ((jwks.user + jwks.system) / 1000).toFixed(2)

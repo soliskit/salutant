@@ -411,3 +411,21 @@ test('timingSafeEqual refuses different-length inputs instead of comparing them'
     true
   );
 });
+
+test('a JSON-null proof header rejects at the first member read [R4]', async () => {
+  const { publicKey } = await generateSigningKeyPair();
+  const header = toBase64Url(new TextEncoder().encode('null'));
+  await assert.rejects(
+    () => verifyProofSignature(`${header}.e30.c2ln`, publicKey),
+    TypeError
+  );
+});
+
+test('a primitive proof header has no accepted algorithm [R4]', async () => {
+  const { publicKey } = await generateSigningKeyPair();
+  const header = toBase64Url(new TextEncoder().encode('5'));
+  await assert.rejects(
+    () => verifyProofSignature(`${header}.e30.c2ln`, publicKey),
+    /unexpected algorithm/
+  );
+});

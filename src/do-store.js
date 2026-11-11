@@ -16,12 +16,21 @@
 
 const TABLE = 'records';
 
+/** @typedef {ArrayBuffer | string | number | null} SqlValue */
+/**
+ * @typedef {object} DurableStorageLike
+ * @property {<T>(fn: () => T) => T} transactionSync
+ * @property {{ exec(query: string, ...bindings: unknown[]): { toArray(): Record<string, SqlValue>[] } }} sql
+ */
+
 export class DurableObjectStore {
   // storage: a Durable Object storage handle (ctx.storage) exposing
   // transactionSync(fn) and sql.exec(query, ...params). Injectable so
   // tests can supply an in-memory SQLite-shaped shim.
+  /** @param {DurableStorageLike} storage */
   constructor(storage) {
     this.storage = storage;
+    /** @type {Map<unknown, { value: unknown, dirty: boolean }> | null} */
     this.tx = null; // active transaction cache: Map key -> { value, dirty }
     this._ensureTable();
   }
@@ -33,6 +42,11 @@ export class DurableObjectStore {
   }
 
   // Synchronous single-step state change. `fn` must not await.
+  /**
+   * @template T
+   * @param {(store: DurableObjectStore) => T} fn
+   * @returns {T}
+   */
   transact(fn) {
     return this.storage.transactionSync(() => {
       this.tx = new Map();
@@ -57,16 +71,28 @@ export class DurableObjectStore {
     });
   }
 
-  _load(key) {
-    if (this.tx && this.tx.has(key)) return this.tx.get(key).value;
+  /**
+   * @param {unknown} key
+   * @param {boolean} [markDirty]
+   */
+  _load(key, markDirty = false) {
+    if (this.tx && this.tx.has(key)) {
+      const cached = this.tx.get(key);
+      if (cached === undefined) throw new TypeError('cached entry is missing');
+      if (markDirty && cached.value !== undefined) cached.dirty = true;
+      return cached.value;
+    }
     const rows = this.storage.sql
       .exec(`SELECT value FROM ${TABLE} WHERE key = ?`, key)
       .toArray();
-    const value = rows.length === 0 ? undefined : JSON.parse(rows[0].value);
-    if (this.tx) this.tx.set(key, { value, dirty: false });
+    const value =
+      rows.length === 0 ? undefined : parseStoredValue(rows[0].value);
+    if (this.tx)
+      this.tx.set(key, { value, dirty: markDirty && value !== undefined });
     return value;
   }
 
+  /** @param {unknown} key */
   get(key) {
     const v = this._load(key);
     return v === undefined ? undefined : structuredClone(v);
@@ -74,12 +100,15 @@ export class DurableObjectStore {
 
   // Read the raw reference inside a transaction only; mutations are
   // flushed when the transaction commits.
+  /** @param {unknown} key */
   getRef(key) {
-    const v = this._load(key);
-    if (this.tx && v !== undefined) this.tx.get(key).dirty = true;
-    return v;
+    return this._load(key, true);
   }
 
+  /**
+   * @param {unknown} key
+   * @param {unknown} value
+   */
   set(key, value) {
     if (this.tx) {
       this.tx.set(key, { value, dirty: true });
@@ -92,6 +121,7 @@ export class DurableObjectStore {
     }
   }
 
+  /** @param {unknown} key */
   delete(key) {
     if (this.tx) {
       this.tx.set(key, { value: undefined, dirty: true });
@@ -100,8 +130,10 @@ export class DurableObjectStore {
     }
   }
 
+  /** @param {string} prefix */
   keysWithPrefix(prefix) {
     const pattern = prefix.replace(/[%_\\]/g, (c) => `\\${c}`) + '%';
+    /** @type {Set<unknown>} */
     const out = new Set(
       this.storage.sql
         .exec(`SELECT key FROM ${TABLE} WHERE key LIKE ? ESCAPE '\\'`, pattern)
@@ -110,6 +142,8 @@ export class DurableObjectStore {
     );
     if (this.tx) {
       for (const [key, entry] of this.tx) {
+        if (typeof key !== 'string')
+          throw new TypeError('store key is not a string');
         if (!key.startsWith(prefix)) continue;
         if (entry.value === undefined) out.delete(key);
         else out.add(key);
@@ -127,7 +161,15 @@ export class DurableObjectStore {
     const rows = this.storage.sql
       .exec(`SELECT key, value FROM ${TABLE}`)
       .toArray();
-    const merged = new Map(rows.map((r) => [r.key, JSON.parse(r.value)]));
+    /** @type {Map<unknown, unknown>} */
+    const merged = new Map(
+      rows.map(
+        /** @returns {[unknown, unknown]} */ (r) => [
+          r.key,
+          parseStoredValue(r.value)
+        ]
+      )
+    );
     if (this.tx) {
       for (const [key, entry] of this.tx) {
         if (entry.value === undefined) merged.delete(key);
@@ -137,8 +179,9 @@ export class DurableObjectStore {
     return JSON.stringify([...merged]);
   }
 
+  /** @param {string} snapshot */
   restoreFrom(snapshot) {
-    const entries = JSON.parse(snapshot);
+    const entries = restoreEntries(snapshot);
     if (this.tx) {
       // Inside a transaction the replace goes through the working copy,
       // so it commits or rolls back with everything else. The working
@@ -173,9 +216,59 @@ export class DurableObjectStore {
 // Durable Object wrapper. Wired for deployment: src/entry.js extends
 // this class, and wrangler.jsonc binds it as SALUTANT_STORE with the v1
 // migration enabling SQLite storage (new_sqlite_classes).
+/** @template Env */
 export class SalutantStoreDO {
+  /** @type {DurableObjectStore} */
+  store;
+  /** @type {Env} */
+  env;
+
+  /**
+   * @param {{ storage: DurableStorageLike }} ctx
+   * @param {Env} env
+   */
   constructor(ctx, env) {
     this.store = new DurableObjectStore(ctx.storage);
     this.env = env;
+  }
+}
+
+/**
+ * Driver SQL values are scalars or ArrayBuffers, not arbitrary objects.
+ * Ordinary ArrayBuffer stringification is not JSON; scalar conversion matches
+ * the original JSON.parse input conversion.
+ * @param {SqlValue} value
+ * @returns {unknown}
+ */
+function parseStoredValue(value) {
+  if (value instanceof ArrayBuffer)
+    throw new SyntaxError('stored ArrayBuffer is not JSON');
+  /** @type {unknown} */
+  const parsed = JSON.parse(String(value));
+  return parsed;
+}
+
+/**
+ * Parse eagerly, but inspect iterable shapes only as restoration consumes
+ * them, after the existing replacement setup has run.
+ * @param {string} snapshot
+ * @returns {Iterable<[unknown, unknown]>}
+ */
+function restoreEntries(snapshot) {
+  /** @type {unknown} */
+  const parsed = JSON.parse(snapshot);
+  return entries();
+
+  /** @returns {Generator<[unknown, unknown]>} */
+  function* entries() {
+    if (typeof parsed !== 'string' && !Array.isArray(parsed))
+      throw new TypeError('snapshot is not iterable');
+    const rows = /** @type {string | unknown[]} */ (parsed);
+    for (const row of rows) {
+      if (typeof row !== 'string' && !Array.isArray(row))
+        throw new TypeError('snapshot entry is not iterable');
+      const [key, value] = /** @type {string | unknown[]} */ (row);
+      yield [key, value];
+    }
   }
 }

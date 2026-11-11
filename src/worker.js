@@ -3,10 +3,19 @@
 // full header set is always present (R9).
 
 import { respond } from './headers.js';
+import { configuredApps, configuredAppOrigin } from './service.js';
 import { PAGE_HTML, PAGE_JS, PAGE_CSS } from './assets.js';
 
+/**
+ * What the worker uses of the service: the registered apps and fetch.
+ * @typedef {{ apps: unknown,
+ *   fetch: (request: Request) => Promise<Response> }} WorkerService
+ */
+
+/** @param {WorkerService} service */
 export function createWorker(service) {
   return {
+    /** @param {Request} request */
     async fetch(request) {
       const url = new URL(request.url);
       if (request.method === 'GET' && url.pathname === '/') {
@@ -23,6 +32,10 @@ export function createWorker(service) {
   };
 }
 
+/**
+ * @param {string} text
+ * @param {string} contentType
+ */
 function staticAsset(text, contentType) {
   const r = respond(200, text);
   r.headers.set('content-type', contentType);
@@ -34,9 +47,15 @@ function staticAsset(text, contentType) {
 // the service itself plus that one exact origin, because the page script
 // calls the app's callback. form-action is 'none': the exchange happens
 // in script, never by form post (callback protocol finding).
+/**
+ * @param {WorkerService} service
+ * @param {URL} url
+ */
 function codeEntryPage(service, url) {
   const appOrigin = url.searchParams.get('app') ?? '';
-  const known = service.apps.some((a) => a.origin === appOrigin);
+  const known = configuredApps(service.apps).some(
+    (app) => configuredAppOrigin(app) === appOrigin
+  );
   const r = respond(
     known ? 200 : 400,
     PAGE_HTML,

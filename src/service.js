@@ -43,7 +43,33 @@ const MONTH_COUNTER_TTL_MS = 32 * 24 * 3_600_000;
 
 const GENERIC_VERIFY_ERROR = 'invalid_or_expired_code';
 
+/**
+ * @typedef {{ status: number, body: Record<string, unknown>, setCookie: string | null }} ReplayRecord
+ * @typedef {{ owner: Request, promise: Promise<ReplayRecord>, settle: (recorded: ReplayRecord) => void }} InflightRequest
+ */
+
+/**
+ * @typedef {object} ServiceStore
+ * @property {(key: unknown) => unknown} get
+ * @property {(key: unknown) => unknown} getRef
+ * @property {(key: unknown, value: unknown) => void} set
+ * @property {(key: unknown) => void} delete
+ * @property {(prefix: string) => unknown[]} keysWithPrefix
+ * @property {<T>(fn: (store: ServiceStore) => T) => T} transact
+ * @typedef {{ send(message: {requestId: string, to: string, subject: string, text: string}): Promise<import('./mail-resend.js').SendResult>, reconcile(requestId: string): Promise<import('./mail-resend.js').ReconcileResult> }} ServiceMailer
+ * @typedef {{ publicKey: CryptoKey, privateKey: CryptoKey, status: unknown, notAfterMs: unknown }} SigningKey
+ * @typedef {{store: ServiceStore, mailer: ServiceMailer,
+ * epochSource: {read(): Promise<unknown>},
+ * allowlist: Iterable<unknown> | null | undefined, apps: unknown,
+ * serviceOrigin: string, codeHmacKeyBytes: BufferSource,
+ * stateHmacKeyBytes: BufferSource,
+ * signingKeys: Map<unknown, SigningKey>, currentKid: unknown,
+ * clock?: () => number,
+ * logSink?: Array<{time: string, event: string, outcome: string, source: string}>,
+ * config?: Partial<typeof DEFAULT_CONFIG>}} ServiceOptions
+ */
 export class SalutantService {
+  /** @param {ServiceOptions} options */
   constructor({
     store,
     mailer,
@@ -56,7 +82,7 @@ export class SalutantService {
     signingKeys, // Map kid -> { publicKey, privateKey, status, notAfterMs }
     currentKid,
     clock = () => Date.now(),
-    logSink = [],
+    logSink = /** @type {Array<{ time: string, event: string, outcome: string, source: string }>} */ ([]),
     config = {}
   }) {
     this.store = store;
@@ -70,7 +96,9 @@ export class SalutantService {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.signingKeys = signingKeys;
     this.currentKid = currentKid;
+    /** @type {Promise<void>[]} */
     this.pendingSends = [];
+    /** @type {Map<string | null, InflightRequest>} */
     this._inflight = new Map(); // idempotency single-flight for concurrent duplicates
     this._keysReady = Promise.all([
       importHmacKey(codeHmacKeyBytes),
@@ -90,6 +118,11 @@ export class SalutantService {
   // proofs or email addresses.
   // Entries older than the retention period are dropped when the next
   // event is logged.
+  /**
+   * @param {string} event
+   * @param {string} outcome
+   * @param {string} source
+   */
   log(event, outcome, source) {
     const oldest = this.clock() - this.config.logRetentionMs;
     while (
@@ -106,18 +139,24 @@ export class SalutantService {
     });
   }
 
+  /**
+   * @param {CryptoKey} key
+   * @param {string} message
+   */
   async _hmac(key, message) {
     return toBase64Url(await hmacSha256(key, message));
   }
 
+  /** @returns {Promise<number>} */
   async _epochOrClosed() {
     // R14: if the epoch cannot be read, the service stays closed.
+    /** @type {unknown} */
     const epoch = await this.epochSource.read();
-    if (!Number.isSafeInteger(epoch) || epoch < 0)
-      throw new Error('epoch unreadable');
+    if (!isEpoch(epoch)) throw new Error('epoch unreadable');
     return epoch;
   }
 
+  /** @param {Request} request */
   async fetch(request) {
     try {
       return await this._route(request);
@@ -127,6 +166,7 @@ export class SalutantService {
     }
   }
 
+  /** @param {Request} request */
   async _route(request) {
     const url = new URL(request.url);
     if (request.method === 'POST' && url.pathname === '/v1/challenges') {
@@ -142,15 +182,22 @@ export class SalutantService {
     return respond(404, { error: 'not_found' });
   }
 
+  /** @param {Request} request */
   _sourceOf(request) {
     // R6: the source address comes from the host's trusted header, never
     // a client-supplied one.
     return request.headers.get('cf-connecting-ip') ?? 'unknown';
   }
 
+  /**
+   * @param {Request} request
+   * @returns {Promise<{ tooBig?: true, bad?: true, body?: unknown }>}
+   */
   async _jsonBody(request) {
     // R6: request bodies are bounded. Read with a hard cap.
-    const reader = request.body.getReader();
+    const stream = request.body;
+    if (stream === null) throw new TypeError('request has no body');
+    const reader = stream.getReader();
     const chunks = [];
     let total = 0;
     for (;;) {
@@ -160,13 +207,14 @@ export class SalutantService {
       if (total > this.config.bodyLimitBytes) return { tooBig: true };
       chunks.push(value);
     }
+    /** @type {unknown} */
+    let body;
     try {
-      return {
-        body: JSON.parse(new TextDecoder().decode(concatBytes(chunks)))
-      };
+      body = JSON.parse(new TextDecoder().decode(concatBytes(chunks)));
     } catch {
       return { bad: true };
     }
+    return { body };
   }
 
   // POST /v1/challenges
@@ -175,6 +223,7 @@ export class SalutantService {
   // { resendOf, address } to resend on an existing challenge. R3: the
   // response for an allowed and an unlisted address is byte-identical
   // apart from the request id, and never waits on the mail provider.
+  /** @param {Request} request */
   async _createChallenge(request) {
     try {
       return await this._createChallengeBody(request);
@@ -196,6 +245,7 @@ export class SalutantService {
     }
   }
 
+  /** @param {Request} request */
   async _createChallengeBody(request) {
     const epoch = await this._epochOrClosed(); // closed if unreadable
     const { tooBig, bad, body } = await this._jsonBody(request);
@@ -210,13 +260,22 @@ export class SalutantService {
     // duplicates join the in-flight response; later duplicates get the
     // recorded response. Neither does new work or sends new mail.
     const idemKey = request.headers.get('idempotency-key');
+    /** @param {unknown} recorded */
     const replay = (recorded) => {
-      const r = respond(recorded.status, recorded.body);
+      const r = respond(
+        storedFields(recorded).status === undefined
+          ? undefined
+          : Number(storedFields(recorded).status),
+        replayBody(storedFields(recorded).body)
+      );
       // The replay must carry the original binding cookie, or a
       // fresh-browser retry could never verify the challenge it
       // already paid for (R2, R5).
-      if (recorded.setCookie)
-        r.headers.append('set-cookie', recorded.setCookie);
+      if (storedFields(recorded).setCookie)
+        r.headers.append(
+          'set-cookie',
+          String(storedFields(recorded).setCookie)
+        );
       return r;
     };
     if (idemKey) {
@@ -231,18 +290,28 @@ export class SalutantService {
         return replay(await flying.promise);
       }
     }
+    /** @type {((recorded: ReplayRecord) => void) | null} */
     let markDone = null;
     if (idemKey) {
-      const promise = new Promise((resolve) => {
-        markDone = resolve;
-      });
+      /** @type {PromiseWithResolvers<ReplayRecord>} */
+      const { promise, resolve } = Promise.withResolvers();
+      markDone = resolve;
       this._inflight.set(idemKey, {
         promise,
-        settle: markDone,
+        settle: resolve,
         owner: request
       });
     }
-    const respondAndRecord = (status, respBody, setCookie = null) => {
+    /**
+     * @param {number} status
+     * @param {Record<string, unknown>} respBody
+     * @param {string | null} [setCookie]
+     */
+    const respondAndRecord = (
+      status,
+      respBody,
+      /** @type {string | null} */ setCookie = null
+    ) => {
       if (idemKey) {
         const recorded = {
           status,
@@ -250,7 +319,9 @@ export class SalutantService {
           setCookie,
           createdAtMs: this.clock()
         };
-        this.store.transact((s) => s.set(`idem:${idemKey}`, recorded));
+        this.store.transact((s) => {
+          s.set(`idem:${idemKey}`, recorded);
+        });
         markDone?.(recorded);
         this._inflight.delete(idemKey);
       }
@@ -260,17 +331,22 @@ export class SalutantService {
     };
 
     const now = this.clock();
-    if (body.resendOf) {
-      return this._resend(body, epoch, now, sourceHash, respondAndRecord);
+    if (body === null) throw new TypeError('request body is null');
+    const fields = fieldsOf(body);
+    if (fields.resendOf) {
+      return this._resend(fields, epoch, now, sourceHash, respondAndRecord);
     }
 
-    const address = typeof body.address === 'string' ? body.address.trim() : '';
-    const app = this.apps.find((a) => a.origin === body.appOrigin);
+    const address =
+      typeof fields.address === 'string' ? fields.address.trim() : '';
+    const app = configuredApps(this.apps).find(
+      (app) => configuredAppOrigin(app) === fields.appOrigin
+    );
     if (
       !address ||
       !app ||
-      typeof body.stateId !== 'string' ||
-      body.stateId.length < 16
+      typeof fields.stateId !== 'string' ||
+      fields.stateId.length < 16
     ) {
       this.log('challenge', 'rejected_request', sourceHash);
       return respondAndRecord(400, { error: 'bad_request' });
@@ -288,7 +364,7 @@ export class SalutantService {
       this._hmac(this._stateKey, `addr:${address}`),
       this._hmac(
         this._codeKey,
-        codeHmacMessage(app.origin, 'signin', challengeId, code)
+        codeHmacMessage(storedFields(app).origin, 'signin', challengeId, code)
       ),
       this._hmac(this._codeKey, `binding:${challengeId}:${binding}`)
     ]);
@@ -337,9 +413,9 @@ export class SalutantService {
         .map((k) => s.getRef(k))
         .filter(
           (c) =>
-            c.addressHash === addressHash &&
-            c.state === 'open' &&
-            c.expiresAtMs > now
+            storedFields(c).addressHash === addressHash &&
+            storedFields(c).state === 'open' &&
+            Number(storedFields(c).expiresAtMs) > now
         ).length;
       if (openCount >= this.config.activeChallengesPerAddress)
         return 'withheld_cap';
@@ -359,8 +435,8 @@ export class SalutantService {
         s.set(`challenge:${challengeId}`, {
           id: challengeId,
           addressHash,
-          appOrigin: app.origin,
-          stateId: body.stateId,
+          appOrigin: storedFields(app).origin,
+          stateId: fields.stateId,
           purpose: 'signin',
           codeHmac,
           bindingHmac,
@@ -391,8 +467,8 @@ export class SalutantService {
       s.set(`challenge:${challengeId}`, {
         id: challengeId,
         addressHash,
-        appOrigin: app.origin,
-        stateId: body.stateId,
+        appOrigin: storedFields(app).origin,
+        stateId: fields.stateId,
         purpose: 'signin',
         codeHmac,
         bindingHmac,
@@ -450,7 +526,7 @@ export class SalutantService {
     } else {
       this.store.transact((s) => {
         const r = s.getRef(`reservation:${requestId}`);
-        if (r) r.outcome = 'withheld_unlisted';
+        if (r) writeStoredField(r, 'outcome', 'withheld_unlisted');
       });
     }
     this.log('challenge', 'accepted', sourceHash);
@@ -468,6 +544,13 @@ export class SalutantService {
     );
   }
 
+  /**
+   * @param {Record<string, unknown>} body
+   * @param {number} epoch
+   * @param {number} now
+   * @param {string} sourceHash
+   * @param {(status: number, body: Record<string, unknown>, setCookie?: string | null) => Response} respondAndRecord
+   */
   async _resend(body, epoch, now, sourceHash, respondAndRecord) {
     // R2: a resend gives its own challenge a new code and kills only
     // that challenge's earlier code. It reuses the slot (R8) and obeys
@@ -510,7 +593,7 @@ export class SalutantService {
     }
 
     const peek = this.store.transact((s) =>
-      s.get(`challenge:${body.resendOf}`)
+      s.get(`challenge:${String(body.resendOf)}`)
     );
     if (!peek || !address) {
       return respondAndRecord(200, {
@@ -527,9 +610,14 @@ export class SalutantService {
     const code = generateCode();
     const codeHmac = await this._hmac(
       this._codeKey,
-      codeHmacMessage(peek.appOrigin, 'signin', peek.id, code)
+      codeHmacMessage(
+        storedFields(peek).appOrigin,
+        'signin',
+        storedFields(peek).id,
+        code
+      )
     );
-    if (addressHash !== peek.addressHash) {
+    if (addressHash !== storedFields(peek).addressHash) {
       return respondAndRecord(200, {
         status: 'ok',
         requestId: randomId(16),
@@ -537,14 +625,22 @@ export class SalutantService {
       });
     }
     const verdict = this.store.transact((s) => {
-      const c = s.getRef(`challenge:${peek.id}`);
-      if (!c || c.state !== 'open' || c.expiresAtMs <= now || c.epoch !== epoch)
+      const c = s.getRef(`challenge:${String(storedFields(peek).id)}`);
+      if (
+        !c ||
+        storedFields(c).state !== 'open' ||
+        Number(storedFields(c).expiresAtMs) <= now ||
+        storedFields(c).epoch !== epoch
+      )
         return 'gone';
-      if (now - c.lastSentAtMs < this.config.resendCooldownMs)
+      if (
+        now - Number(storedFields(c).lastSentAtMs) <
+        this.config.resendCooldownMs
+      )
         return 'cooldown';
-      if (c.listed) {
+      if (storedFields(c).listed) {
         const overBudget =
-          readRecentSends(s, c.addressHash, now) >=
+          readRecentSends(s, storedFields(c).addressHash, now) >=
             this.config.sendsPerAddressPer30Minutes ||
           readCounter(s, 'sendday', dayWindow(now)) >=
             this.config.sendsPerDay ||
@@ -556,23 +652,28 @@ export class SalutantService {
           // immediate retry meets the same cooldown for every class.
           // The earlier code is NOT rotated - this refusal sent no
           // mail, so the owner's last delivered code stays valid.
-          c.lastSentAtMs = now;
+          writeStoredField(c, 'lastSentAtMs', now);
           return 'withheld_send_limit';
         }
       }
-      c.codeHmac = codeHmac; // the earlier code is dead from this moment
-      c.lastSentAtMs = now;
-      c.requestId = requestId;
+      writeStoredField(c, 'codeHmac', codeHmac); // the earlier code is dead from this moment
+      writeStoredField(c, 'lastSentAtMs', now);
+      writeStoredField(c, 'requestId', requestId);
       s.set(`reservation:${requestId}`, {
         requestId,
-        challengeId: c.id,
-        addressHash: c.addressHash,
+        challengeId: storedFields(c).id,
+        addressHash: storedFields(c).addressHash,
         createdAtMs: now,
         epoch,
         outcome: 'pending'
       });
-      if (c.listed) {
-        recordSend(s, c.addressHash, this.config.addressStateTtlMs, now);
+      if (storedFields(c).listed) {
+        recordSend(
+          s,
+          storedFields(c).addressHash,
+          this.config.addressStateTtlMs,
+          now
+        );
         bump(s, 'sendday', dayWindow(now), DAY_COUNTER_TTL_MS, now);
         bump(s, 'sendmonth', monthWindow(now), MONTH_COUNTER_TTL_MS, now);
       }
@@ -595,27 +696,32 @@ export class SalutantService {
       return respondAndRecord(200, {
         status: 'ok',
         requestId: randomId(16),
-        challengeId: peek.id
+        challengeId: storedFields(peek).id
       });
     }
     if (verdict === 'gone') {
       return respondAndRecord(200, {
         status: 'ok',
         requestId: randomId(16),
-        challengeId: peek.id
+        challengeId: storedFields(peek).id
       });
     }
-    if (peek.listed) {
+    if (storedFields(peek).listed) {
       this.pendingSends.push(this._sendCode(requestId, address, code));
     }
     this.log('resend', 'accepted', sourceHash);
     return respondAndRecord(200, {
       status: 'ok',
       requestId,
-      challengeId: peek.id
+      challengeId: storedFields(peek).id
     });
   }
 
+  /**
+   * @param {string} requestId
+   * @param {string} address
+   * @param {string} code
+   */
   async _sendCode(requestId, address, code) {
     // Acceptance is not delivery (R5): an uncertain send is not retried
     // automatically, counts against the budget, and is reconciled
@@ -624,17 +730,22 @@ export class SalutantService {
       requestId,
       to: address,
       subject: 'Your sign-in code',
-      text: `Your sign-in code is ${code}. It expires ${this.config.codeTtlMs / 60_000} minutes after the original request.`
+      text: `Your sign-in code is ${code}. It expires ${String(this.config.codeTtlMs / 60_000)} minutes after the original request.`
     });
     this.store.transact((s) => {
       const r = s.getRef(`reservation:${requestId}`);
-      if (r) r.outcome = result.outcome;
+      if (r) writeStoredField(r, 'outcome', result.outcome);
     });
     if (result.outcome === 'uncertain') {
       const rec = await this.mailer.reconcile(requestId);
       this.store.transact((s) => {
         const r = s.getRef(`reservation:${requestId}`);
-        if (r) r.reconciled = rec.state === 'sent' ? 'sent' : 'absent';
+        if (r)
+          writeStoredField(
+            r,
+            'reconciled',
+            rec.state === 'sent' ? 'sent' : 'absent'
+          );
       });
     }
   }
@@ -644,6 +755,10 @@ export class SalutantService {
   // One synchronous transaction does the whole state change: load,
   // check, compare, and either consume or count a wrong try, with no wait in between.
   // A rejected challenge or code gives one generic error (R2).
+  /**
+   * @param {Request} request
+   * @param {string} challengeId
+   */
   async _verify(request, challengeId) {
     const epoch = await this._epochOrClosed();
     const { tooBig, bad, body } = await this._jsonBody(request);
@@ -659,9 +774,15 @@ export class SalutantService {
     // The transaction below re-checks everything, so nothing here is
     // trusted.
     const peek = this.store.transact((s) => s.get(`challenge:${challengeId}`));
-    const appOrigin = peek?.appOrigin ?? 'none';
-    const address = typeof body.address === 'string' ? body.address.trim() : '';
-    const code = typeof body.code === 'string' ? body.code : '';
+    const appOrigin =
+      peek === null || peek === undefined
+        ? 'none'
+        : (storedFields(peek).appOrigin ?? 'none');
+    if (body === null) throw new TypeError('request body is null');
+    const fields = fieldsOf(body);
+    const address =
+      typeof fields.address === 'string' ? fields.address.trim() : '';
+    const code = typeof fields.code === 'string' ? fields.code : '';
     const binding =
       request.headers
         .get('cookie')
@@ -681,42 +802,53 @@ export class SalutantService {
       const c = s.getRef(`challenge:${challengeId}`);
       if (
         !c ||
-        !c.listed ||
-        c.state !== 'open' ||
-        c.expiresAtMs <= now ||
-        c.epoch !== epoch
+        !storedFields(c).listed ||
+        storedFields(c).state !== 'open' ||
+        Number(storedFields(c).expiresAtMs) <= now ||
+        storedFields(c).epoch !== epoch
       ) {
         return { ok: false };
       }
-      if (c.attempts >= this.config.maxAttempts) {
-        c.state = 'dead';
+      if (Number(storedFields(c).attempts) >= this.config.maxAttempts) {
+        writeStoredField(c, 'state', 'dead');
         return { ok: false };
       }
       // R5: acceptance is not delivery. A challenge whose send failed,
       // was reconciled absent, or is still in flight verifies nothing -
       // the code it holds was never delivered. This check costs the
       // request no attempt: only a delivered code can be tried.
-      const r = s.getRef(`reservation:${c.requestId}`);
+      const r = s.getRef(`reservation:${String(storedFields(c).requestId)}`);
       const delivered =
-        r && (r.outcome === 'accepted' || r.reconciled === 'sent');
+        r &&
+        (storedFields(r).outcome === 'accepted' ||
+          storedFields(r).reconciled === 'sent');
       if (!delivered) return { ok: false };
       const codeOk = timingSafeEqual(
         fromBase64Url(codeHmac),
-        fromBase64Url(c.codeHmac)
+        fromBase64Url(storedString(storedFields(c).codeHmac))
       );
       const bindingOk = timingSafeEqual(
         fromBase64Url(bindingHmac),
-        fromBase64Url(c.bindingHmac)
+        fromBase64Url(storedString(storedFields(c).bindingHmac))
       );
-      const addressOk = addressHash === c.addressHash;
+      const addressOk = addressHash === storedFields(c).addressHash;
       if (!codeOk || !bindingOk || !addressOk) {
-        c.attempts += 1; // a wrong try is counted in the same step
-        if (c.attempts >= this.config.maxAttempts) c.state = 'dead';
+        writeStoredField(
+          c,
+          'attempts',
+          addStoredNumber(storedFields(c).attempts, 1)
+        ); // a wrong try is counted in the same step
+        if (Number(storedFields(c).attempts) >= this.config.maxAttempts)
+          writeStoredField(c, 'state', 'dead');
         return { ok: false };
       }
-      c.state = 'consumed'; // consumed in the same step that verified it
-      c.consumedAtMs = now;
-      return { ok: true, appOrigin: c.appOrigin, stateId: c.stateId };
+      writeStoredField(c, 'state', 'consumed'); // consumed in the same step that verified it
+      writeStoredField(c, 'consumedAtMs', now);
+      return {
+        ok: true,
+        appOrigin: storedFields(c).appOrigin,
+        stateId: storedFields(c).stateId
+      };
     });
 
     if (!outcome.ok) {
@@ -724,7 +856,9 @@ export class SalutantService {
       return respond(200, { error: GENERIC_VERIFY_ERROR });
     }
 
-    const app = this.apps.find((a) => a.origin === outcome.appOrigin);
+    const app = configuredApps(this.apps).find(
+      (app) => configuredAppOrigin(app) === outcome.appOrigin
+    );
     const nowSeconds = Math.floor(now / 1000);
     const key = this.signingKeys.get(this.currentKid);
     const jti = randomId(16);
@@ -745,13 +879,13 @@ export class SalutantService {
         nonce: outcome.stateId,
         epoch
       },
-      key.privateKey,
+      signingPrivateKey(key),
       this.currentKid
     );
 
     this.store.transact((s) => {
       const c = s.getRef(`challenge:${challengeId}`);
-      if (c) c.proofId = jti;
+      if (c) writeStoredField(c, 'proofId', jti);
       s.set(`issuance:${jti}`, {
         jti,
         challengeId,
@@ -764,7 +898,7 @@ export class SalutantService {
     return respond(200, {
       proof,
       state: outcome.stateId,
-      callbackUrl: app.callbackUrl
+      callbackUrl: storedFields(app).callbackUrl
     });
   }
 
@@ -776,7 +910,7 @@ export class SalutantService {
     const keys = [];
     for (const [kid, k] of this.signingKeys) {
       if (k.status === 'revoked') continue;
-      if (k.status === 'overlap' && k.notAfterMs <= now) continue;
+      if (k.status === 'overlap' && Number(k.notAfterMs) <= now) continue;
       keys.push(await exportPublicJwk(k.publicKey, kid));
     }
     return respond(
@@ -792,22 +926,50 @@ export class SalutantService {
   purge(now = this.clock()) {
     this.store.transact((s) => {
       for (const k of s.keysWithPrefix('challenge:')) {
-        if (s.get(k).expiresAtMs + this.config.challengePurgeMs <= now)
+        if (
+          Number(
+            addStoredNumber(
+              storedFields(s.get(k)).expiresAtMs,
+              this.config.challengePurgeMs
+            )
+          ) <= now
+        )
           s.delete(k);
       }
       for (const k of s.keysWithPrefix('counter:')) {
-        if (s.get(k).expiresAtMs <= now) s.delete(k);
+        if (Number(storedFields(s.get(k)).expiresAtMs) <= now) s.delete(k);
       }
       for (const k of s.keysWithPrefix('reservation:')) {
-        if (s.get(k).createdAtMs + this.config.addressStateTtlMs <= now)
+        if (
+          Number(
+            addStoredNumber(
+              storedFields(s.get(k)).createdAtMs,
+              this.config.addressStateTtlMs
+            )
+          ) <= now
+        )
           s.delete(k);
       }
       for (const k of s.keysWithPrefix('issuance:')) {
-        if (s.get(k).expiresAtMs + this.config.challengePurgeMs <= now)
+        if (
+          Number(
+            addStoredNumber(
+              storedFields(s.get(k)).expiresAtMs,
+              this.config.challengePurgeMs
+            )
+          ) <= now
+        )
           s.delete(k);
       }
       for (const k of s.keysWithPrefix('idem:')) {
-        if (s.get(k).createdAtMs + this.config.addressStateTtlMs <= now)
+        if (
+          Number(
+            addStoredNumber(
+              storedFields(s.get(k)).createdAtMs,
+              this.config.addressStateTtlMs
+            )
+          ) <= now
+        )
           s.delete(k);
       }
     });
@@ -819,10 +981,17 @@ export class SalutantService {
   }
 }
 
+/**
+ * @param {unknown} appOrigin
+ * @param {string} purpose
+ * @param {unknown} challengeId
+ * @param {string} code
+ */
 export function codeHmacMessage(appOrigin, purpose, challengeId, code) {
-  return `${appOrigin}|${purpose}|${challengeId}|${code}`;
+  return `${String(appOrigin)}|${purpose}|${String(challengeId)}|${code}`;
 }
 
+/** @param {string} challengeId */
 export function cookieNameFragment(challengeId) {
   return challengeId.replaceAll('-', '_');
 }
@@ -830,6 +999,9 @@ export function cookieNameFragment(challengeId) {
 // The generic refusal: random stand-in ids and a binding-shaped cookie,
 // indistinguishable from an acceptance on the wire (R3). The ids name
 // no record and the cookie binds nothing.
+/**
+ * @param {(status: number, body: Record<string, unknown>, setCookie?: string | null) => Response} respondAndRecord
+ */
 function withheldChallenge(respondAndRecord) {
   const requestId = randomId(16);
   const challengeId = randomId(16);
@@ -842,6 +1014,18 @@ function withheldChallenge(respondAndRecord) {
   );
 }
 
+/**
+ * Field view of a parsed JSON body. Objects and arrays are returned as
+ * they are; primitives have no fields, as before.
+ * @param {unknown} value
+ * @returns {Record<string, unknown>}
+ */
+function fieldsOf(value) {
+  if (typeof value !== 'object' || value === null) return {};
+  return /** @type {Record<string, unknown>} */ (value);
+}
+
+/** @param {Uint8Array[]} chunks */
 function concatBytes(chunks) {
   const out = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0));
   let off = 0;
@@ -856,28 +1040,53 @@ function concatBytes(chunks) {
 // resends check and record in the same synchronous transaction. Failed or
 // uncertain sends still consume quota; refusals never add a timestamp.
 const SEND_WINDOW_MS = 30 * 60_000;
+/**
+ * @param {ServiceStore} s
+ * @param {unknown} addressHash
+ * @param {number} now
+ */
 function recentSends(s, addressHash, now) {
-  return (
-    s.getRef(`counter:sendaddr:${addressHash}:rolling`)?.timestamps ?? []
-  ).filter((time) => time > now - SEND_WINDOW_MS);
+  const record = s.getRef(`counter:sendaddr:${String(addressHash)}:rolling`);
+  const timestamps =
+    record === null || record === undefined
+      ? []
+      : (storedFields(record).timestamps ?? []);
+  if (!Array.isArray(timestamps))
+    throw new TypeError('stored timestamps do not provide filter');
+  const values = /** @type {unknown[]} */ (timestamps);
+  return values.filter((time) => Number(time) > now - SEND_WINDOW_MS);
 }
+/**
+ * @param {ServiceStore} s
+ * @param {unknown} addressHash
+ * @param {number} now
+ */
 function readRecentSends(s, addressHash, now) {
   return recentSends(s, addressHash, now).length;
 }
+/**
+ * @param {ServiceStore} s
+ * @param {unknown} addressHash
+ * @param {number} ttlMs
+ * @param {number} now
+ */
 function recordSend(s, addressHash, ttlMs, now) {
   const timestamps = recentSends(s, addressHash, now);
   timestamps.push(now);
-  s.set(`counter:sendaddr:${addressHash}:rolling`, {
+  s.set(`counter:sendaddr:${String(addressHash)}:rolling`, {
     timestamps,
     expiresAtMs: now + ttlMs
   });
 }
+/** @param {number} now */
 function hourWindow(now) {
-  return `h:${Math.floor(now / 3_600_000)}`;
+  return `h:${String(Math.floor(now / 3_600_000))}`;
 }
+/** @param {number} now */
 function dayWindow(now) {
   return `d:${new Date(now).toISOString().slice(0, 10)}`;
 }
+/** @param {number} now */
 function monthWindow(now) {
   return `m:${new Date(now).toISOString().slice(0, 7)}`;
 }
@@ -885,14 +1094,98 @@ function monthWindow(now) {
 // Counter records carry their own expiry, so address-linked state never
 // outlives its window while the plain day and month totals live to the
 // end of their period (R6).
+/**
+ * @param {ServiceStore} s
+ * @param {string} kind
+ * @param {string} window
+ * @param {number} ttlMs
+ * @param {number} now
+ */
 function bump(s, kind, window, ttlMs, now) {
   const key = `counter:${kind}:${window}`;
   const rec = s.getRef(key) ?? { count: 0, expiresAtMs: now + ttlMs };
-  rec.count += 1;
+  writeStoredField(rec, 'count', addStoredNumber(storedFields(rec).count, 1));
   s.set(key, rec);
-  return rec.count;
+  return Number(storedFields(rec).count);
 }
 
+/**
+ * @param {ServiceStore} s
+ * @param {string} kind
+ * @param {string} window
+ */
 function readCounter(s, kind, window) {
-  return s.getRef(`counter:${kind}:${window}`)?.count ?? 0;
+  const record = s.getRef(`counter:${kind}:${window}`);
+  return record === null || record === undefined
+    ? 0
+    : Number(storedFields(record).count ?? 0);
+}
+
+/**
+ * A safe integer is a number; the second check excludes negative epochs.
+ * @param {unknown} value
+ * @returns {value is number}
+ */
+function isEpoch(value) {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+/** @param {unknown} value */
+function storedFields(value) {
+  if (value === null || value === undefined)
+    throw new TypeError('stored value has no members');
+  /** @type {unknown} */
+  const boxed = Object(value);
+  return /** @type {Record<string, unknown>} */ (boxed);
+}
+/** @param {unknown} target @param {string} key @param {unknown} value */
+function writeStoredField(target, key, value) {
+  if (typeof target !== 'object')
+    throw new TypeError('stored value cannot be written');
+  const fields = /** @type {Record<string, unknown>} */ (target);
+  fields[key] = value;
+}
+/** @param {unknown} value */
+function storedString(value) {
+  if (typeof value !== 'string')
+    throw new TypeError('stored value is not a string');
+  return value;
+}
+/** @param {unknown} value @param {number} amount */
+function addStoredNumber(value, amount) {
+  if (typeof value === 'object' && value !== null)
+    throw new TypeError('stored additive operand is not a scalar');
+  if (typeof value === 'string') return value + String(amount);
+  return Number(value) + amount;
+}
+/** @param {unknown} apps */
+export function configuredApps(apps) {
+  if (!Array.isArray(apps))
+    throw new TypeError('configured apps are not an array');
+  return /** @type {unknown[]} */ (apps);
+}
+/** @param {unknown} app */
+export function configuredAppOrigin(app) {
+  return storedFields(app).origin;
+}
+
+/** @param {SigningKey | undefined} key */
+function signingPrivateKey(key) {
+  if (key === undefined) throw new TypeError('signing key is missing');
+  return key.privateKey;
+}
+/** @param {unknown} value */
+function replayBody(value) {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'object')
+    return /** @type {Record<string, unknown>} */ (value);
+  switch (typeof value) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+    case 'bigint':
+      return String(value);
+    default:
+      throw new TypeError('stored response body is not a JSON value');
+  }
 }
