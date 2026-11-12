@@ -15,6 +15,33 @@ function isRecord(value) {
   return typeof value === 'object' && value !== null;
 }
 
+// ToString of a JSON-reachable value, exactly: strings identity, other
+// primitives String(), arrays join like Array.prototype.toString (null and
+// undefined elements empty), plain objects with an own toString key throw
+// (their value is never callable from JSON), every other plain object is
+// '[object Object]'. field()-read wire data is JSON-only, so this never
+// meets symbols, functions or host objects.
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function jsonToString(value) {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value);
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (v === null || v === undefined ? '' : jsonToString(v)))
+      .join(',');
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'toString')) {
+    throw new TypeError('Cannot convert object to primitive value');
+  }
+  return '[object Object]';
+}
+
 // Reads a property the way plain property access did: null throws the same
 // TypeError, any other non-object has no such property.
 /**
@@ -22,7 +49,7 @@ function isRecord(value) {
  * @param {string} key
  * @returns {unknown}
  */
-function field(value, key) {
+export function field(value, key) {
   if (value === null || value === undefined) {
     throw new TypeError(
       `Cannot read properties of ${String(value)} (reading '${key}')`
@@ -35,6 +62,7 @@ function field(value, key) {
  * @param {string} dir
  * @param {number} runStartedAt
  * @param {Set<unknown>} serverUrls
+ * @returns {unknown[]}
  */
 export function validateServerDir(dir, runStartedAt, serverUrls) {
   const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
@@ -76,7 +104,10 @@ export function validateServerDir(dir, runStartedAt, serverUrls) {
   return entries;
 }
 
-/** @param {string} dir */
+/**
+ * @param {string} dir
+ * @returns {unknown[]}
+ */
 export function validateBrowserDir(dir) {
   const indexPath = join(dir, 'captures.index');
   /** @type {string[]} */

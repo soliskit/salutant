@@ -25,18 +25,12 @@ if (process.env.SALUTANT_MEASURE === '1') {
   mkdirSync(captureDir, { recursive: true });
   const indexFile = join(captureDir, 'captures.index');
   const POLL_MS = 250;
-  const NAV_APIS = [
-    'goto',
-    'reload',
-    'goBack',
-    'goForward',
-    'click',
-    'dblclick',
-    'tap',
-    'press'
-  ];
   let seq = 0;
 
+  /**
+   * @param {import('playwright').Page} page
+   * @param {import('playwright').BrowserContext} context
+   */
   async function instrument(page, context) {
     const session = await context.newCDPSession(page);
     await session.send('Page.enable');
@@ -48,15 +42,20 @@ if (process.env.SALUTANT_MEASURE === '1') {
     });
 
     const sources = new Map();
-    session.on('Debugger.scriptParsed', (event) => {
-      if (event.url) sources.set(event.scriptId, event.url);
-    });
+    session.on(
+      'Debugger.scriptParsed',
+      (/** @type {{ scriptId: string, url?: string }} */ event) => {
+        if (event.url) sources.set(event.scriptId, event.url);
+      }
+    );
+    /** @type {{ at: number, url: string }[]} */
     const navLog = [];
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame())
         navLog.push({ at: Date.now(), url: page.url() });
     });
 
+    /** @param {string} scriptId */
     async function sourceFor(scriptId) {
       try {
         const r = await session.send('Debugger.getScriptSource', { scriptId });
@@ -66,6 +65,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
       }
     }
 
+    /** @param {string} why */
     async function take(why) {
       const at = Date.now();
       seq += 1;
@@ -112,15 +112,57 @@ if (process.env.SALUTANT_MEASURE === '1') {
     }, POLL_MS);
     poll.unref();
 
-    for (const api of NAV_APIS) {
-      const original = page[api].bind(page);
-      page[api] = async (...args) => {
-        await take(`before:${api}`);
-        return original(...args);
-      };
-    }
+    const originalGoto = page.goto.bind(page);
+    /** @type {typeof page.goto} */
+    page.goto = async (...args) => {
+      await take('before:goto');
+      return originalGoto(...args);
+    };
+    const originalReload = page.reload.bind(page);
+    /** @type {typeof page.reload} */
+    page.reload = async (...args) => {
+      await take('before:reload');
+      return originalReload(...args);
+    };
+    const originalGoBack = page.goBack.bind(page);
+    /** @type {typeof page.goBack} */
+    page.goBack = async (...args) => {
+      await take('before:goBack');
+      return originalGoBack(...args);
+    };
+    const originalGoForward = page.goForward.bind(page);
+    /** @type {typeof page.goForward} */
+    page.goForward = async (...args) => {
+      await take('before:goForward');
+      return originalGoForward(...args);
+    };
+    const originalClick = page.click.bind(page);
+    /** @type {typeof page.click} */
+    page.click = async (...args) => {
+      await take('before:click');
+      return originalClick(...args);
+    };
+    const originalDblclick = page.dblclick.bind(page);
+    /** @type {typeof page.dblclick} */
+    page.dblclick = async (...args) => {
+      await take('before:dblclick');
+      return originalDblclick(...args);
+    };
+    const originalTap = page.tap.bind(page);
+    /** @type {typeof page.tap} */
+    page.tap = async (...args) => {
+      await take('before:tap');
+      return originalTap(...args);
+    };
+    const originalPress = page.press.bind(page);
+    /** @type {typeof page.press} */
+    page.press = async (...args) => {
+      await take('before:press');
+      return originalPress(...args);
+    };
 
     const originalClose = page.close.bind(page);
+    /** @type {typeof page.close} */
     page.close = async (...args) => {
       clearInterval(poll);
       // A page from browser.newPage owns its context: its close closes the
@@ -141,8 +183,10 @@ if (process.env.SALUTANT_MEASURE === '1') {
   const closing = new WeakSet();
   const takesByPage = new WeakMap();
 
+  /** @param {import('playwright').BrowserContext} context */
   function watchContext(context) {
     const originalNewPage = context.newPage.bind(context);
+    /** @type {typeof context.newPage} */
     context.newPage = async (...args) => {
       const page = await originalNewPage(...args);
       if (!instrumented.has(page)) {
@@ -152,6 +196,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
       return page;
     };
     const originalClose = context.close.bind(context);
+    /** @type {typeof context.close} */
     context.close = async (...args) => {
       // Flush coverage directly; never call page.close here, because a page
       // that owns its context would loop back into this close.
@@ -171,12 +216,14 @@ if (process.env.SALUTANT_MEASURE === '1') {
   }
 
   const originalLaunch = chromium.launch.bind(chromium);
+  /** @type {typeof chromium.launch} */
   chromium.launch = async (...args) => {
     const browser = await originalLaunch(...args);
     // Covers context.newPage, and contexts the browser creates implicitly.
     browser.on('context', watchContext);
     for (const context of browser.contexts()) watchContext(context);
     const originalBrowserNewPage = browser.newPage.bind(browser);
+    /** @type {typeof browser.newPage} */
     browser.newPage = async (...pageArgs) => {
       const page = await originalBrowserNewPage(...pageArgs);
       if (!instrumented.has(page)) {
@@ -187,6 +234,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
       return page;
     };
     const originalClose = browser.close.bind(browser);
+    /** @type {typeof browser.close} */
     browser.close = async (...closeArgs) => {
       for (const context of browser.contexts()) {
         try {

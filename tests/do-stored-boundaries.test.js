@@ -15,13 +15,15 @@ void test('DO SQL ArrayBuffer values fail JSON decoding before a value is return
 });
 
 void test('DO invalid restore iterables fail only after transaction replacement setup [R14 local]', () => {
-  for (const [snapshot, expected] of [
+  /** @type {[string, string[]][]} */
+  const cases = [
     ['null', []],
     ['{}', []],
     ['[null]', []],
     ['[1]', []],
     ['[["first",1],null]', ['first']]
-  ]) {
+  ];
+  for (const [snapshot, expected] of cases) {
     const store = new DurableObjectStore(makeDOStorage());
     store.set('old', 1);
     store.transact((s) => {
@@ -58,6 +60,7 @@ void test('DO a missing cache entry from the public cache seam still fails at me
   const store = new DurableObjectStore(makeDOStorage());
   assert.throws(() => {
     store.transact((s) => {
+      assert.ok(s.tx);
       s.tx.set('k', undefined);
       s.get('k');
     });

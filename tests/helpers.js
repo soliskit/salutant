@@ -1,6 +1,7 @@
 // Shared test harness. Builds a world: mock service + stub app with
 // injected fakes and a controllable clock. Example addresses and origins
 // only; nothing real is referenced.
+import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { MemoryStore } from '../src/storage.js';
 import { SalutantService } from '../src/service.js';
@@ -454,4 +455,22 @@ export async function honestSignIn(
 /** @param {Response} response */
 export function bodyText(response) {
   return response.text();
+}
+
+// The key ids in a key listing. A listing without a keys list, or a key
+// without an id, fails here as an assertion on the list that is returned.
+/** @param {unknown} listing */
+export function keyIds(listing) {
+  assert.ok(
+    typeof listing === 'object' &&
+      listing !== null &&
+      'keys' in listing &&
+      Array.isArray(listing.keys),
+    'the key listing carries a keys list'
+  );
+  return listing.keys.map((key) =>
+    typeof key === 'object' && key !== null && 'kid' in key
+      ? key.kid
+      : undefined
+  );
 }

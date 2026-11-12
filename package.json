@@ -12,7 +12,8 @@
     "test": "node --test --experimental-test-coverage --test-coverage-include='src/*.js' --test-coverage-include-all --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 tests/*.test.js",
     "lint": "eslint .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "typecheck:all": "node scripts/check-types.js"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

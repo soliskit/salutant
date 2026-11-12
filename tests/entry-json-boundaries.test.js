@@ -11,13 +11,45 @@ import {
 } from '../src/crypto.js';
 import { makeDOStorage, SERVICE_ORIGIN, OWNER } from './helpers.js';
 
+/**
+ * @typedef {{ format: string, jwk: JsonWebKey | BufferSource, algorithm: unknown,
+ *   extractable: boolean, usages: Iterable<string> }} ImportCall
+ */
+
+// The JWK an import call received. Entry always passes the converted JWK
+// dictionary, so key data that is a buffer fails here as an assertion.
+/** @param {ImportCall | undefined} call */
+function importedJwk(call) {
+  assert.ok(call, 'the import call was recorded');
+  const { jwk } = call;
+  assert.ok(
+    !ArrayBuffer.isView(jwk) && !(jwk instanceof ArrayBuffer),
+    'the key data is a JWK dictionary'
+  );
+  return jwk;
+}
+
+/**
+ * @param {(
+ *   seen: ImportCall[],
+ *   pair: Awaited<ReturnType<typeof generateSigningKeyPair>>
+ * ) => Promise<void>} run
+ */
 async function importTap(run) {
   const pair = await generateSigningKeyPair();
   const ownImportKey = Object.getOwnPropertyDescriptor(
     crypto.subtle,
     'importKey'
   );
+  /** @type {ImportCall[]} */
   const seen = [];
+  /**
+   * @param {string} format
+   * @param {JsonWebKey | BufferSource} jwk
+   * @param {unknown} algorithm
+   * @param {boolean} extractable
+   * @param {Iterable<string>} usages
+   */
   crypto.subtle.importKey = async (
     format,
     jwk,
@@ -26,7 +58,9 @@ async function importTap(run) {
     usages
   ) => {
     seen.push({ format, jwk, algorithm, extractable, usages });
-    return usages[0] === 'verify' ? pair.publicKey : pair.privateKey;
+    return Array.from(usages)[0] === 'verify'
+      ? pair.publicKey
+      : pair.privateKey;
   };
   try {
     await run(seen, pair);
@@ -39,6 +73,11 @@ async function importTap(run) {
   }
 }
 
+/**
+ * @param {unknown} [publicJwk]
+ * @param {unknown} [privateJwk]
+ * @param {Record<string, unknown>} [extra]
+ */
 function registry(publicJwk = {}, privateJwk = {}, extra = {}) {
   return JSON.stringify({
     currentKid: 'current',
@@ -46,6 +85,7 @@ function registry(publicJwk = {}, privateJwk = {}, extra = {}) {
   });
 }
 
+/** @param {Record<string, string>} [overrides] */
 async function envFor(overrides = {}) {
   const pair = await generateSigningKeyPair();
   const bytes = () => toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
@@ -66,6 +106,7 @@ async function envFor(overrides = {}) {
   };
 }
 
+/** @param {Awaited<ReturnType<typeof envFor>>} env */
 function objectFor(env) {
   const storage = makeDOStorage();
   return new SalutantStoreDO(
@@ -159,9 +200,9 @@ void test('entry JWK conversion retains scalar DOMString and boolean semantics w
           oth: [{ d: scalar, r: scalar, t: scalar }, null, {}]
         })
       );
-      const jwk = seen.at(-2).jwk;
+      const jwk = importedJwk(seen.at(-2));
       for (const name of Object.keys(strings))
-        assert.equal(jwk[name], String(scalar));
+        assert.equal(Reflect.get(jwk, name), String(scalar));
       assert.equal(jwk.alg, 'EdDSA');
       assert.equal(jwk.ext, Boolean(scalar));
       assert.deepEqual(jwk.key_ops, [String(scalar)]);
@@ -214,7 +255,7 @@ void test('entry JWK sequence and nested dictionary boundaries use JSON arrays, 
     await importSigningKeys(
       registry({ key_ops: [], oth: [[], null, { d: 'd' }] })
     );
-    assert.deepEqual(seen[0].jwk.oth, [{}, {}, { d: 'd' }]);
+    assert.deepEqual(importedJwk(seen[0]).oth, [{}, {}, { d: 'd' }]);
   });
 });
 
@@ -252,7 +293,12 @@ void test('entry epoch read evaluates now but always returns a promise, retainin
     const service = await object.service();
     const result = service.epochSource.read();
     assert.ok(result instanceof Promise);
-    assert.deepEqual(await result, epoch?.value);
+    assert.deepEqual(
+      await result,
+      typeof epoch === 'object' && epoch !== null && 'value' in epoch
+        ? epoch.value
+        : undefined
+    );
   }
   const probeEnv = await envFor({ EPOCH: '{"epochProbe":true}' });
   const originalParse = JSON.parse;
@@ -264,6 +310,7 @@ void test('entry epoch read evaluates now but always returns a promise, retainin
       throw thrown;
     }
   };
+  /** @type {unknown} */
   let rejected;
   try {
     JSON.parse = (text, ...rest) =>
@@ -281,6 +328,7 @@ void test('entry epoch read evaluates now but always returns a promise, retainin
   await assert.rejects(rejected, (reason) => reason === thrown);
   const object = objectFor(await envFor({ EPOCH: 'null' }));
   const service = await object.service();
+  /** @type {unknown} */
   let result;
   assert.doesNotThrow(() => {
     result = service.epochSource.read();
