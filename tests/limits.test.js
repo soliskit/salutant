@@ -10,6 +10,64 @@ import {
   readCreated
 } from './helpers.js';
 
+// Narrow a stored record to an object that carries the members the test
+// then reads, so the test fails here, not at a later read, if the record
+// is missing or not an object. The member values stay unknown.
+/** @param {unknown} value */
+function counterRecord(value) {
+  assert.ok(
+    typeof value === 'object' &&
+      value !== null &&
+      'count' in value &&
+      'expiresAtMs' in value
+  );
+  return value;
+}
+
+/** @param {unknown} value */
+function counterExpiry(value) {
+  const record = counterRecord(value);
+  assert.ok(
+    typeof record.expiresAtMs === 'number',
+    'the counter expiry is a number'
+  );
+  return record.expiresAtMs;
+}
+
+/** @param {unknown} value */
+function challengeRecord(value) {
+  assert.ok(
+    typeof value === 'object' &&
+      value !== null &&
+      'id' in value &&
+      'state' in value &&
+      'expiresAtMs' in value
+  );
+  return value;
+}
+
+/** @param {unknown} value */
+function reservationRecord(value) {
+  assert.ok(typeof value === 'object' && value !== null && 'outcome' in value);
+  return value;
+}
+
+/** @param {unknown} value */
+function timestampsRecord(value) {
+  assert.ok(
+    typeof value === 'object' && value !== null && 'timestamps' in value
+  );
+  return value;
+}
+
+/** @param {{ text: string } | undefined} message */
+function codeOf(message) {
+  assert.ok(message, 'a message was sent');
+  const found = message.text.match(/\d{6}/);
+  assert.ok(found, 'the message carries a six-digit code');
+  return found[0];
+}
+
 void test('requests per source per hour: the eleventh is limited, same for both address classes', async () => {
   const w = await makeWorld({
     config: {
@@ -27,6 +85,7 @@ void test('requests per source per hour: the eleventh is limited, same for both 
       headers: { 'cf-connecting-ip': '203.0.113.9' }
     });
   }
+  assert.ok(last, 'a request was made');
   assert.equal(last.status, 429);
   assert.deepEqual(await last.json(), { error: 'rate_limited' });
 });
@@ -43,6 +102,7 @@ void test('requests per address per hour: the eleventh for one address is limite
       headers: { 'cf-connecting-ip': `198.51.100.${String(i)}` } // fresh source each time
     });
   }
+  assert.ok(last, 'a request was made');
   assert.equal(last.status, 429);
 });
 
@@ -161,12 +221,13 @@ void test('address-linked state expires within 24 hours; the monthly count does 
   const now = w.getNow();
   for (const k of w.store.keysWithPrefix('counter:reqaddr:')) {
     assert.ok(
-      w.store.transact((s) => s.getRef(k)).expiresAtMs - now <= 24 * 3_600_000
+      counterExpiry(w.store.transact((s) => s.getRef(k))) - now <=
+        24 * 3_600_000
     );
   }
   const monthKey = w.store.keysWithPrefix('counter:sendmonth:')[0];
   assert.ok(
-    w.store.transact((s) => s.getRef(monthKey)).expiresAtMs - now >
+    counterExpiry(w.store.transact((s) => s.getRef(monthKey))) - now >
       24 * 3_600_000
   );
   w.advance(24 * 3_600_000 + 1);
@@ -192,11 +253,11 @@ void test('send totals keep the same lifetime whether the send was a new code or
   const lifetimes = () => ({
     day: w.store
       .keysWithPrefix('counter:sendday:')
-      .map((k) => w.store.transact((s) => s.getRef(k)).expiresAtMs)
+      .map((k) => counterExpiry(w.store.transact((s) => s.getRef(k))))
       .sort(),
     month: w.store
       .keysWithPrefix('counter:sendmonth:')
-      .map((k) => w.store.transact((s) => s.getRef(k)).expiresAtMs)
+      .map((k) => counterExpiry(w.store.transact((s) => s.getRef(k))))
       .sort()
   });
   const day = 24 * 3_600_000;
@@ -254,10 +315,11 @@ void test('R8 attack, honest owner path: slot-filling delays the owner, and the 
   // "owner delayed only" claim holds only because the owner can start a
   // fresh challenge once a slot frees, NOT because the mailed code can
   // be used. Recorded as a phase 1 finding.
-  const code = w.mailer.outbox[0].text.match(/\d{6}/)[0];
-  const c1 = w.store.transact((s) =>
-    s.getRef([...s.keysWithPrefix('challenge:')][0])
+  const code = codeOf(w.mailer.outbox[0]);
+  const c1 = challengeRecord(
+    w.store.transact((s) => s.getRef([...s.keysWithPrefix('challenge:')][0]))
   );
+  assert.ok(typeof c1.id === 'string', 'the challenge id is a string');
   const ownerTry = await ownerBrowser.verify({
     challengeId: c1.id,
     code,
@@ -302,7 +364,7 @@ void test('10 concurrent creates cannot exceed the active-challenge cap', async 
   const live = w.store
     .keysWithPrefix('challenge:')
     .map((k) => w.store.transact((s) => s.getRef(k)))
-    .filter((c) => c.state === 'open');
+    .filter((c) => challengeRecord(c).state === 'open');
   assert.equal(
     live.length,
     2,
@@ -336,7 +398,7 @@ void test('10 concurrent creates cannot exceed the 30-minute send budget', async
   const delivered = w.store
     .keysWithPrefix('reservation:')
     .map((k) => w.store.transact((s) => s.getRef(k)))
-    .filter((r) => r.outcome === 'accepted');
+    .filter((r) => reservationRecord(r).outcome === 'accepted');
   assert.equal(delivered.length, 3, 'only 3 reservations delivered');
   assert.equal(
     w.store.keysWithPrefix('challenge:').length,
@@ -793,7 +855,7 @@ void test('default daily and monthly budgets stop at 90 and 2700 across addresse
         ? 'counter:sendday:d:2026-01-01'
         : 'counter:sendmonth:m:2026-01';
     assert.equal(
-      w.store.transact((s) => s.getRef(totalKey)).count,
+      counterRecord(w.store.transact((s) => s.getRef(totalKey))).count,
       kind === 'day' ? 90 : 2700
     );
   }
@@ -838,8 +900,9 @@ void test('email expiry text follows the configured lifetime on creates and rese
         )
       );
     assert.equal(
-      w.store.transact((s) => s.getRef(`challenge:${c.challengeId}`))
-        .expiresAtMs,
+      challengeRecord(
+        w.store.transact((s) => s.getRef(`challenge:${c.challengeId}`))
+      ).expiresAtMs,
       ALIGNED + minutes * 60_000,
       'resend does not extend the original expiry'
     );
@@ -894,7 +957,7 @@ void test('rolling timestamp storage stays bounded across repeated windows', asy
       1,
       'one rolling record per address, no growing bucket history'
     );
-    const record = w.store.transact((s) => s.get(keys[0]));
+    const record = timestampsRecord(w.store.transact((s) => s.get(keys[0])));
     assert.deepEqual(
       record.timestamps,
       Array(3).fill(w.getNow()),

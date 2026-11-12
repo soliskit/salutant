@@ -46,7 +46,9 @@ async function proof(name, fn) {
     await fn();
     results.push(`ok - ${name}`);
   } catch (error) {
-    results.push(`FAIL - ${name}: ${error.message}`);
+    results.push(
+      `FAIL - ${name}: ${error instanceof Error ? error.message : String(error)}`
+    );
     process.exitCode = 1;
   }
 }
@@ -65,7 +67,7 @@ async function nodeCoverageFor(fileAbs) {
     });
     child.on('exit', (code) => {
       if (code === 0) {
-        resolve();
+        resolve(undefined);
       } else {
         reject(new Error(`fixture exited ${code}`));
       }
@@ -82,7 +84,7 @@ async function nodeCoverageFor(fileAbs) {
   const merged = mergeV8Entries(
     entries.map((e) => ({ url: e.url, source, functions: e.functions }))
   );
-  return toFileCoverage(merged.get(url), fileAbs);
+  return toFileCoverage(coverageOf(merged, url), fileAbs);
 }
 
 // A temp file with fixture content, so the converter reads real paths.
@@ -97,13 +99,37 @@ function tempScript(name, content) {
   return abs;
 }
 
+// The TCP port of a listening server. A server without a TCP address fails
+// here as an assertion, where reading the port from it was a TypeError.
+/** @param {import('node:http').Server} server */
+function portOf(server) {
+  const address = server.address();
+  assert.ok(
+    address !== null && typeof address === 'object',
+    'the fixture server has a TCP address'
+  );
+  return address.port;
+}
+
+// A merged entry the test then converts. A missing entry fails here as an
+// assertion, where it reached the converter as undefined.
+/**
+ * @param {Map<string, import('../v8merge.mjs').MergedCoverage>} merged
+ * @param {string} key
+ */
+function coverageOf(merged, key) {
+  const entry = merged.get(key);
+  assert.ok(entry, `coverage was merged for ${key}`);
+  return entry;
+}
+
 /**
  * @param {Record<string, { type: string, body: string }>} routes
  * @param {(base: string) => unknown} fn
  */
 async function withFixtureServer(routes, fn) {
   const server = createServer((req, res) => {
-    const pathname = new URL(req.url, 'http://x').pathname;
+    const pathname = new URL(String(req.url), 'http://x').pathname;
     const route = routes[pathname];
     if (route === undefined) {
       res.writeHead(404);
@@ -113,9 +139,9 @@ async function withFixtureServer(routes, fn) {
     res.writeHead(200, { 'content-type': route.type });
     res.end(route.body);
   });
-  await new Promise((resolve) => server.listen(0, resolve));
+  await new Promise((resolve) => server.listen(0, () => resolve(undefined)));
   try {
-    await fn(`http://localhost:${server.address().port}`);
+    await fn(`http://localhost:${portOf(server)}`);
   } finally {
     server.close();
   }
@@ -195,7 +221,7 @@ await proof(
       { url: '/fx.js', source: FX_JS, functions: withEntry },
       { url: '/fx.js', source: FX_JS, functions: lazyLoad }
     ]);
-    const cov = await toFileCoverage(merged.get('/fx.js'), abs);
+    const cov = await toFileCoverage(coverageOf(merged, '/fx.js'), abs);
     const fc = createFileCoverage(cov);
     const lines = fc.getLineCoverage();
     assert.equal(
@@ -241,7 +267,7 @@ await proof(
       { url: '/n.js', source: SRC, functions: withOuter },
       { url: '/n.js', source: SRC, functions: lazyLoad }
     ]);
-    const cov = await toFileCoverage(merged.get('/n.js'), abs);
+    const cov = await toFileCoverage(coverageOf(merged, '/n.js'), abs);
     const fc = createFileCoverage(cov);
     const lines = fc.getLineCoverage();
     assert.equal(lines[3] ?? 0, 0, 'inner body must be uncovered');
@@ -290,7 +316,7 @@ await proof(
     const merged = mergeV8Entries([
       { url: '/o.js', source: SRC, functions: load }
     ]);
-    const cov = await toFileCoverage(merged.get('/o.js'), abs);
+    const cov = await toFileCoverage(coverageOf(merged, '/o.js'), abs);
     const fc = createFileCoverage(cov);
     const lines = fc.getLineCoverage();
     assert.equal(lines[3] ?? 0, 1, 'the executed return must stay covered');
@@ -326,7 +352,7 @@ await proof(
             functions: e.functions
           }))
         );
-        const cov = await toFileCoverage(merged.get('/fx.js'), abs);
+        const cov = await toFileCoverage(coverageOf(merged, '/fx.js'), abs);
         assert(
           lineHits(cov)[2] > 0,
           'f body line must be covered after the second load'
@@ -362,8 +388,8 @@ await proof(
               functions: e.functions
             }))
         );
-        const a = await toFileCoverage(merged.get('/fx.js'), abs);
-        const b = await toFileCoverage(merged.get('/b.js'), abs);
+        const a = await toFileCoverage(coverageOf(merged, '/fx.js'), abs);
+        const b = await toFileCoverage(coverageOf(merged, '/b.js'), abs);
         assert(lineHits(a)[2] > 0, 'fx.js f must be covered');
         assert.equal(lineHits(b)[2], 0, 'b.js f must stay uncovered');
       }
@@ -375,6 +401,7 @@ await proof('a scope-listed file that never loads shows 0%', async () => {
   const abs = tempScript('never.js', FX_JS);
   const cov = await toFileCoverage(uncovered('file://' + abs, FX_JS), abs);
   const s = summarize([{ path: abs, coverage: cov }])[abs];
+  assert.ok(s, 'the file has a summary');
   assert.equal(s.lines.covered, 0);
   assert(s.lines.total > 0, 'total lines must be counted');
   assert.equal(s.functions.covered, 0);
@@ -404,7 +431,10 @@ await proof(
             functions: e.functions
           }))
         );
-        const viaMerge = await toFileCoverage(merged.get('/fx.js'), abs);
+        const viaMerge = await toFileCoverage(
+          coverageOf(merged, '/fx.js'),
+          abs
+        );
         assert.deepEqual(
           summarize([{ path: abs, coverage: viaMerge }]),
           summarize([{ path: abs, coverage: single }])
@@ -437,7 +467,7 @@ await proof(
       ]
     ]) {
       const merged = mergeV8Entries(order);
-      const entry = merged.get('/fx.js');
+      const entry = coverageOf(merged, '/fx.js');
       assert.equal(entry.source, FX_JS);
       assert.equal(entry.coverageList.length, 2);
       const cov = await toFileCoverage(entry, abs);
@@ -499,7 +529,7 @@ console.log('child done')
         });
         proc.on('exit', (code) => {
           if (code === 0) {
-            resolve();
+            resolve(undefined);
           } else {
             reject(new Error(`child exited ${code}`));
           }
@@ -528,7 +558,7 @@ console.log('child done')
         functions: e.functions
       }))
     );
-    const cov = await toFileCoverage(merged.get('/before.js'), abs);
+    const cov = await toFileCoverage(coverageOf(merged, '/before.js'), abs);
     assert(lineHits(cov)[2] > 0, 'g body line must be covered');
   }
 );
@@ -690,7 +720,7 @@ async function capturedPageScriptLines() {
         }))
       );
       const cov = shiftCoverageLines(
-        await toFileCoverage(merged.get('/app.js'), abs),
+        await toFileCoverage(coverageOf(merged, '/app.js'), abs),
         pageScriptLineShift()
       );
       pageScriptLines = lineHits(cov);

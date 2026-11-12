@@ -37,10 +37,12 @@ const outDir = args.includes('--out')
 const TIMEOUT_MS = 10 * 60 * 1000;
 const COMMAND = 'node --test tests/*.test.js';
 
+/** @param {string[]} gitArgs */
 function git(...gitArgs) {
   return execFileSync('git', gitArgs, { cwd: root, encoding: 'utf8' }).trim();
 }
 
+/** @param {string} name */
 function toolVersion(name) {
   return JSON.parse(
     readFileSync(join(root, 'node_modules', name, 'package.json'), 'utf8')
@@ -69,6 +71,7 @@ function checkToolVersions() {
   }
 }
 
+/** @returns {Promise<void>} */
 function runSuite() {
   const env = {
     ...process.env,
@@ -107,19 +110,36 @@ function runSuite() {
   });
 }
 
+// The TCP port of a listening server. A server without a TCP address fails
+// here, where reading the port from it gave undefined or a TypeError.
+/** @param {import('node:http').Server} server */
+function portOf(server) {
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    throw new MeasurementFailure('the verification server has no TCP address');
+  }
+  return address.port;
+}
+
 // Starts a verification server without any coverage or preload, for the page
 // check that must not add coverage to the measurement.
+/** @param {(baseUrl: string) => Promise<void>} fn */
 async function withVerificationServer(fn) {
   const { makeWorld } = await import('../helpers.js');
   const w = await makeWorld();
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     for await (const c of req) chunks.push(c);
-    const hasBody = !['GET', 'HEAD'].includes(req.method);
+    const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
     const out = await w.worker.fetch(
-      new Request(`http://localhost:${server.address().port}${req.url}`, {
+      new Request(`http://localhost:${portOf(server)}${req.url}`, {
         method: req.method,
-        headers: req.headers,
+        headers: Object.fromEntries(
+          Object.entries(req.headers).map(([name, value]) => [
+            name,
+            String(value)
+          ])
+        ),
         body: hasBody ? Buffer.concat(chunks) : undefined
       })
     );
@@ -130,9 +150,13 @@ async function withVerificationServer(fn) {
     res.statusCode = out.status;
     res.end(Buffer.from(await out.arrayBuffer()));
   });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) =>
+    server.listen(0, '127.0.0.1', () => {
+      resolve(undefined);
+    })
+  );
   try {
-    await fn(`http://localhost:${server.address().port}`);
+    await fn(`http://localhost:${portOf(server)}`);
   } finally {
     server.close();
   }

@@ -62,7 +62,7 @@ export function completeFunctionLists(coverageList) {
         .filter((fn) => fn.ranges && fn.ranges.length > 0)
         .map(
           (fn) =>
-            `${fn.functionName}@${String(Math.min(...fn.ranges.map((r) => r.startOffset)))}-${String(Math.max(...fn.ranges.map((r) => r.endOffset)))}`
+            `${fn.functionName}@${String(Math.min(...(fn.ranges ?? []).map((r) => r.startOffset)))}-${String(Math.max(...(fn.ranges ?? []).map((r) => r.endOffset)))}`
         )
     );
     // Partial writes can list a function that ran while omitting its
@@ -72,8 +72,8 @@ export function completeFunctionLists(coverageList) {
     const presentSpans = (functions || [])
       .filter((f) => f.ranges && f.ranges.length > 0)
       .map((f) => ({
-        start: Math.min(...f.ranges.map((r) => r.startOffset)),
-        end: Math.max(...f.ranges.map((r) => r.endOffset))
+        start: Math.min(...(f.ranges ?? []).map((r) => r.startOffset)),
+        end: Math.max(...(f.ranges ?? []).map((r) => r.endOffset))
       }));
     /** @type {V8Function[]} */
     const added = [];
@@ -100,6 +100,7 @@ export function completeFunctionLists(coverageList) {
 
 /**
  * @param {{
+ *   url?: string,
  *   source: string | undefined,
  *   coverageList?: CoverageList,
  *   functions?: V8Function[]

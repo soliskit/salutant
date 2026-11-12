@@ -18,6 +18,19 @@ import {
   readVerified
 } from './helpers.js';
 
+// The TCP port of the page server. A server that is missing or has no TCP
+// address fails here as an assertion, where reading the port was a TypeError.
+/** @param {import('node:https').Server | undefined} server */
+function portOf(server) {
+  assert.ok(server, 'the page server was created');
+  const address = server.address();
+  assert.ok(
+    address !== null && typeof address === 'object',
+    'the page server has a TCP address'
+  );
+  return address.port;
+}
+
 void test('end to end: address, code, proof, exchange, session - with only first-party cookies in play', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
@@ -188,7 +201,10 @@ void test("login CSRF: an attacker-owned state or proof cannot log the victim in
     { proof: attack.verified.proof, state: attack.verified.state },
     SERVICE_ORIGIN
   );
-  assert.equal(replayExchange.body.error, 'replayed');
+  assert.equal(
+    'error' in replayExchange.body ? replayExchange.body.error : undefined,
+    'replayed'
+  );
   const victimComplete2 = await w.app.handleComplete(
     `pre=${victimStart.cookieValue}`
   );
@@ -217,11 +233,13 @@ void test('a verified state expires: the bounded exchange window is 60 seconds',
 });
 
 void test('completion window boundary: 59,999 ms after verification succeeds; 60,000 and 60,001 reject', async () => {
-  for (const [ms, ok] of [
+  /** @type {[number, boolean][]} */
+  const windows = [
     [59_999, true],
     [60_000, false],
     [60_001, false]
-  ]) {
+  ];
+  for (const [ms, ok] of windows) {
     const w = await makeWorld();
     const r = await honestSignIn(w, { redeem: false });
     const exchange = await w.app.handleExchange(
@@ -250,7 +268,11 @@ void test('a second proof cannot re-verify an already-verified state', async () 
   );
   await w.service.drain();
   /** @param {number} i */
-  const codeOf = (i) => w.mailer.outbox[i].text.match(/\b(\d{6})\b/)[1];
+  const codeOf = (i) => {
+    const found = w.mailer.outbox[i].text.match(/\b(\d{6})\b/);
+    assert.ok(found, `message ${i} carries a six-digit code`);
+    return found[1];
+  };
   const v1 = await readVerified(
     await browser.verify({
       challengeId: first.challengeId,
@@ -276,7 +298,10 @@ void test('a second proof cannot re-verify an already-verified state', async () 
     SERVICE_ORIGIN
   );
   assert.equal(again.status, 400);
-  assert.equal(again.body.error, 'bad_state');
+  assert.equal(
+    'error' in again.body ? again.body.error : undefined,
+    'bad_state'
+  );
 });
 
 void test('completion without the pre-auth cookie is refused even with a verified state waiting', async () => {
@@ -316,10 +341,12 @@ void test(
   { skip: ENGINE ? false : 'set SALUTANT_BROWSER=webkit or chromium to run' },
   async () => {
     const playwright = await import('playwright');
+    assert.ok(ENGINE, 'SALUTANT_BROWSER names the engine');
     const launcher = playwright[ENGINE];
     assert.ok(launcher, `unknown engine: ${ENGINE}`);
     const dir = mkdtempSync(join(tmpdir(), 'salutant-cert-'));
     const w = await makeWorld();
+    /** @type {import('node:https').Server | undefined} */
     let server;
     let browser;
     try {
@@ -362,16 +389,18 @@ void test(
           }
           const chunks = [];
           for await (const c of req) chunks.push(c);
-          const hasBody = !['GET', 'HEAD'].includes(req.method);
+          const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
           const out = await w.worker.fetch(
-            new Request(
-              `https://localhost:${server.address().port}${req.url}`,
-              {
-                method: req.method,
-                headers: req.headers,
-                body: hasBody ? Buffer.concat(chunks) : undefined
-              }
-            )
+            new Request(`https://localhost:${portOf(server)}${req.url}`, {
+              method: req.method,
+              headers: Object.fromEntries(
+                Object.entries(req.headers).map(([name, value]) => [
+                  name,
+                  String(value)
+                ])
+              ),
+              body: hasBody ? Buffer.concat(chunks) : undefined
+            })
           );
           const cookies = out.headers.getSetCookie();
           for (const [k, v] of out.headers)
@@ -381,8 +410,12 @@ void test(
           res.end(Buffer.from(await out.arrayBuffer()));
         }
       );
-      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-      const origin = `https://localhost:${server.address().port}`;
+      await new Promise((resolve) =>
+        server?.listen(0, '127.0.0.1', () => {
+          resolve(undefined);
+        })
+      );
+      const origin = `https://localhost:${portOf(server)}`;
       browser = await launcher.launch();
       const context = await browser.newContext({ ignoreHTTPSErrors: true });
       const page = await context.newPage();
@@ -439,9 +472,12 @@ void test(
       await context.clearCookies();
       await page.fill('#code', w.mailer.lastCode());
       await page.click('#code-form button[type="submit"]');
-      await page.waitForFunction(() =>
-        document.getElementById('message').textContent.includes('did not work')
-      );
+      await page.waitForFunction(() => {
+        const message = document.getElementById('message');
+        if (message === null)
+          throw new TypeError('the message element is missing');
+        return message.textContent?.includes('did not work');
+      });
       assert.ok(
         page.url().startsWith(`${origin}/?app=`),
         'still on the sign-in page'
@@ -461,10 +497,12 @@ void test(
   { skip: ENGINE ? false : 'set SALUTANT_BROWSER=webkit or chromium to run' },
   async () => {
     const playwright = await import('playwright');
+    assert.ok(ENGINE, 'SALUTANT_BROWSER names the engine');
     const launcher = playwright[ENGINE];
     assert.ok(launcher, `unknown engine: ${ENGINE}`);
     const dir = mkdtempSync(join(tmpdir(), 'salutant-cert-'));
     const w = await makeWorld();
+    /** @type {import('node:https').Server | undefined} */
     let server;
     let browser;
     try {
@@ -499,16 +537,18 @@ void test(
         async (req, res) => {
           const chunks = [];
           for await (const c of req) chunks.push(c);
-          const hasBody = !['GET', 'HEAD'].includes(req.method);
+          const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
           const out = await w.worker.fetch(
-            new Request(
-              `https://localhost:${server.address().port}${req.url}`,
-              {
-                method: req.method,
-                headers: req.headers,
-                body: hasBody ? Buffer.concat(chunks) : undefined
-              }
-            )
+            new Request(`https://localhost:${portOf(server)}${req.url}`, {
+              method: req.method,
+              headers: Object.fromEntries(
+                Object.entries(req.headers).map(([name, value]) => [
+                  name,
+                  String(value)
+                ])
+              ),
+              body: hasBody ? Buffer.concat(chunks) : undefined
+            })
           );
           const cookies = out.headers.getSetCookie();
           for (const [k, v] of out.headers)
@@ -518,8 +558,12 @@ void test(
           res.end(Buffer.from(await out.arrayBuffer()));
         }
       );
-      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-      const origin = `https://localhost:${server.address().port}`;
+      await new Promise((resolve) =>
+        server?.listen(0, '127.0.0.1', () => {
+          resolve(undefined);
+        })
+      );
+      const origin = `https://localhost:${portOf(server)}`;
       browser = await launcher.launch();
       const context = await browser.newContext({ ignoreHTTPSErrors: true });
       const page = await context.newPage();
@@ -545,11 +589,12 @@ void test(
       await w.service.drain();
       await page.fill('#code', w.mailer.lastCode());
       await page.click('#code-form button[type="submit"]');
-      await page.waitForFunction(
-        () =>
-          document.getElementById('message').textContent ===
-          'Sign-in failed. Please start again.'
-      );
+      await page.waitForFunction(() => {
+        const message = document.getElementById('message');
+        if (message === null)
+          throw new TypeError('the message element is missing');
+        return message.textContent === 'Sign-in failed. Please start again.';
+      });
       assert.equal(page.url(), start, 'the page did not navigate');
       // The page's two network failure paths: an aborted challenge request
       // and an aborted verify request each show the generic failure message
@@ -558,11 +603,14 @@ void test(
       await page.goto(start);
       await page.fill('#address', OWNER);
       await page.click('#address-form button');
-      await page.waitForFunction(
-        () =>
-          document.getElementById('message').textContent ===
-          'Something went wrong. Please try again.'
-      );
+      await page.waitForFunction(() => {
+        const message = document.getElementById('message');
+        if (message === null)
+          throw new TypeError('the message element is missing');
+        return (
+          message.textContent === 'Something went wrong. Please try again.'
+        );
+      });
       assert.equal(page.url(), start, 'the page did not navigate');
       await page.unroute('**/v1/challenges');
       // A refused creation response (rate limited, no challengeId) keeps the
@@ -578,18 +626,25 @@ void test(
       await page.goto(start);
       await page.fill('#address', OWNER);
       await page.click('#address-form button');
-      await page.waitForFunction(
-        () =>
-          document.getElementById('message').textContent ===
-          'If we can sign you in, a code is on its way.'
-      );
+      await page.waitForFunction(() => {
+        const message = document.getElementById('message');
+        if (message === null)
+          throw new TypeError('the message element is missing');
+        return (
+          message.textContent === 'If we can sign you in, a code is on its way.'
+        );
+      });
       await page.fill('#code', '000000');
       await page.click('#code-form button[type="submit"]');
-      await page.waitForFunction(
-        () =>
-          document.getElementById('message').textContent ===
+      await page.waitForFunction(() => {
+        const message = document.getElementById('message');
+        if (message === null)
+          throw new TypeError('the message element is missing');
+        return (
+          message.textContent ===
           'That code did not work. Check it and try again.'
-      );
+        );
+      });
       assert.equal(page.url(), start, 'the page did not navigate');
       await page.unroute('**/v1/challenges');
       await page.goto(start);
@@ -600,11 +655,14 @@ void test(
       await page.route('**/v1/challenges/*/verify', (route) => route.abort());
       await page.fill('#code', w.mailer.lastCode());
       await page.click('#code-form button[type="submit"]');
-      await page.waitForFunction(
-        () =>
-          document.getElementById('message').textContent ===
-          'Something went wrong. Please try again.'
-      );
+      await page.waitForFunction(() => {
+        const message = document.getElementById('message');
+        if (message === null)
+          throw new TypeError('the message element is missing');
+        return (
+          message.textContent === 'Something went wrong. Please try again.'
+        );
+      });
       assert.equal(page.url(), start, 'the page did not navigate');
     } finally {
       if (browser) await browser.close();
@@ -623,10 +681,12 @@ void test(
   { skip: ENGINE ? false : 'set SALUTANT_BROWSER=webkit or chromium to run' },
   async () => {
     const playwright = await import('playwright');
+    assert.ok(ENGINE, 'SALUTANT_BROWSER names the engine');
     const launcher = playwright[ENGINE];
     assert.ok(launcher, `unknown engine: ${ENGINE}`);
     const dir = mkdtempSync(join(tmpdir(), 'salutant-cert-'));
     const w = await makeWorld();
+    /** @type {import('node:https').Server | undefined} */
     let server;
     let browser;
     try {
@@ -661,16 +721,18 @@ void test(
         async (req, res) => {
           const chunks = [];
           for await (const c of req) chunks.push(c);
-          const hasBody = !['GET', 'HEAD'].includes(req.method);
+          const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
           const out = await w.worker.fetch(
-            new Request(
-              `https://localhost:${server.address().port}${req.url}`,
-              {
-                method: req.method,
-                headers: req.headers,
-                body: hasBody ? Buffer.concat(chunks) : undefined
-              }
-            )
+            new Request(`https://localhost:${portOf(server)}${req.url}`, {
+              method: req.method,
+              headers: Object.fromEntries(
+                Object.entries(req.headers).map(([name, value]) => [
+                  name,
+                  String(value)
+                ])
+              ),
+              body: hasBody ? Buffer.concat(chunks) : undefined
+            })
           );
           const cookies = out.headers.getSetCookie();
           for (const [k, v] of out.headers)
@@ -680,8 +742,12 @@ void test(
           res.end(Buffer.from(await out.arrayBuffer()));
         }
       );
-      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-      const origin = `https://localhost:${server.address().port}`;
+      await new Promise((resolve) =>
+        server?.listen(0, '127.0.0.1', () => {
+          resolve(undefined);
+        })
+      );
+      const origin = `https://localhost:${portOf(server)}`;
       browser = await launcher.launch();
       const context = await browser.newContext({ ignoreHTTPSErrors: true });
       const page = await context.newPage();
@@ -698,19 +764,23 @@ void test(
       await page.click('#address-form button');
       // The service refuses the parameterless request; the answer has no
       // challenge id, and the page still shows only the generic message.
-      await page.waitForFunction(() =>
-        document
-          .getElementById('message')
-          .textContent.includes('a code is on its way')
-      );
+      await page.waitForFunction(() => {
+        const message = document.getElementById('message');
+        if (message === null)
+          throw new TypeError('the message element is missing');
+        return message.textContent?.includes('a code is on its way');
+      });
       await page.waitForSelector('#code-form:not([hidden])');
       // Entering any code goes to an empty challenge id and is refused;
       // the page says so generically and does not navigate.
       await page.fill('#code', '000000');
       await page.click('#code-form button[type="submit"]');
-      await page.waitForFunction(() =>
-        document.getElementById('message').textContent.includes('did not work')
-      );
+      await page.waitForFunction(() => {
+        const message = document.getElementById('message');
+        if (message === null)
+          throw new TypeError('the message element is missing');
+        return message.textContent?.includes('did not work');
+      });
       assert.equal(page.url(), bare, 'the page never navigated');
       assert.equal(w.mailer.attempts.length, 0, 'no mail was attempted');
       assert.deepEqual(

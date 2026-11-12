@@ -15,6 +15,21 @@ import {
 } from './helpers.js';
 import { generateSigningKeyPair } from '../src/crypto.js';
 
+// Narrow a stored sign-in state to an object that carries the members the
+// test reads. Its writer (stub-app.js startSignIn) always writes stateId,
+// cookieHmac, createdAtMs, verifiedSub and consumed. The test fails here,
+// not at a later read, if the record is missing or not an object.
+/** @param {unknown} value */
+function stateRecord(value) {
+  assert.ok(
+    typeof value === 'object' &&
+      value !== null &&
+      'verifiedSub' in value &&
+      'consumed' in value
+  );
+  return value;
+}
+
 void test('an epoch value that is not a safe non-negative integer keeps the service closed', async () => {
   // Distinct from the restore drills: the source answers, but its value
   // cannot be trusted (R14 - fail closed, 500, nothing else disclosed).
@@ -159,8 +174,8 @@ void test('a returning browser keeps its pre-auth cookie: no fresh cookie is set
   );
   const pending = w.appStore.get(`state:${start.stateId}`);
   assert.ok(pending, 'pending state stored for the returning cookie');
-  assert.equal(pending.consumed, false);
-  assert.equal(pending.verifiedSub, null);
+  assert.equal(stateRecord(pending).consumed, false);
+  assert.equal(stateRecord(pending).verifiedSub, null);
 });
 
 void test('a resend naming a non-string address is answered like any resend, but sends nothing', async () => {
@@ -254,7 +269,9 @@ void test('a correct code and cookie with a different address is refused and cou
 
 void test('a revoked signing key is never published in the key listing', async () => {
   const w = await makeWorld();
-  w.service.signingKeys.get('k1').status = 'revoked';
+  const revokedKey = w.service.signingKeys.get('k1');
+  assert.ok(revokedKey, 'the k1 signing key is present');
+  revokedKey.status = 'revoked';
   const bare = await (
     await w.service.fetch(
       new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)

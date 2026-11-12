@@ -51,12 +51,14 @@ if (process.env.SALUTANT_MEASURE === '1') {
     session.on('Debugger.scriptParsed', (event) => {
       if (event.url) sources.set(event.scriptId, event.url);
     });
+    /** @type {{ at: number, url: string }[]} */
     const navLog = [];
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame())
         navLog.push({ at: Date.now(), url: page.url() });
     });
 
+    /** @param {string} scriptId */
     async function sourceFor(scriptId) {
       try {
         const r = await session.send('Debugger.getScriptSource', { scriptId });
@@ -66,6 +68,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
       }
     }
 
+    /** @param {string} why */
     async function take(why) {
       const at = Date.now();
       seq += 1;
@@ -114,6 +117,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
 
     for (const api of NAV_APIS) {
       const original = page[api].bind(page);
+      /** @param {...unknown} args */
       page[api] = async (...args) => {
         await take(`before:${api}`);
         return original(...args);
@@ -121,6 +125,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
     }
 
     const originalClose = page.close.bind(page);
+    /** @param {...unknown} args */
     page.close = async (...args) => {
       clearInterval(poll);
       // A page from browser.newPage owns its context: its close closes the
@@ -143,6 +148,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
 
   function watchContext(context) {
     const originalNewPage = context.newPage.bind(context);
+    /** @param {...unknown} args */
     context.newPage = async (...args) => {
       const page = await originalNewPage(...args);
       if (!instrumented.has(page)) {
@@ -152,6 +158,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
       return page;
     };
     const originalClose = context.close.bind(context);
+    /** @param {...unknown} args */
     context.close = async (...args) => {
       // Flush coverage directly; never call page.close here, because a page
       // that owns its context would loop back into this close.
@@ -171,12 +178,14 @@ if (process.env.SALUTANT_MEASURE === '1') {
   }
 
   const originalLaunch = chromium.launch.bind(chromium);
+  /** @param {...unknown} args */
   chromium.launch = async (...args) => {
     const browser = await originalLaunch(...args);
     // Covers context.newPage, and contexts the browser creates implicitly.
     browser.on('context', watchContext);
     for (const context of browser.contexts()) watchContext(context);
     const originalBrowserNewPage = browser.newPage.bind(browser);
+    /** @param {...unknown} pageArgs */
     browser.newPage = async (...pageArgs) => {
       const page = await originalBrowserNewPage(...pageArgs);
       if (!instrumented.has(page)) {
@@ -187,6 +196,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
       return page;
     };
     const originalClose = browser.close.bind(browser);
+    /** @param {...unknown} closeArgs */
     browser.close = async (...closeArgs) => {
       for (const context of browser.contexts()) {
         try {

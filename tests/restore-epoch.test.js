@@ -30,6 +30,30 @@ const DRIVERS = [
   ['MemoryStore', () => new MemoryStore()],
   ['DurableObjectStore', () => new DurableObjectStore(makeDOStorage())]
 ];
+// Narrow a stored record to an object that carries the members the test
+// then reads, so the test fails here, not at a later read, if the record
+// is missing or not an object. The member values stay unknown.
+/** @param {unknown} value */
+function challengeRecord(value) {
+  assert.ok(
+    typeof value === 'object' &&
+      value !== null &&
+      'listed' in value &&
+      'state' in value &&
+      'attempts' in value &&
+      'epoch' in value &&
+      'expiresAtMs' in value &&
+      'requestId' in value
+  );
+  return value;
+}
+
+/** @param {unknown} value */
+function reservationRecord(value) {
+  assert.ok(typeof value === 'object' && value !== null && 'outcome' in value);
+  return value;
+}
+
 /** @param {string} snap */
 const sortedEntries = (snap) =>
   JSON.parse(snap).sort(([a], [b]) => (a < b ? -1 : 1));
@@ -128,6 +152,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     assert.equal(typeof created.challengeId, 'string');
     await w.service.drain();
     const code = w.mailer.lastCode();
+    assert.ok(code, 'a code was mailed');
     assert.match(code, /^\d{6}$/);
     assert.ok(
       browser.cookies.size > 0,
@@ -135,18 +160,23 @@ for (const [driver, storeFactory] of DRIVERS) {
     );
 
     const challengeKey = `challenge:${created.challengeId}`;
-    const original = w.store.get(challengeKey);
+    const original = challengeRecord(w.store.get(challengeKey));
     assert.ok(original, 'the challenge was stored');
     assert.equal(original.listed, true);
     assert.equal(original.state, 'open');
     assert.equal(original.attempts, 0);
     assert.equal(original.epoch, 1);
     assert.ok(
+      typeof original.expiresAtMs === 'number',
+      'the original expiry is a number'
+    );
+    assert.ok(
       original.expiresAtMs > w.getNow(),
       'the original code is not expired'
     );
     assert.equal(
-      w.store.get(`reservation:${original.requestId}`).outcome,
+      reservationRecord(w.store.get(`reservation:${original.requestId}`))
+        .outcome,
       'accepted'
     );
     assert.equal(w.store.keysWithPrefix('issuance:').length, 0);
@@ -176,7 +206,7 @@ for (const [driver, storeFactory] of DRIVERS) {
         error: 'invalid_or_expired_code'
       });
     }
-    const locked = w.store.get(challengeKey);
+    const locked = challengeRecord(w.store.get(challengeKey));
     assert.equal(locked.attempts, maxAttempts);
     assert.equal(
       locked.state,
@@ -205,9 +235,9 @@ for (const [driver, storeFactory] of DRIVERS) {
       original,
       'restore preserves the original code, browser binding, delivery, lifetime and epoch'
     );
-    assert.equal(w.store.get(challengeKey).attempts, 0);
+    assert.equal(challengeRecord(w.store.get(challengeKey)).attempts, 0);
     assert.equal(
-      w.store.get(challengeKey).state,
+      challengeRecord(w.store.get(challengeKey)).state,
       'open',
       'restore actually cleared the lockout'
     );
@@ -235,7 +265,8 @@ for (const [driver, storeFactory] of DRIVERS) {
       'expiry cannot explain the refusal'
     );
     assert.equal(
-      w.store.get(`reservation:${original.requestId}`).outcome,
+      reservationRecord(w.store.get(`reservation:${original.requestId}`))
+        .outcome,
       'accepted',
       'failed mail cannot explain the refusal'
     );
@@ -314,7 +345,9 @@ for (const [driver, storeFactory] of DRIVERS) {
 
     // A second proof on the old key, then an emergency revoke.
     const r2 = await honestSignIn(w, { redeem: false });
-    w.service.signingKeys.get('k1').status = 'revoked';
+    const revokedKey = w.service.signingKeys.get('k1');
+    assert.ok(revokedKey, 'the k1 signing key is present');
+    revokedKey.status = 'revoked';
 
     // An app with a warm cache (fetched before the revoke) may still
     // accept the old-key proof - that is the accepted window (R12).
@@ -357,7 +390,9 @@ for (const [driver, storeFactory] of DRIVERS) {
     const signedByK2 = await honestSignIn(w, { redeem: false });
 
     // Emergency revoke of k1, then a point-in-time restore of the records.
-    w.service.signingKeys.get('k1').status = 'revoked';
+    const revokedKey = w.service.signingKeys.get('k1');
+    assert.ok(revokedKey, 'the k1 signing key is present');
+    revokedKey.status = 'revoked';
     w.store.restoreFrom(snapshot);
     assert.equal(
       w.store.transact((s) => s.get('restore-witness')),

@@ -15,13 +15,15 @@ void test('DO SQL ArrayBuffer values fail JSON decoding before a value is return
 });
 
 void test('DO invalid restore iterables fail only after transaction replacement setup [R14 local]', () => {
-  for (const [snapshot, expected] of [
+  /** @type {[string, string[]][]} */
+  const cases = [
     ['null', []],
     ['{}', []],
     ['[null]', []],
     ['[1]', []],
     ['[["first",1],null]', ['first']]
-  ]) {
+  ];
+  for (const [snapshot, expected] of cases) {
     const store = new DurableObjectStore(makeDOStorage());
     store.set('old', 1);
     store.transact((s) => {
