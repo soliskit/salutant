@@ -15,6 +15,29 @@ export const OWNER = 'owner@example.test';
 export const STRANGER = 'stranger@example.test';
 export const ATTACKER = 'attacker@example.test';
 
+// Durable Object sql.exec rows hold strings, numbers, null or ArrayBuffer.
+// node:sqlite also reports bigint and Uint8Array; a Uint8Array is copied to an
+// ArrayBuffer, and a bigint (never returned unless the engine is set to read
+// big integers) fails loudly instead of being passed on.
+/**
+ * @param {import('node:sqlite').SQLOutputValue} cell
+ * @returns {import('../src/do-store.js').SqlValue}
+ */
+function sqlValueOf(cell) {
+  if (typeof cell === 'string' || typeof cell === 'number' || cell === null)
+    return cell;
+  if (cell instanceof Uint8Array) return cell.slice().buffer;
+  throw new TypeError('unsupported SQL value');
+}
+
+/** @param {Record<string, import('node:sqlite').SQLOutputValue>} row */
+function sqlRowOf(row) {
+  /** @type {Record<string, import('../src/do-store.js').SqlValue>} */
+  const out = {};
+  for (const [name, cell] of Object.entries(row)) out[name] = sqlValueOf(cell);
+  return out;
+}
+
 // Minimal Durable Object ctx.storage shape over a real SQLite engine:
 // transactionSync(fn) and sql.exec(query, ...params) -> { toArray() }.
 // Lets the whole service suite run against DurableObjectStore, the
@@ -41,7 +64,7 @@ export function makeDOStorage() {
         if (!/^\s*select/i.test(query)) storage.writes++;
         const stmt = db.prepare(query);
         if (/^\s*select/i.test(query)) {
-          const rows = stmt.all(...params);
+          const rows = stmt.all(...params).map(sqlRowOf);
           return { toArray: () => rows };
         }
         stmt.run(...params);

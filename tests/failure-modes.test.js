@@ -29,6 +29,12 @@ void test('an uncertain send is not retried, counts against budget, and is recon
   const reservation = w.store.transact((s) =>
     s.getRef([...s.keysWithPrefix('reservation:')][0])
   );
+  assert.ok(
+    typeof reservation === 'object' &&
+      reservation !== null &&
+      'outcome' in reservation &&
+      'reconciled' in reservation
+  );
   assert.equal(reservation.outcome, 'uncertain');
   assert.equal(
     reservation.reconciled,
@@ -59,6 +65,11 @@ void test('a failed send means no proof and a recorded reservation', async () =>
   await w.service.drain();
   const reservation = w.store.transact((s) =>
     s.getRef(`reservation:${created.requestId}`)
+  );
+  assert.ok(
+    typeof reservation === 'object' &&
+      reservation !== null &&
+      'outcome' in reservation
   );
   assert.equal(reservation.outcome, 'failed');
   // The person can still retry after the cooldown: service stays up.
@@ -236,6 +247,11 @@ void test('a failed send cannot verify: the undelivered code is dead on arrival'
   const reservation = w.store.transact((s) =>
     s.getRef(`reservation:${created.requestId}`)
   );
+  assert.ok(
+    typeof reservation === 'object' &&
+      reservation !== null &&
+      'outcome' in reservation
+  );
   assert.equal(reservation.outcome, 'failed');
   // Even with the exact code in hand, verify issues no proof: the send
   // failed, so the reservation was never delivered (R5).
@@ -403,6 +419,11 @@ void test('after a failed send the provider is called once, and repeating the sa
   await w.service.drain();
   const reservation = w.store.transact((s) =>
     s.getRef(`reservation:${created.requestId}`)
+  );
+  assert.ok(
+    typeof reservation === 'object' &&
+      reservation !== null &&
+      'outcome' in reservation
   );
   assert.equal(reservation.outcome, 'failed');
   assert.equal(w.mailer.attempts.length, 1, 'the provider was called once');
