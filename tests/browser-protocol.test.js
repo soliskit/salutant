@@ -249,6 +249,7 @@ void test('a second proof cannot re-verify an already-verified state', async () 
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
   );
   await w.service.drain();
+  /** @param {number} i */
   const codeOf = (i) => w.mailer.outbox[i].text.match(/\b(\d{6})\b/)[1];
   const v1 = await readVerified(
     await browser.verify({
@@ -393,6 +394,7 @@ void test(
           body: JSON.stringify({ completeUrl: `${origin}/done` })
         })
       );
+      /** @type {string[]} */
       const problems = [];
       page.on('console', (m) => {
         if (m.type() === 'error') problems.push(m.text());
@@ -683,6 +685,7 @@ void test(
       browser = await launcher.launch();
       const context = await browser.newContext({ ignoreHTTPSErrors: true });
       const page = await context.newPage();
+      /** @type {string[]} */
       const problems = [];
       page.on('console', (m) => {
         if (m.type() === 'error') problems.push(m.text());
