@@ -439,6 +439,7 @@ void test('a resend racing a verify of the old code never leaves both codes work
 
 const HOUR = 3_600_000;
 
+/** @param {Parameters<typeof makeWorld>[0]} [worldOptions] */
 async function seededForPurge(worldOptions) {
   const w = await makeWorld(worldOptions);
   const browser = new BrowserSession(w);
@@ -462,6 +463,7 @@ async function seededForPurge(worldOptions) {
   return { w, t0, tv };
 }
 
+/** @type {Array<[string, (t: Awaited<ReturnType<typeof seededForPurge>>) => number]>} */
 const PURGE_DEADLINES = [
   ['challenge:', (t) => t.t0 + 30 * 60_000 + HOUR],
   ['issuance:', (t) => t.tv + 300_000 + HOUR],
@@ -474,7 +476,9 @@ for (const [prefix, deadlineOf] of PURGE_DEADLINES) {
   void test(`purge keeps ${prefix} records until their configured purge time and removes them at it`, async () => {
     const t = await seededForPurge();
     const deadline = deadlineOf(t);
+    /** @param {string} p */
     const count = (p) => t.w.store.keysWithPrefix(p).length;
+    /** @type {Array<[string, number, number]>} */
     const others = PURGE_DEADLINES.filter(([p]) => p !== prefix).map(
       ([p, d]) => [p, d(t), count(p)]
     );

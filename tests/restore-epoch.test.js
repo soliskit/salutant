@@ -19,6 +19,13 @@ import {
 // store drivers: MemoryStore (local twin) and DurableObjectStore (the
 // production binding), so storage behavior is proven against the same
 // interface the worker will use.
+/**
+ * @typedef {import('../src/service.js').ServiceStore & {
+ *   snapshot(): string,
+ *   restoreFrom(snapshot: string): void
+ * }} DriverStore
+ */
+/** @type {Array<[string, () => DriverStore]>} */
 const DRIVERS = [
   ['MemoryStore', () => new MemoryStore()],
   ['DurableObjectStore', () => new DurableObjectStore(makeDOStorage())]
