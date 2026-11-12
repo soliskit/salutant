@@ -116,7 +116,8 @@ for (const [driver, storeFactory] of DRIVERS) {
       return pending;
     };
     let sourceHashes = 0;
-    let releaseWork;
+    /** @type {(value?: unknown) => void} */
+    let releaseWork = () => {};
     const workReleased = new Promise((resolve) => {
       releaseWork = resolve;
     });
