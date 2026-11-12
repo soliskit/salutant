@@ -6,7 +6,8 @@ pre-commit:
       glob: '**/*.{js,mjs,cjs,ts,mts,cts,tsx}'
       run: ./node_modules/.bin/eslint -- {staged_files}
     typecheck:
-      run: npm run typecheck
+      # Whole project, once per commit: the type checker has no staged-files glob.
+      run: npm run typecheck:all
     python-lint:
       glob: '**/*.py'
       run: ruff check -- {staged_files}
