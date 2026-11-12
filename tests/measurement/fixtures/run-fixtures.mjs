@@ -543,7 +543,7 @@ await proof(
 // --- Run-failing checks, each proven by making it fail ----------------------
 await proof(
   'one path loaded with two different contents fails the run and names the path',
-  async () => {
+  () => {
     assert.throws(
       () =>
         mergeV8Entries([
@@ -557,7 +557,7 @@ await proof(
 
 await proof(
   'a served script differing from its checked-in source fails the run',
-  async () => {
+  () => {
     assert.throws(
       () => {
         checkServedScripts([
@@ -569,7 +569,7 @@ await proof(
   }
 );
 
-await proof('a cut-off report is rejected', async () => {
+await proof('a cut-off report is rejected', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-cut-'));
   writeFileSync(join(dir, 'coverage-1-1-0.json'), '{"result": [');
   assert.throws(
@@ -578,7 +578,7 @@ await proof('a cut-off report is rejected', async () => {
   );
 });
 
-await proof('a stale report left by an earlier run is rejected', async () => {
+await proof('a stale report left by an earlier run is rejected', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-stale-'));
   const f = join(dir, 'coverage-1-1-0.json');
   writeFileSync(f, '{"result": []}');
@@ -592,7 +592,7 @@ await proof('a stale report left by an earlier run is rejected', async () => {
 
 await proof(
   'a page carrying script inside its HTML, including an event-handler attribute, is detected',
-  async () => {
+  () => {
     assert(
       findInlineScripts('<html><script>alert(1)</script></html>', 'p.html')
         .length > 0,
@@ -612,7 +612,7 @@ await proof(
   }
 );
 
-await proof('dropping one capture among many fails the run', async () => {
+await proof('dropping one capture among many fails the run', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-drop-'));
   writeFileSync(
     join(dir, 'captures.index'),
