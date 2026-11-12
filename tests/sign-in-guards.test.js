@@ -9,11 +9,13 @@ import {
   BrowserSession,
   OWNER,
   APP_ORIGIN,
-  SERVICE_ORIGIN
+  SERVICE_ORIGIN,
+  readCreated,
+  readVerified
 } from './helpers.js';
 import { generateSigningKeyPair } from '../src/crypto.js';
 
-test('an epoch value that is not a safe non-negative integer keeps the service closed', async () => {
+void test('an epoch value that is not a safe non-negative integer keeps the service closed', async () => {
   // Distinct from the restore drills: the source answers, but its value
   // cannot be trusted (R14 - fail closed, 500, nothing else disclosed).
   for (const bad of [1.5, -2]) {
@@ -25,18 +27,18 @@ test('an epoch value that is not a safe non-negative integer keeps the service c
       address: OWNER,
       stateId: start.stateId
     });
-    assert.equal(res.status, 500, `epoch ${bad}`);
+    assert.equal(res.status, 500, `epoch ${String(bad)}`);
     assert.deepEqual(await res.json(), { error: 'unavailable' });
     assert.ok(
       w.logSink.some(
         (e) => e.event === 'internal_error' && e.outcome === 'closed'
       ),
-      `epoch ${bad}: the closure is logged without detail`
+      `epoch ${String(bad)}: the closure is logged without detail`
     );
   }
 });
 
-test('a challenge request with a non-string address is rejected as a bad request', async () => {
+void test('a challenge request with a non-string address is rejected as a bad request', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -58,12 +60,14 @@ test('a challenge request with a non-string address is rejected as a bad request
   );
 });
 
-test('an uncertain send that the provider did accept reconciles to sent, and the code then verifies', async () => {
+void test('an uncertain send that the provider did accept reconciles to sent, and the code then verifies', async () => {
   // The provider accepted the message but its answer was lost: the send
   // reports uncertain while the provider record holds it (R5).
+  /** @type {Awaited<ReturnType<typeof makeWorld>>['mailer'] | null} */
   let mailer = null;
   const w = await makeWorld({
     mailerBehavior: (m) => {
+      assert.ok(mailer);
       mailer.outbox.push({
         ...m,
         providerId: `mock-late-${mailer.outbox.length + 1}`,
@@ -99,18 +103,18 @@ test('an uncertain send that the provider did accept reconciles to sent, and the
     code: w.mailer.lastCode(),
     address: OWNER
   });
-  const verified = await verify.json();
+  const verified = await readVerified(verify);
   assert.ok(verified.proof, 'proof issued for the reconciled send');
   assert.equal(verified.callbackUrl, `${APP_ORIGIN}/auth/callback`);
 });
 
-test('a zero attempt budget refuses even the right code and kills the challenge on first contact', async () => {
+void test('a zero attempt budget refuses even the right code and kills the challenge on first contact', async () => {
   const w = await makeWorld({ config: { maxAttempts: 0 } });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const res = await browser.verify({
     challengeId: created.challengeId,
@@ -132,7 +136,7 @@ test('a zero attempt budget refuses even the right code and kills the challenge 
   );
 });
 
-test('a returning browser keeps its pre-auth cookie: no fresh cookie is set', async () => {
+void test('a returning browser keeps its pre-auth cookie: no fresh cookie is set', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn('returning-cookie-value-0000');
   assert.equal(start.setCookie, null, 'an existing cookie is never replaced');
@@ -147,15 +151,15 @@ test('a returning browser keeps its pre-auth cookie: no fresh cookie is set', as
   assert.equal(pending.verifiedSub, null);
 });
 
-test('a resend naming a non-string address is answered like any resend, but sends nothing', async () => {
+void test('a resend naming a non-string address is answered like any resend, but sends nothing', async () => {
   // R2/R3: the response shape stays uniform with fabricated ids, and no
   // mail or state movement follows from the malformed field.
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const res = await browser.resend({
     challengeId: created.challengeId,
@@ -179,13 +183,13 @@ test('a resend naming a non-string address is answered like any resend, but send
   assert.ok((await verify.json()).proof);
 });
 
-test('a verify with non-string fields is one counted wrong try, answered generically', async () => {
+void test('a verify with non-string fields is one counted wrong try, answered generically', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const res = await browser.verify({
     challengeId: created.challengeId,
@@ -200,15 +204,15 @@ test('a verify with non-string fields is one counted wrong try, answered generic
   assert.equal(challenge.state, 'open', 'one try does not kill the challenge');
 });
 
-test('a correct code and cookie with a different address is refused and counted', async () => {
+void test('a correct code and cookie with a different address is refused and counted', async () => {
   // The verify body carries the address as well as the code: a code that
   // is right for the challenge does not verify for another address.
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const code = w.mailer.lastCode();
   const res = await browser.verify({
@@ -224,7 +228,7 @@ test('a correct code and cookie with a different address is refused and counted'
   assert.equal(challenge.state, 'open', 'the challenge is not consumed');
 });
 
-test('a revoked signing key is never published in the key listing', async () => {
+void test('a revoked signing key is never published in the key listing', async () => {
   const w = await makeWorld();
   w.service.signingKeys.get('k1').status = 'revoked';
   const bare = await (

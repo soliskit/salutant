@@ -75,6 +75,52 @@ export class ControllableEpoch {
   }
 }
 
+/**
+ * @template {import('../src/service.js').ServiceStore} S
+ * @typedef {object} WorldOptions
+ * @property {number} [now]
+ * @property {string[]} [allowlist]
+ * @property {NonNullable<ConstructorParameters<typeof MockMailAdapter>[0]>['behavior']} [mailerBehavior]
+ * @property {NonNullable<ConstructorParameters<typeof SalutantService>[0]>['config']} [config]
+ * @property {NonNullable<ConstructorParameters<typeof StubApp>[0]>['config']} [appConfig]
+ * @property {() => S} [storeFactory]
+ */
+/**
+ * @template {import('../src/service.js').ServiceStore} S
+ * @typedef {object} World
+ * @property {SalutantService} service
+ * @property {ReturnType<typeof createWorker>} worker
+ * @property {StubApp} app
+ * @property {S} store
+ * @property {MemoryStore} appStore
+ * @property {MockMailAdapter} mailer
+ * @property {ControllableEpoch} epoch
+ * @property {NonNullable<import('../src/service.js').ServiceOptions['logSink']>} logSink
+ * @property {() => number} clock
+ * @property {(ms: number) => void} advance
+ * @property {(value: number) => void} setNow
+ * @property {() => number} getNow
+ */
+/**
+ * @overload
+ * @param {Omit<WorldOptions<MemoryStore>, 'storeFactory'> & { storeFactory?: undefined }} [options]
+ * @returns {Promise<World<MemoryStore>>}
+ */
+/**
+ * @template {import('../src/service.js').ServiceStore} S
+ * @overload
+ * @param {WorldOptions<S> & { storeFactory: () => S }} options
+ * @returns {Promise<World<S>>}
+ */
+/**
+ * @overload
+ * @param {WorldOptions<import('../src/service.js').ServiceStore>} [options]
+ * @returns {Promise<World<import('../src/service.js').ServiceStore>>}
+ */
+/**
+ * @param {WorldOptions<import('../src/service.js').ServiceStore>} [options]
+ * @returns {Promise<World<import('../src/service.js').ServiceStore>>}
+ */
 export async function makeWorld({
   now = 1_759_600_000_000, // fixed start so windows are deterministic
   allowlist = [OWNER],
@@ -170,7 +216,7 @@ export class BrowserSession {
   }
   /** @param {Response} response */
   _storeCookies(response) {
-    const setC = response.headers.getSetCookie?.() ?? [];
+    const setC = response.headers.getSetCookie();
     for (const line of setC) {
       const [pair, ...attrs] = line.split(';').map((s) => s.trim());
       const [name, value] = pair.split('=');
@@ -181,7 +227,7 @@ export class BrowserSession {
   }
   /**
    * @param {object} options
-   * @param {string} options.address
+   * @param {string | number} options.address
    * @param {string} [options.appOrigin]
    * @param {string} options.stateId
    * @param {string | null} [options.idempotencyKey]
@@ -211,7 +257,7 @@ export class BrowserSession {
   /**
    * @param {object} options
    * @param {string} options.challengeId
-   * @param {string} options.address
+   * @param {string | number} options.address
    * @param {string | null} [options.idempotencyKey]
    */
   async resend({ challengeId, address, idempotencyKey = null }) {
@@ -228,7 +274,7 @@ export class BrowserSession {
     this._storeCookies(res);
     return res;
   }
-  /** @param {{challengeId: string, code: string | null | undefined, address: string, omitCookies?: boolean}} options */
+  /** @param {{challengeId: string, code: string | number | null | undefined, address: string | number, omitCookies?: boolean}} options */
   async verify({ challengeId, code, address, omitCookies = false }) {
     const path = `/v1/challenges/${encodeURIComponent(challengeId)}/verify`;
     /** @type {Record<string, string>} */
@@ -254,10 +300,79 @@ export class BrowserSession {
   }
 }
 
+/** @typedef {Awaited<ReturnType<StubApp['handleComplete']>>} CompleteResult */
+/** @typedef {{ challengeId: string, [field: string]: unknown }} CreatedBody */
+/** @typedef {{ proof: string, state: string, [field: string]: unknown }} VerifiedBody */
 /**
- * @typedef {{ status: number }} CompleteResult
- * @typedef {{ complete: CompleteResult | null, [field: string]: unknown }} HonestSignInResult
+ * @typedef {object} HonestSignInResult
+ * @property {Awaited<ReturnType<StubApp['startSignIn']>>} start
+ * @property {Response} page
+ * @property {Response} create
+ * @property {CreatedBody} created
+ * @property {ReturnType<MockMailAdapter['lastCode']>} code
+ * @property {Response} verify
+ * @property {VerifiedBody} verified
+ * @property {Awaited<ReturnType<StubApp['handleExchange']>> | null} exchange
+ * @property {CompleteResult | null} complete
+ * @property {BrowserSession} browser
  */
+
+/**
+ * @param {unknown} body
+ * @returns {body is CreatedBody}
+ */
+function isCreatedBody(body) {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    'challengeId' in body &&
+    typeof body.challengeId === 'string'
+  );
+}
+
+/**
+ * @param {unknown} body
+ * @returns {body is VerifiedBody}
+ */
+function isVerifiedBody(body) {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    'proof' in body &&
+    typeof body.proof === 'string' &&
+    'state' in body &&
+    typeof body.state === 'string'
+  );
+}
+
+/**
+ * Reads a body expected to carry a string challengeId. Returns the same
+ * parsed object, extras kept. Invalid JSON still fails in json().
+ * @param {Response} response
+ * @returns {Promise<CreatedBody>}
+ */
+export async function readCreated(response) {
+  /** @type {unknown} */
+  const body = await response.json();
+  if (!isCreatedBody(body)) {
+    throw new TypeError('challenge response has no string challengeId');
+  }
+  return body;
+}
+
+/**
+ * Reads a body expected to carry string proof and state.
+ * @param {Response} response
+ * @returns {Promise<VerifiedBody>}
+ */
+export async function readVerified(response) {
+  /** @type {unknown} */
+  const body = await response.json();
+  if (!isVerifiedBody(body)) {
+    throw new TypeError('verify response has no string proof and state');
+  }
+  return body;
+}
 
 // Drive a whole sign-in the honest way. Returns every artifact.
 /** @param {Awaited<ReturnType<typeof makeWorld>>} world @returns {Promise<HonestSignInResult>} */
@@ -271,7 +386,11 @@ export async function honestSignIn(
     address,
     stateId: start.stateId
   });
+  /** @type {unknown} */
   const created = await create.json();
+  if (!isCreatedBody(created)) {
+    throw new TypeError('challenge response has no string challengeId');
+  }
   await world.service.drain();
   const code = world.mailer.lastCode();
   const verify = await browser.verify({
@@ -279,7 +398,11 @@ export async function honestSignIn(
     code,
     address
   });
+  /** @type {unknown} */
   const verified = await verify.json();
+  if (!isVerifiedBody(verified)) {
+    throw new TypeError('verify response has no string proof and state');
+  }
   let exchange = null;
   let complete = null;
   if (verified.proof && redeem) {

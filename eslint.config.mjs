@@ -1,10 +1,11 @@
+import { defineConfig } from 'eslint/config';
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import promise from 'eslint-plugin-promise';
 import prettierRecommended from 'eslint-plugin-prettier/recommended';
 
-export default tseslint.config(
+export default defineConfig(
   { ignores: ['node_modules/'] },
   js.configs.recommended,
   tseslint.configs.recommended,
@@ -13,11 +14,38 @@ export default tseslint.config(
   {
     // tsconfig.json covers src and scripts with checkJs, so the project
     // service can type them.
-    files: ['src/**/*.js', 'scripts/**/*.js'],
-    extends: [
-      tseslint.configs.recommendedTypeChecked,
-      tseslint.configs.strictTypeChecked
+    files: [
+      'src/**/*.js',
+      'scripts/**/*.js',
+      'tests/measurement/v8merge.mjs',
+      'tests/measurement/validate.mjs',
+      'tests/measurement/checks.mjs',
+      'tests/measurement/filelists.mjs',
+      'tests/headers.test.js',
+      'tests/logging-hygiene.test.js',
+      'tests/signing-key-jwk.test.js',
+      'tests/measurement/provision.mjs',
+      'tests/code-generation.test.js'
     ],
+    extends: [
+      ...tseslint.configs.recommendedTypeChecked,
+      ...tseslint.configs.strictTypeChecked
+    ].map((config) => ({
+      ...config,
+      files: [
+        'src/**/*.js',
+        'scripts/**/*.js',
+        'tests/measurement/v8merge.mjs',
+        'tests/measurement/validate.mjs',
+        'tests/measurement/checks.mjs',
+        'tests/measurement/filelists.mjs',
+        'tests/headers.test.js',
+        'tests/logging-hygiene.test.js',
+        'tests/signing-key-jwk.test.js',
+        'tests/measurement/provision.mjs',
+        'tests/code-generation.test.js'
+      ]
+    })),
     languageOptions: {
       parserOptions: { projectService: true }
     }
@@ -25,7 +53,21 @@ export default tseslint.config(
   {
     // JS files no tsconfig covers get untyped rules only.
     files: ['tests/**/*.js', 'tests/**/*.mjs', '*.mjs'],
-    extends: [tseslint.configs.disableTypeChecked]
+    ignores: [
+      'tests/measurement/v8merge.mjs',
+      'tests/measurement/validate.mjs',
+      'tests/measurement/checks.mjs',
+      'tests/measurement/filelists.mjs',
+      'tests/headers.test.js',
+      'tests/logging-hygiene.test.js',
+      'tests/signing-key-jwk.test.js',
+      'tests/measurement/provision.mjs',
+      'tests/code-generation.test.js'
+    ],
+    extends: [tseslint.configs.disableTypeChecked].map((config) => ({
+      ...config,
+      files: ['tests/**/*.js', 'tests/**/*.mjs', '*.mjs']
+    }))
   },
   {
     languageOptions: {

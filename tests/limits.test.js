@@ -6,10 +6,11 @@ import {
   BrowserSession,
   honestSignIn,
   OWNER,
-  STRANGER
+  STRANGER,
+  readCreated
 } from './helpers.js';
 
-test('requests per source per hour: the eleventh is limited, same for both address classes', async () => {
+void test('requests per source per hour: the eleventh is limited, same for both address classes', async () => {
   const w = await makeWorld({
     config: {
       requestsPerAddressPerHour: 1000,
@@ -30,7 +31,7 @@ test('requests per source per hour: the eleventh is limited, same for both addre
   assert.deepEqual(await last.json(), { error: 'rate_limited' });
 });
 
-test('requests per address per hour: the eleventh for one address is limited', async () => {
+void test('requests per address per hour: the eleventh for one address is limited', async () => {
   const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 1000 } });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -39,13 +40,13 @@ test('requests per address per hour: the eleventh for one address is limited', a
     last = await browser.postChallenge({
       address: OWNER,
       stateId: start.stateId,
-      headers: { 'cf-connecting-ip': `198.51.100.${i}` } // fresh source each time
+      headers: { 'cf-connecting-ip': `198.51.100.${String(i)}` } // fresh source each time
     });
   }
   assert.equal(last.status, 429);
 });
 
-test('sends per address per 30 minutes: the fourth request is refused indistinguishably and sends no mail', async () => {
+void test('sends per address per 30 minutes: the fourth request is refused indistinguishably and sends no mail', async () => {
   const w = await makeWorld({
     config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 }
   });
@@ -55,7 +56,7 @@ test('sends per address per 30 minutes: the fourth request is refused indistingu
     const res = await browser.postChallenge({
       address: OWNER,
       stateId: start.stateId,
-      headers: { 'cf-connecting-ip': `192.0.2.${i}` }
+      headers: { 'cf-connecting-ip': `192.0.2.${String(i)}` }
     });
     assert.equal(res.status, 200);
     w.advance(61_000);
@@ -74,7 +75,7 @@ test('sends per address per 30 minutes: the fourth request is refused indistingu
   assert.equal(w.mailer.outbox.length, 3);
 });
 
-test('an unlisted address and an over-budget listed address return the same response', async () => {
+void test('an unlisted address and an over-budget listed address return the same response', async () => {
   const w = await makeWorld({
     config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 }
   });
@@ -84,10 +85,14 @@ test('an unlisted address and an over-budget listed address return the same resp
     await new BrowserSession(w).postChallenge({
       address: OWNER,
       stateId: start.stateId,
-      headers: { 'cf-connecting-ip': `192.0.2.${i}` }
+      headers: { 'cf-connecting-ip': `192.0.2.${String(i)}` }
     });
     w.advance(61_000);
   }
+  /**
+   * @param {string} address
+   * @param {string} ip
+   */
   const probe = async (address, ip) => {
     const start = await w.app.startSignIn(null);
     const res = await new BrowserSession(w).postChallenge({
@@ -99,7 +104,7 @@ test('an unlisted address and an over-budget listed address return the same resp
       /"(requestId|challengeId)":"[^"]+"/g,
       '"$1":"x"'
     );
-    return `${res.status}:${body}`;
+    return `${String(res.status)}:${body}`;
   };
   const listedOverBudget = await probe(OWNER, '192.0.2.250');
   const unlisted = await probe(STRANGER, '192.0.2.251');
@@ -110,7 +115,7 @@ test('an unlisted address and an over-budget listed address return the same resp
   );
 });
 
-test('oversize bodies are refused', async () => {
+void test('oversize bodies are refused', async () => {
   const w = await makeWorld();
   const res = await w.worker.fetch(
     new Request('https://salutant.example.test/v1/challenges', {
@@ -128,7 +133,7 @@ test('oversize bodies are refused', async () => {
   assert.deepEqual(await res.json(), { error: 'bad_request' });
 });
 
-test('the source address comes from the trusted header, never a client-supplied one', async () => {
+void test('the source address comes from the trusted header, never a client-supplied one', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -148,7 +153,7 @@ test('the source address comes from the trusted header, never a client-supplied 
   assert.ok(!JSON.stringify([...w.store.records]).includes('10.0.0.1'));
 });
 
-test('address-linked state expires within 24 hours; the monthly count does not', async () => {
+void test('address-linked state expires within 24 hours; the monthly count does not', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -178,7 +183,7 @@ test('address-linked state expires within 24 hours; the monthly count does not',
   );
 });
 
-test('send totals keep the same lifetime whether the send was a new code or a resend', async () => {
+void test('send totals keep the same lifetime whether the send was a new code or a resend', async () => {
   // Start 30 seconds before the end of a UTC month so the resend opens a new day and month record.
   const start = Date.UTC(2026, 0, 31, 23, 59, 30);
   const w = await makeWorld({ now: start });
@@ -208,7 +213,7 @@ test('send totals keep the same lifetime whether the send was a new code or a re
   });
 });
 
-test('R8 attack, honest owner path: slot-filling delays the owner, and the mailed code is unusable outside the attacker browser', async () => {
+void test('R8 attack, honest owner path: slot-filling delays the owner, and the mailed code is unusable outside the attacker browser', async () => {
   const w = await makeWorld({ allowlist: [OWNER] });
   const ownerBrowser = new BrowserSession(w);
   const attackBrowser = new BrowserSession(w);
@@ -277,10 +282,11 @@ test('R8 attack, honest owner path: slot-filling delays the owner, and the maile
   w.advance(30 * 60_000 + 1);
   const r = await honestSignIn(w, { browser: ownerBrowser });
   assert.ok(r.verified.proof, 'the owner signs in once slots free');
+  assert.ok(r.complete);
   assert.equal(r.complete.status, 200);
 });
 
-test('10 concurrent creates cannot exceed the active-challenge cap', async () => {
+void test('10 concurrent creates cannot exceed the active-challenge cap', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn(null);
   await Promise.all(
@@ -288,7 +294,7 @@ test('10 concurrent creates cannot exceed the active-challenge cap', async () =>
       new BrowserSession(w).postChallenge({
         address: OWNER,
         stateId: start.stateId,
-        headers: { 'cf-connecting-ip': `192.0.2.${i}` }
+        headers: { 'cf-connecting-ip': `192.0.2.${String(i)}` }
       })
     )
   );
@@ -305,7 +311,7 @@ test('10 concurrent creates cannot exceed the active-challenge cap', async () =>
   assert.equal(w.mailer.outbox.length, 2, 'no extra mails');
 });
 
-test('10 concurrent creates cannot exceed the 30-minute send budget', async () => {
+void test('10 concurrent creates cannot exceed the 30-minute send budget', async () => {
   const w = await makeWorld({
     config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 }
   });
@@ -315,7 +321,7 @@ test('10 concurrent creates cannot exceed the 30-minute send budget', async () =
       new BrowserSession(w).postChallenge({
         address: OWNER,
         stateId: start.stateId,
-        headers: { 'cf-connecting-ip': `192.0.2.${i}` }
+        headers: { 'cf-connecting-ip': `192.0.2.${String(i)}` }
       })
     )
   );
@@ -339,13 +345,13 @@ test('10 concurrent creates cannot exceed the 30-minute send budget', async () =
   );
 });
 
-test('10 concurrent resends after the cooldown produce exactly one resend', async () => {
+void test('10 concurrent resends after the cooldown produce exactly one resend', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   w.advance(61_000);
   const results = await Promise.all(
@@ -360,7 +366,7 @@ test('10 concurrent resends after the cooldown produce exactly one resend', asyn
   assert.equal(w.mailer.outbox.length, 2, 'one original mail plus one resend');
 });
 
-test('every refusal is identical for every address class, whatever limit fired', async () => {
+void test('every refusal is identical for every address class, whatever limit fired', async () => {
   const w = await makeWorld({ config: { sendsPerDay: 2 } });
   const browser = new BrowserSession(w);
   // Fill the owner's two slots and exhaust the daily budget.
@@ -380,6 +386,10 @@ test('every refusal is identical for every address class, whatever limit fired',
   assert.equal(w.mailer.outbox.length, 2);
   // The listed address hits the cap first; the unlisted address hits
   // the global budget. Both must answer identically (R3).
+  /**
+   * @param {string} address
+   * @param {string} ip
+   */
   const probe = async (address, ip) => {
     const start = await w.app.startSignIn(null);
     const res = await new BrowserSession(w).postChallenge({
@@ -391,10 +401,11 @@ test('every refusal is identical for every address class, whatever limit fired',
       /"(requestId|challengeId)":"[^"]+"/g,
       '"$1":"x"'
     );
-    const cookie = (res.headers.getSetCookie?.() ?? [''])[0]
+    const cookie = res.headers
+      .getSetCookie()[0]
       .replace(/sb_[^=]+=[^;]+/, 'sb_ID=BINDING')
       .replace(/challenges\/[^/]+/, 'challenges/ID');
-    return `${res.status}:${body}:${cookie}`;
+    return `${String(res.status)}:${body}:${cookie}`;
   };
   assert.equal(
     await probe(OWNER, '192.0.2.250'),
@@ -403,7 +414,7 @@ test('every refusal is identical for every address class, whatever limit fired',
   );
 });
 
-test('an over-hourly-budget listed address gets the same cookie shape as an accepted unlisted one', async () => {
+void test('an over-hourly-budget listed address gets the same cookie shape as an accepted unlisted one', async () => {
   const w = await makeWorld({
     config: { requestsPerAddressPerHour: 1000, activeChallengesPerAddress: 100 }
   });
@@ -412,10 +423,14 @@ test('an over-hourly-budget listed address gets the same cookie shape as an acce
     await new BrowserSession(w).postChallenge({
       address: OWNER,
       stateId: start.stateId,
-      headers: { 'cf-connecting-ip': `192.0.2.${i}` }
+      headers: { 'cf-connecting-ip': `192.0.2.${String(i)}` }
     });
     w.advance(61_000);
   }
+  /**
+   * @param {string} address
+   * @param {string} ip
+   */
   const probe = async (address, ip) => {
     const start = await w.app.startSignIn(null);
     const res = await new BrowserSession(w).postChallenge({
@@ -423,7 +438,7 @@ test('an over-hourly-budget listed address gets the same cookie shape as an acce
       stateId: start.stateId,
       headers: { 'cf-connecting-ip': ip }
     });
-    const cookies = res.headers.getSetCookie?.() ?? [];
+    const cookies = res.headers.getSetCookie();
     assert.equal(cookies.length, 1, `${address}: exactly one Set-Cookie`);
     return cookies[0]
       .replace(/sb_[^=]+=[^;]+/, 'sb_ID=BINDING')
@@ -438,26 +453,30 @@ test('an over-hourly-budget listed address gets the same cookie shape as an acce
   );
 });
 
-test('resend budget refusals are identical for listed and unlisted addresses', async () => {
+void test('resend budget refusals are identical for listed and unlisted addresses', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn(null);
   const listedBrowser = new BrowserSession(w);
   const unlistedBrowser = new BrowserSession(w);
-  const lc = await (
+  const lc = await readCreated(
     await listedBrowser.postChallenge({
       address: OWNER,
       stateId: start.stateId,
       headers: { 'cf-connecting-ip': '192.0.2.1' }
     })
-  ).json();
-  const uc = await (
+  );
+  const uc = await readCreated(
     await unlistedBrowser.postChallenge({
       address: STRANGER,
       stateId: start.stateId,
       headers: { 'cf-connecting-ip': '192.0.2.2' }
     })
-  ).json();
+  );
   await w.service.drain();
+  /**
+   * @param {BrowserSession} browser
+   * @param {string} id
+   */
   const seq = async (browser, id) => {
     const out = [];
     for (let i = 0; i < 3; i++) {
@@ -470,7 +489,7 @@ test('resend budget refusals are identical for listed and unlisted addresses', a
         /"(requestId|challengeId)":"[^"]+"/g,
         '"$1":"x"'
       );
-      out.push(`${res.status}:${body}`);
+      out.push(`${String(res.status)}:${body}`);
     }
     return out;
   };
@@ -487,30 +506,35 @@ test('resend budget refusals are identical for listed and unlisted addresses', a
   assert.equal(w.mailer.outbox.length, 3, 'the withheld resend sent no mail');
 });
 
-test('resend budget refusal with sendsPerAddressPer30Minutes=1 matches the unlisted response', async () => {
+void test('resend budget refusal with sendsPerAddressPer30Minutes=1 matches the unlisted response', async () => {
   const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 1 } });
   const start = await w.app.startSignIn(null);
   const listedBrowser = new BrowserSession(w);
   const unlistedBrowser = new BrowserSession(w);
-  const lc = await (
+  const lc = await readCreated(
     await listedBrowser.postChallenge({
       address: OWNER,
       stateId: start.stateId,
       headers: { 'cf-connecting-ip': '192.0.2.1' }
     })
-  ).json();
-  const uc = await (
+  );
+  const uc = await readCreated(
     await unlistedBrowser.postChallenge({
       address: STRANGER,
       stateId: start.stateId,
       headers: { 'cf-connecting-ip': '192.0.2.2' }
     })
-  ).json();
+  );
   await w.service.drain();
   w.advance(61_000);
+  /**
+   * @param {BrowserSession} browser
+   * @param {string} id
+   * @param {string} address
+   */
   const probe = async (browser, id, address) => {
     const res = await browser.resend({ challengeId: id, address });
-    return `${res.status}:${JSON.stringify(await res.json()).replace(/"(requestId|challengeId)":"[^"]+"/g, '"$1":"x"')}`;
+    return `${String(res.status)}:${JSON.stringify(await res.json()).replace(/"(requestId|challengeId)":"[^"]+"/g, '"$1":"x"')}`;
   };
   assert.equal(
     await probe(listedBrowser, lc.challengeId, OWNER),
@@ -521,25 +545,25 @@ test('resend budget refusal with sendsPerAddressPer30Minutes=1 matches the unlis
   assert.equal(w.mailer.outbox.length, 1, 'no mail beyond the first send');
 });
 
-test('after a withheld resend, an immediate retry meets the same cooldown for both classes', async () => {
+void test('after a withheld resend, an immediate retry meets the same cooldown for both classes', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn(null);
   const listedBrowser = new BrowserSession(w);
   const unlistedBrowser = new BrowserSession(w);
-  const lc = await (
+  const lc = await readCreated(
     await listedBrowser.postChallenge({
       address: OWNER,
       stateId: start.stateId,
       headers: { 'cf-connecting-ip': '192.0.2.1' }
     })
-  ).json();
-  const uc = await (
+  );
+  const uc = await readCreated(
     await unlistedBrowser.postChallenge({
       address: STRANGER,
       stateId: start.stateId,
       headers: { 'cf-connecting-ip': '192.0.2.2' }
     })
-  ).json();
+  );
   await w.service.drain();
   // Three spaced resends each: the third listed resend is withheld
   // (30-minute budget 3 spent), the unlisted ones are all accepted.
@@ -569,7 +593,7 @@ test('after a withheld resend, an immediate retry meets the same cooldown for bo
   assert.deepEqual(await unlistedRetry.json(), { error: 'cooldown' });
 });
 
-test('withheld resends move the cooldown clock under tight budgets (30-minute, daily, monthly)', async () => {
+void test('withheld resends move the cooldown clock under tight budgets (30-minute, daily, monthly)', async () => {
   for (const config of [
     { sendsPerAddressPer30Minutes: 1 },
     { sendsPerDay: 1 },
@@ -579,20 +603,20 @@ test('withheld resends move the cooldown clock under tight budgets (30-minute, d
     const start = await w.app.startSignIn(null);
     const listedBrowser = new BrowserSession(w);
     const unlistedBrowser = new BrowserSession(w);
-    const lc = await (
+    const lc = await readCreated(
       await listedBrowser.postChallenge({
         address: OWNER,
         stateId: start.stateId,
         headers: { 'cf-connecting-ip': '192.0.2.1' }
       })
-    ).json();
-    const uc = await (
+    );
+    const uc = await readCreated(
       await unlistedBrowser.postChallenge({
         address: STRANGER,
         stateId: start.stateId,
         headers: { 'cf-connecting-ip': '192.0.2.2' }
       })
-    ).json();
+    );
     await w.service.drain();
     w.advance(61_000);
     const listedResend = await listedBrowser.resend({
@@ -637,7 +661,7 @@ async function create(w, browser, address = OWNER) {
   ).json();
 }
 
-test('rolling sends age out individually at 30 minutes; requests stay hourly', async () => {
+void test('rolling sends age out individually at 30 minutes; requests stay hourly', async () => {
   const w = await makeWorld({
     now: ALIGNED,
     config: { activeChallengesPerAddress: 100 }
@@ -686,7 +710,7 @@ test('rolling sends age out individually at 30 minutes; requests stay hourly', a
   );
 });
 
-test('rolling budget blocks a burst across a UTC half-hour boundary', async () => {
+void test('rolling budget blocks a burst across a UTC half-hour boundary', async () => {
   const w = await makeWorld({
     now: ALIGNED + HALF_HOUR - 1,
     config: { activeChallengesPerAddress: 100 }
@@ -715,7 +739,7 @@ test('rolling budget blocks a burst across a UTC half-hour boundary', async () =
   );
 });
 
-test('concurrent creates and resends share the last rolling send slot', async () => {
+void test('concurrent creates and resends share the last rolling send slot', async () => {
   const w = await makeWorld({
     now: ALIGNED,
     config: { activeChallengesPerAddress: 100 }
@@ -736,10 +760,10 @@ test('concurrent creates and resends share the last rolling send slot', async ()
   );
 });
 
-test('default daily and monthly budgets stop at 90 and 2700 across addresses', async () => {
+void test('default daily and monthly budgets stop at 90 and 2700 across addresses', async () => {
   const addresses = Array.from(
     { length: 91 },
-    (_, i) => `owner${i}@example.test`
+    (_, i) => `owner${String(i)}@example.test`
   );
   for (const kind of ['day', 'month']) {
     const w = await makeWorld({
@@ -749,12 +773,12 @@ test('default daily and monthly budgets stop at 90 and 2700 across addresses', a
     });
     const b = new BrowserSession(w);
     if (kind === 'month') {
-      w.store.transact((s) =>
+      w.store.transact((s) => {
         s.set('counter:sendmonth:m:2026-01', {
           count: 2699,
           expiresAtMs: ALIGNED + 32 * 24 * 3_600_000
-        })
-      );
+        });
+      });
     }
     for (const address of addresses) await create(w, b, address);
     await w.service.drain();
@@ -770,7 +794,7 @@ test('default daily and monthly budgets stop at 90 and 2700 across addresses', a
   }
 });
 
-test('default code works just before 30 minutes but expires at the boundary', async () => {
+void test('default code works just before 30 minutes but expires at the boundary', async () => {
   for (const elapsed of [HALF_HOUR - 1, HALF_HOUR]) {
     const w = await makeWorld({ now: ALIGNED });
     const b = new BrowserSession(w);
@@ -789,7 +813,7 @@ test('default code works just before 30 minutes but expires at the boundary', as
   }
 });
 
-test('email expiry text follows the configured lifetime on creates and resends', async () => {
+void test('email expiry text follows the configured lifetime on creates and resends', async () => {
   for (const minutes of [30, 7]) {
     const w = await makeWorld({
       now: ALIGNED,
@@ -805,7 +829,7 @@ test('email expiry text follows the configured lifetime on creates and resends',
       assert.match(
         message.text,
         new RegExp(
-          `It expires ${minutes} minutes after the original request\\.`
+          `It expires ${String(minutes)} minutes after the original request\\.`
         )
       );
     assert.equal(
@@ -817,7 +841,7 @@ test('email expiry text follows the configured lifetime on creates and resends',
   }
 });
 
-test('failed and uncertain sends reserve quota until the exact rolling expiry', async () => {
+void test('failed and uncertain sends reserve quota until the exact rolling expiry', async () => {
   for (const mailerBehavior of ['failed', 'uncertain']) {
     const w = await makeWorld({
       now: ALIGNED,
@@ -849,7 +873,7 @@ test('failed and uncertain sends reserve quota until the exact rolling expiry', 
   }
 });
 
-test('rolling timestamp storage stays bounded across repeated windows', async () => {
+void test('rolling timestamp storage stays bounded across repeated windows', async () => {
   const w = await makeWorld({
     now: ALIGNED,
     config: { activeChallengesPerAddress: 100 }
@@ -875,7 +899,7 @@ test('rolling timestamp storage stays bounded across repeated windows', async ()
   }
 });
 
-test('resends below the daily and monthly send caps send mail and resends at them do not', async () => {
+void test('resends below the daily and monthly send caps send mail and resends at them do not', async () => {
   for (const config of [{ sendsPerDay: 2 }, { sendsPerMonth: 2 }]) {
     const w = await makeWorld({ config });
     const browser = new BrowserSession(w);
@@ -916,16 +940,16 @@ test('resends below the daily and monthly send caps send mail and resends at the
   }
 });
 
-test('resends count toward the per-source hourly request limit, including made-up targets', async () => {
+void test('resends count toward the per-source hourly request limit, including made-up targets', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   // Ten requests from one source pass; every fake resend is a request.
   for (let i = 0; i < 10; i++) {
     const res = await browser.resend({
-      challengeId: `made-up-${i}`,
+      challengeId: `made-up-${String(i)}`,
       address: OWNER
     });
-    assert.equal(res.status, 200, `resend ${i} passes`);
+    assert.equal(res.status, 200, `resend ${String(i)} passes`);
   }
   const eleventh = await browser.resend({
     challengeId: 'made-up-10',
@@ -950,17 +974,17 @@ test('resends count toward the per-source hourly request limit, including made-u
   assert.equal(other.status, 200);
 });
 
-test('resends count toward the per-address hourly request limit, shared with creation', async () => {
+void test('resends count toward the per-address hourly request limit, shared with creation', async () => {
   const w = await makeWorld({ config: { requestsPerSourcePerHour: 1000 } });
   const browser = new BrowserSession(w);
   // Made-up targets claiming one address still count against that
   // address: membership is never consulted, so the limit reveals nothing.
   for (let i = 0; i < 10; i++) {
     const res = await browser.resend({
-      challengeId: `made-up-${i}`,
+      challengeId: `made-up-${String(i)}`,
       address: OWNER
     });
-    assert.equal(res.status, 200, `resend ${i} passes`);
+    assert.equal(res.status, 200, `resend ${String(i)} passes`);
   }
   const eleventh = await browser.resend({
     challengeId: 'made-up-10',
@@ -985,10 +1009,10 @@ test('resends count toward the per-address hourly request limit, shared with cre
   // no difference - same status and body as the listed address's 429.
   for (let i = 0; i < 9; i++) {
     const res = await browser.resend({
-      challengeId: `stranger-${i}`,
+      challengeId: `stranger-${String(i)}`,
       address: STRANGER
     });
-    assert.equal(res.status, 200, `stranger resend ${i} passes`);
+    assert.equal(res.status, 200, `stranger resend ${String(i)} passes`);
   }
   const strangerEleventh = await browser.resend({
     challengeId: 'stranger-9',

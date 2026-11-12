@@ -23,11 +23,12 @@ class FakeElement {
 }
 
 function ok(body, status = 200) {
-  return { ok: status < 400, status, json: async () => body };
+  return { ok: status < 400, status, json: () => Promise.resolve(body) };
 }
 
 function deferred() {
-  let finish;
+  /** @type {(value?: unknown) => void} */
+  let finish = () => {};
   const promise = new Promise((resolve) => {
     finish = resolve;
   });
@@ -52,7 +53,7 @@ function loadPage(respond) {
   const context = vm.createContext({
     document: { getElementById: (id) => elements[id] },
     location: { search: '?app=https%3A%2F%2Fapp.example.test&state=s' },
-    crypto: { randomUUID: () => `key-${++keyCount}` },
+    crypto: { randomUUID: () => `key-${String(++keyCount)}` },
     URLSearchParams,
     encodeURIComponent,
     JSON,
@@ -74,12 +75,12 @@ async function reachCodeStage(page) {
   await page.elements['address-form'].fire('submit');
 }
 
-test('the first send carries an idempotency key and a network failure retries with the same key', async () => {
+void test('the first send carries an idempotency key and a network failure retries with the same key', async () => {
   let attempt = 0;
-  const page = loadPage(async () => {
+  const page = loadPage(() => {
     attempt += 1;
-    if (attempt === 1) throw new Error('network');
-    return ok({ challengeId: 'c1' });
+    if (attempt === 1) return Promise.reject(new Error('network'));
+    return Promise.resolve(ok({ challengeId: 'c1' }));
   });
   page.elements.address.value = 'owner@example.test';
   await page.elements['address-form'].fire('submit');
@@ -91,12 +92,14 @@ test('the first send carries an idempotency key and a network failure retries wi
   assert.equal(page.elements['code-form'].hidden, false);
 });
 
-test('a changed address or any received response gets a new key', async () => {
+void test('a changed address or any received response gets a new key', async () => {
   let attempt = 0;
-  const page = loadPage(async () => {
+  const page = loadPage(() => {
     attempt += 1;
-    if (attempt === 1) throw new Error('network');
-    return ok({ challengeId: `c${attempt}` }, attempt === 2 ? 500 : 200);
+    if (attempt === 1) return Promise.reject(new Error('network'));
+    return Promise.resolve(
+      ok({ challengeId: `c${attempt}` }, attempt === 2 ? 500 : 200)
+    );
   });
   page.elements.address.value = 'owner@example.test';
   await page.elements['address-form'].fire('submit');
@@ -111,10 +114,12 @@ test('a changed address or any received response gets a new key', async () => {
   );
 });
 
-test('a resend names its challenge, has its own key and shows the wait message on a refusal', async () => {
-  const page = loadPage(async (url, n) => {
-    if (n === 1) return ok({ challengeId: 'c1' });
-    return n === 2 ? ok({ error: 'cooldown' }, 429) : ok({}, 200);
+void test('a resend names its challenge, has its own key and shows the wait message on a refusal', async () => {
+  const page = loadPage((url, n) => {
+    if (n === 1) return Promise.resolve(ok({ challengeId: 'c1' }));
+    return Promise.resolve(
+      n === 2 ? ok({ error: 'cooldown' }, 429) : ok({}, 200)
+    );
   });
   await reachCodeStage(page);
   await page.elements.resend.fire('click');
@@ -129,7 +134,7 @@ test('a resend names its challenge, has its own key and shows the wait message o
   assert.match(page.elements.message.textContent, /new code is on its way/);
 });
 
-test('a double-click on Continue sends one verify and resend is blocked while it runs', async () => {
+void test('a double-click on Continue sends one verify and resend is blocked while it runs', async () => {
   const verify = deferred();
   const page = loadPage((url) =>
     url.includes('/verify') ? verify.promise : ok({ challengeId: 'c1' })

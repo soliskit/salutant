@@ -6,11 +6,11 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeWorld, honestSignIn, OWNER } from './helpers.js';
 
-test('logs hold no codes, proofs or addresses; subject lines carry no code', async () => {
+void test('logs hold no codes, proofs or addresses; subject lines carry no code', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w);
   const logText = JSON.stringify(w.logSink);
-  assert.ok(!logText.includes(r.code), 'no code in logs');
+  assert.ok(!logText.includes(String(r.code)), 'no code in logs');
   assert.ok(!logText.includes(OWNER), 'no address in logs');
   assert.ok(!logText.includes(r.verified.proof), 'no proof in logs');
   for (const entry of w.logSink) {
@@ -24,13 +24,13 @@ test('logs hold no codes, proofs or addresses; subject lines carry no code', asy
   for (const mail of w.mailer.outbox) {
     assert.equal(mail.subject, 'Your sign-in code');
     assert.ok(
-      !mail.subject.includes(r.code),
+      !mail.subject.includes(String(r.code)),
       'the code appears only in the body'
     );
   }
   // The store holds keyed hashes only.
   const dump = JSON.stringify([...w.store.records]);
-  assert.ok(!dump.includes(r.code) && !dump.includes(OWNER));
+  assert.ok(!dump.includes(String(r.code)) && !dump.includes(OWNER));
 });
 
 // R10: scan the working tree for secrets and personal details. The scan
@@ -46,6 +46,7 @@ const PATTERNS = [
   /\b[\w.+-]+@(?!example\.(test|com|org))[\w-]+\.[\w.]+\b/ // non-example addresses
 ];
 
+/** @param {string} dir @returns {Generator<string, void, unknown>} */
 function* walk(dir) {
   for (const name of readdirSync(dir)) {
     if (SKIP_DIRS.has(name)) continue;
@@ -55,18 +56,18 @@ function* walk(dir) {
   }
 }
 
-test('the working tree holds no secrets or personal addresses', async () => {
+void test('the working tree holds no secrets or personal addresses', () => {
   const hits = [];
   for (const file of walk(ROOT)) {
     const text = readFileSync(file, 'utf8');
     for (const pattern of PATTERNS) {
-      if (pattern.test(text)) hits.push(`${file}: ${pattern}`);
+      if (pattern.test(text)) hits.push(`${file}: ${String(pattern)}`);
     }
   }
   assert.deepEqual(hits, [], 'scan must be clean');
 });
 
-test('a logged event drops entries older than 14 days and keeps newer ones', async () => {
+void test('a logged event drops entries older than 14 days and keeps newer ones', async () => {
   const w = await makeWorld();
   const day = 24 * 3_600_000;
   w.service.log('challenge', 'accepted', 'old');
@@ -87,7 +88,7 @@ test('a logged event drops entries older than 14 days and keeps newer ones', asy
   );
 });
 
-test('an entry exactly 14 days old is kept', async () => {
+void test('an entry exactly 14 days old is kept', async () => {
   const w = await makeWorld();
   w.service.log('challenge', 'accepted', 'edge');
   w.advance(14 * 24 * 3_600_000);

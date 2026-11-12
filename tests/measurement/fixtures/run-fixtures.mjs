@@ -56,9 +56,13 @@ async function nodeCoverageFor(fileAbs) {
       env: { ...process.env, NODE_V8_COVERAGE: dir },
       stdio: 'ignore'
     });
-    child.on('exit', (code) =>
-      code === 0 ? resolve() : reject(new Error(`fixture exited ${code}`))
-    );
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`fixture exited ${code}`));
+      }
+    });
   });
   const url = 'file://' + fileAbs;
   const entries = [];
@@ -476,9 +480,13 @@ console.log('child done')
           },
           stdio: ['ignore', 'pipe', 'pipe']
         });
-        proc.on('exit', (code) =>
-          code === 0 ? resolve() : reject(new Error(`child exited ${code}`))
-        );
+        proc.on('exit', (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`child exited ${code}`));
+          }
+        });
         proc.on('error', reject);
       });
     } finally {
@@ -535,7 +543,7 @@ await proof(
 // --- Run-failing checks, each proven by making it fail ----------------------
 await proof(
   'one path loaded with two different contents fails the run and names the path',
-  async () => {
+  () => {
     assert.throws(
       () =>
         mergeV8Entries([
@@ -549,18 +557,19 @@ await proof(
 
 await proof(
   'a served script differing from its checked-in source fails the run',
-  async () => {
+  () => {
     assert.throws(
-      () =>
+      () => {
         checkServedScripts([
           { url: 'https://localhost:1/app.js', source: 'tampered()' }
-        ]),
+        ]);
+      },
       (e) => e instanceof MeasurementFailure && e.message.includes('/app.js')
     );
   }
 );
 
-await proof('a cut-off report is rejected', async () => {
+await proof('a cut-off report is rejected', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-cut-'));
   writeFileSync(join(dir, 'coverage-1-1-0.json'), '{"result": [');
   assert.throws(
@@ -569,7 +578,7 @@ await proof('a cut-off report is rejected', async () => {
   );
 });
 
-await proof('a stale report left by an earlier run is rejected', async () => {
+await proof('a stale report left by an earlier run is rejected', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-stale-'));
   const f = join(dir, 'coverage-1-1-0.json');
   writeFileSync(f, '{"result": []}');
@@ -583,7 +592,7 @@ await proof('a stale report left by an earlier run is rejected', async () => {
 
 await proof(
   'a page carrying script inside its HTML, including an event-handler attribute, is detected',
-  async () => {
+  () => {
     assert(
       findInlineScripts('<html><script>alert(1)</script></html>', 'p.html')
         .length > 0,
@@ -603,7 +612,7 @@ await proof(
   }
 );
 
-await proof('dropping one capture among many fails the run', async () => {
+await proof('dropping one capture among many fails the run', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-drop-'));
   writeFileSync(
     join(dir, 'captures.index'),
@@ -694,7 +703,7 @@ await proof(
     );
     assert(
       lines[firedCatch] > 0,
-      `line ${firedCatch} (the fired catch) must be covered`
+      `line ${String(firedCatch)} (the fired catch) must be covered`
     );
   }
 );
@@ -710,12 +719,12 @@ await proof(
     assert.equal(
       lines[unfiredCatch] ?? 0,
       0,
-      `line ${unfiredCatch} (the never-fired catch) must stay uncovered`
+      `line ${String(unfiredCatch)} (the never-fired catch) must stay uncovered`
     );
   }
 );
 
 console.log(results.join('\n'));
 console.log(
-  `${results.filter((r) => r.startsWith('ok')).length}/${results.length} fixture proofs passed`
+  `${String(results.filter((r) => r.startsWith('ok')).length)}/${String(results.length)} fixture proofs passed`
 );

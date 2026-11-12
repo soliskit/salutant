@@ -56,7 +56,7 @@ async function makeEnv() {
   };
 }
 
-test('the worker forwards every request to the one named object', async () => {
+void test('the worker forwards every request to the one named object', async () => {
   const names = [];
   const seen = [];
   const env = {
@@ -82,7 +82,7 @@ test('the worker forwards every request to the one named object', async () => {
   assert.deepEqual(seen, [['id:service', `${SERVICE_ORIGIN}/app.js`]]);
 });
 
-test('the object builds the service once and serves page assets through it', async () => {
+void test('the object builds the service once and serves page assets through it', async () => {
   const object = new SalutantStoreDO(makeCtx(), await makeEnv());
   assert.equal(
     object.workerPromise,
@@ -106,7 +106,7 @@ test('the object builds the service once and serves page assets through it', asy
 
 // Exercises the production wiring's epochSource.read through the existing
 // public-key route, without a challenge, mail call or production service.
-test('the object key endpoint returns the epoch from its configured environment', async () => {
+void test('the object key endpoint returns the epoch from its configured environment', async () => {
   const env = await makeEnv();
   env.EPOCH = JSON.stringify({ value: 7 });
   const object = new SalutantStoreDO(makeCtx(), env);
@@ -127,7 +127,7 @@ test('the object key endpoint returns the epoch from its configured environment'
 
 // Checks the worker fallback for a normal registry containing a non-empty
 // app origin. It makes no policy claim about configuring an empty origin.
-test('the code-entry page rejects a missing app parameter for a registered non-empty origin', async () => {
+void test('the code-entry page rejects a missing app parameter for a registered non-empty origin', async () => {
   const worker = createWorker({ apps: [{ origin: APP_ORIGIN }] });
   const response = await worker.fetch(new Request(`${SERVICE_ORIGIN}/`));
   assert.equal(response.status, 400);
@@ -145,7 +145,7 @@ test('the code-entry page rejects a missing app parameter for a registered non-e
 
 // R16 / exact origin list: with several registered apps, the page is served
 // for each registered origin and still refused for an unregistered one.
-test('the code-entry page is served for each registered app origin and refused for an unregistered one', async () => {
+void test('the code-entry page is served for each registered app origin and refused for an unregistered one', async () => {
   const second = 'https://second.example.test';
   const worker = createWorker({
     apps: [{ origin: APP_ORIGIN }, { origin: second }]
@@ -174,7 +174,7 @@ test('the code-entry page is served for each registered app origin and refused f
 
 // Issue #106 regression: construction schedules the hourly purge alarm
 // once per stored object, and a later wake does not override it.
-test('construction schedules the hourly alarm once', async () => {
+void test('construction schedules the hourly alarm once', async () => {
   const ctx = makeCtx();
   new SalutantStoreDO(ctx, await makeEnv());
   await new Promise((resolve) => setImmediate(resolve));
@@ -192,7 +192,7 @@ test('construction schedules the hourly alarm once', async () => {
 // Issue #106 behavior: the alarm deletes a record already past its
 // retention and reschedules itself; the same service build keeps
 // serving requests afterwards.
-test('the alarm purges a record past its retention and reschedules', async () => {
+void test('the alarm purges a record past its retention and reschedules', async () => {
   const ctx = makeCtx();
   const object = new SalutantStoreDO(ctx, await makeEnv());
   ctx.storage.sql.exec(
@@ -214,7 +214,7 @@ test('the alarm purges a record past its retention and reschedules', async () =>
 
 // Issue #106 resilience: a failing purge still reschedules, so the next
 // successful run can purge eligible records.
-test('a failing purge still reschedules the alarm', async () => {
+void test('a failing purge still reschedules the alarm', async () => {
   const ctx = makeCtx();
   const object = new SalutantStoreDO(ctx, await makeEnv());
   ctx.storage.sql.exec(
