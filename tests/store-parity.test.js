@@ -26,6 +26,14 @@ function makeStores() {
   ];
 }
 
+// Narrows a stored value to an object that has the field `n`; fails
+// the test instead of reading a missing or non-object value.
+/** @param {unknown} value */
+function withN(value) {
+  assert.ok(typeof value === 'object' && value !== null && 'n' in value);
+  return value;
+}
+
 void test('parity: set/get/delete/keysWithPrefix across the interface', () => {
   for (const [name, store] of makeStores()) {
     assert.equal(store.get('missing'), undefined, name);
@@ -53,15 +61,15 @@ void test('parity: set/get/delete/keysWithPrefix across the interface', () => {
 void test('parity: get returns a copy; getRef inside transact mutates the stored value', () => {
   for (const [name, store] of makeStores()) {
     store.set('k', { n: 1, nested: { ok: true } });
-    store.get('k').n = 999;
-    assert.equal(store.get('k').n, 1, name);
+    withN(store.get('k')).n = 999;
+    assert.equal(withN(store.get('k')).n, 1, name);
 
     // The service pattern: read the raw reference inside a transaction
     // and mutate it; the change is visible after commit.
     store.transact((s) => {
-      s.getRef('k').n = 2;
+      withN(s.getRef('k')).n = 2;
     });
-    assert.equal(store.get('k').n, 2, name);
+    assert.equal(withN(store.get('k')).n, 2, name);
 
     // getRef on a missing key stays undefined inside a transaction.
     store.transact((s) => {

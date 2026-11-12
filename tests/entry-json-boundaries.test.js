@@ -72,6 +72,10 @@ function objectFor(env) {
     {
       storage,
       // No platform failure policy is simulated by this construction shim.
+      /**
+       * @template T
+       * @param {() => Promise<T>} fn
+       */
       blockConcurrencyWhile: (fn) => fn()
     },
     env

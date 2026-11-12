@@ -91,6 +91,12 @@ void test('an uncertain send that the provider did accept reconciles to sent, an
   const reservation = w.store.transact((s) =>
     s.getRef(`reservation:${created.requestId}`)
   );
+  assert.ok(
+    typeof reservation === 'object' &&
+      reservation !== null &&
+      'outcome' in reservation &&
+      'reconciled' in reservation
+  );
   assert.equal(reservation.outcome, 'uncertain');
   assert.equal(
     reservation.reconciled,
@@ -125,6 +131,12 @@ void test('a zero attempt budget refuses even the right code and kills the chall
   assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' });
   const challenge = w.store.transact((s) =>
     s.getRef(`challenge:${created.challengeId}`)
+  );
+  assert.ok(
+    typeof challenge === 'object' &&
+      challenge !== null &&
+      'state' in challenge &&
+      'attempts' in challenge
   );
   assert.equal(challenge.state, 'dead');
   assert.equal(challenge.attempts, 0, 'the budget, not a wrong try, ended it');
@@ -200,6 +212,12 @@ void test('a verify with non-string fields is one counted wrong try, answered ge
   const challenge = w.store.transact((s) =>
     s.getRef(`challenge:${created.challengeId}`)
   );
+  assert.ok(
+    typeof challenge === 'object' &&
+      challenge !== null &&
+      'attempts' in challenge &&
+      'state' in challenge
+  );
   assert.equal(challenge.attempts, 1, 'one wrong try counted');
   assert.equal(challenge.state, 'open', 'one try does not kill the challenge');
 });
@@ -223,6 +241,12 @@ void test('a correct code and cookie with a different address is refused and cou
   assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' }); // R2 generic
   const challenge = w.store.transact((s) =>
     s.getRef(`challenge:${created.challengeId}`)
+  );
+  assert.ok(
+    typeof challenge === 'object' &&
+      challenge !== null &&
+      'attempts' in challenge &&
+      'state' in challenge
   );
   assert.equal(challenge.attempts, 1, 'one wrong try counted');
   assert.equal(challenge.state, 'open', 'the challenge is not consumed');
