@@ -12,16 +12,26 @@ class FakeElement {
     this.disabled = false;
     this.textContent = '';
     this.value = '';
+    /** @type {Record<string, (event: { preventDefault(): void }) => unknown>} */
     this.handlers = {};
   }
+  /**
+   * @param {string} type
+   * @param {(event: { preventDefault(): void }) => unknown} handler
+   */
   addEventListener(type, handler) {
     this.handlers[type] = handler;
   }
+  /** @param {string} type */
   fire(type) {
     return this.handlers[type]({ preventDefault() {} });
   }
 }
 
+/**
+ * @param {unknown} body
+ * @param {number} [status]
+ */
 function ok(body, status = 200) {
   return { ok: status < 400, status, json: () => Promise.resolve(body) };
 }
@@ -35,7 +45,9 @@ function deferred() {
   return { promise, resolve: finish };
 }
 
+/** @param {(url: string, n: number) => unknown} respond */
 function loadPage(respond) {
+  /** @type {Record<string, FakeElement>} */
   const elements = {};
   for (const id of [
     'address-form',
@@ -48,15 +60,23 @@ function loadPage(respond) {
     elements[id] = new FakeElement();
   }
   elements['code-form'].hidden = true;
+  /** @type {{ url: string, key: string, body: Record<string, unknown> }[]} */
   const calls = [];
   let keyCount = 0;
   const context = vm.createContext({
-    document: { getElementById: (id) => elements[id] },
+    document: {
+      /** @param {string} id */
+      getElementById: (id) => elements[id]
+    },
     location: { search: '?app=https%3A%2F%2Fapp.example.test&state=s' },
     crypto: { randomUUID: () => `key-${String(++keyCount)}` },
     URLSearchParams,
     encodeURIComponent,
     JSON,
+    /**
+     * @param {string} url
+     * @param {{ headers: Record<string, string>, body: string }} init
+     */
     fetch: (url, init) => {
       calls.push({
         url,
@@ -70,6 +90,7 @@ function loadPage(respond) {
   return { elements, calls };
 }
 
+/** @param {ReturnType<typeof loadPage>} page */
 async function reachCodeStage(page) {
   page.elements.address.value = 'owner@example.test';
   await page.elements['address-form'].fire('submit');
