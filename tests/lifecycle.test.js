@@ -351,6 +351,7 @@ void test('a resend that cannot be honored answers like one that can, and sends 
   await w.service.drain();
   const sent = w.mailer.attempts.length;
   assert.equal(sent, 2, 'the honest resend is the only extra send');
+  /** @param {Response} res */
   const shape = async (res) => ({
     status: res.status,
     keys: Object.keys(await res.json()).sort()

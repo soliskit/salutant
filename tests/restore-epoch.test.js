@@ -30,6 +30,7 @@ const DRIVERS = [
   ['MemoryStore', () => new MemoryStore()],
   ['DurableObjectStore', () => new DurableObjectStore(makeDOStorage())]
 ];
+/** @param {string} snap */
 const sortedEntries = (snap) =>
   JSON.parse(snap).sort(([a], [b]) => (a < b ? -1 : 1));
 
