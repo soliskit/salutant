@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { makeWorld, BrowserSession, OWNER, STRANGER } from './helpers.js';
 
-test('responses for allowed and unlisted addresses differ only in the permitted fields', async () => {
+void test('responses for allowed and unlisted addresses differ only in the permitted fields', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn(null);
   const mk = () => new BrowserSession(w);
@@ -26,12 +26,16 @@ test('responses for allowed and unlisted addresses differ only in the permitted 
   assert.equal(a.status, b.status);
   // Headers: same names, same values. The per-challenge cookie differs
   // only in its random name/value and path id - its shape is identical.
+  /** @param {Response} res */
   const names = (res) => [...res.headers.keys()];
   assert.deepEqual(names(rAllowed), names(rUnlisted));
-  const norm = (v) =>
-    v
+  /** @param {string | null} v */
+  const norm = (v) => {
+    assert.ok(v !== null, 'response has no set-cookie header');
+    return v
       .replace(/sb_[^=]+=[^;]+/, 'sb_ID=BINDING')
       .replace(/challenges\/[^/]+/, 'challenges/ID');
+  };
   for (const n of names(rAllowed)) {
     const a = rAllowed.headers.get(n);
     const b = rUnlisted.headers.get(n);
@@ -43,9 +47,10 @@ test('responses for allowed and unlisted addresses differ only in the permitted 
   }
 });
 
-test('quota-state: driving the limits leaves allowed and unlisted classes indistinguishable', async () => {
+void test('quota-state: driving the limits leaves allowed and unlisted classes indistinguishable', async () => {
   const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 1000 } });
   const start = await w.app.startSignIn(null);
+  /** @param {string} address */
   const run = async (address) => {
     const browser = new BrowserSession(w);
     const out = [];
@@ -53,10 +58,10 @@ test('quota-state: driving the limits leaves allowed and unlisted classes indist
       const res = await browser.postChallenge({
         address,
         stateId: start.stateId,
-        headers: { 'cf-connecting-ip': `192.0.2.${i}` }
+        headers: { 'cf-connecting-ip': `192.0.2.${String(i)}` }
       });
       out.push(
-        `${res.status}:${JSON.stringify(await res.json()).replace(/"(requestId|challengeId)":"[^"]+"/g, '"$1":"x"')}`
+        `${String(res.status)}:${JSON.stringify(await res.json()).replace(/"(requestId|challengeId)":"[^"]+"/g, '"$1":"x"')}`
       );
     }
     return out;
@@ -68,12 +73,14 @@ test('quota-state: driving the limits leaves allowed and unlisted classes indist
   );
 });
 
-test('timing protocol: 200 interleaved requests per class, 3 runs, within tolerance', async () => {
+void test('timing protocol: 200 interleaved requests per class, 3 runs, within tolerance', async () => {
   const RUNS = 3;
   const PER_CLASS = 200;
   const HARD_MAX_MS = 50;
   const BASE_TOLERANCE_MS = 20;
+  /** @type {{ allowed: number[], unlisted: number[] }} */
   const medians = { allowed: [], unlisted: [] };
+  /** @type {{ allowed: number[], unlisted: number[] }} */
   const p95s = { allowed: [], unlisted: [] };
   const gaps = [];
   for (let run = 0; run < RUNS; run++) {
@@ -85,25 +92,30 @@ test('timing protocol: 200 interleaved requests per class, 3 runs, within tolera
         activeChallengesPerAddress: 10000
       }
     });
+    /** @type {{ allowed: number[], unlisted: number[] }} */
     const samples = { allowed: [], unlisted: [] };
     for (let i = 0; i < PER_CLASS; i++) {
-      for (const [klass, address] of [
+      /** @type {Array<['allowed' | 'unlisted', string]>} */
+      const classAddresses = [
         ['allowed', OWNER],
         ['unlisted', STRANGER]
-      ]) {
+      ];
+      for (const [klass, address] of classAddresses) {
         const browser = new BrowserSession(w);
         const start = await w.app.startSignIn(null);
         const t0 = performance.now();
         const res = await browser.postChallenge({
           address,
           stateId: start.stateId,
-          headers: { 'cf-connecting-ip': `192.0.2.${i % 250}` }
+          headers: { 'cf-connecting-ip': `192.0.2.${String(i % 250)}` }
         });
         await res.json();
         samples[klass].push(performance.now() - t0);
       }
     }
-    for (const klass of ['allowed', 'unlisted']) {
+    /** @type {Array<'allowed' | 'unlisted'>} */
+    const classes = ['allowed', 'unlisted'];
+    for (const klass of classes) {
       const sorted = [...samples[klass]].sort((a, b) => a - b);
       medians[klass].push(sorted[Math.floor(sorted.length / 2)]);
       p95s[klass].push(sorted[Math.floor(sorted.length * 0.95)]);
@@ -113,6 +125,7 @@ test('timing protocol: 200 interleaved requests per class, 3 runs, within tolera
       p95: Math.abs(p95s.allowed[run] - p95s.unlisted[run])
     });
   }
+  /** @param {number[]} xs */
   const spread = (xs) => Math.max(...xs) - Math.min(...xs);
   const withinClass = Math.max(
     spread(medians.allowed),
@@ -125,16 +138,16 @@ test('timing protocol: 200 interleaved requests per class, 3 runs, within tolera
   );
   assert.ok(
     withinClass <= HARD_MAX_MS,
-    `inconclusive: same-class run-to-run difference ${withinClass}ms over ${HARD_MAX_MS}ms`
+    `inconclusive: same-class run-to-run difference ${String(withinClass)}ms over ${String(HARD_MAX_MS)}ms`
   );
   for (const [run, gap] of gaps.entries()) {
     assert.ok(
       gap.median <= tolerance && gap.median <= HARD_MAX_MS,
-      `run ${run}: median gap ${gap.median}ms`
+      `run ${String(run)}: median gap ${String(gap.median)}ms`
     );
     assert.ok(
       gap.p95 <= tolerance && gap.p95 <= HARD_MAX_MS,
-      `run ${run}: p95 gap ${gap.p95}ms`
+      `run ${String(run)}: p95 gap ${String(gap.p95)}ms`
     );
   }
 });

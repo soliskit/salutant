@@ -25,7 +25,7 @@ function makeStores() {
   ];
 }
 
-test('parity: set/get/delete/keysWithPrefix across the interface', async () => {
+void test('parity: set/get/delete/keysWithPrefix across the interface', () => {
   for (const [name, store] of makeStores()) {
     assert.equal(store.get('missing'), undefined, name);
     store.set('code:1', { code: '123456', attempts: 0 });
@@ -49,7 +49,7 @@ test('parity: set/get/delete/keysWithPrefix across the interface', async () => {
   }
 });
 
-test('parity: get returns a copy; getRef inside transact mutates the stored value', async () => {
+void test('parity: get returns a copy; getRef inside transact mutates the stored value', () => {
   for (const [name, store] of makeStores()) {
     store.set('k', { n: 1, nested: { ok: true } });
     store.get('k').n = 999;
@@ -71,7 +71,7 @@ test('parity: get returns a copy; getRef inside transact mutates the stored valu
   }
 });
 
-test('parity: transact flushes get/set/delete changes on commit', async () => {
+void test('parity: transact flushes get/set/delete changes on commit', () => {
   for (const [name, store] of makeStores()) {
     store.set('a', 1);
     store.set('b', 2);
@@ -89,7 +89,7 @@ test('parity: transact flushes get/set/delete changes on commit', async () => {
   }
 });
 
-test('parity: keysWithPrefix treats % and _ in keys as literal characters', async () => {
+void test('parity: keysWithPrefix treats % and _ in keys as literal characters', () => {
   for (const [name, store] of makeStores()) {
     store.set('rate:100%', 1);
     store.set('rate:100_x', 2);
@@ -103,7 +103,7 @@ test('parity: keysWithPrefix treats % and _ in keys as literal characters', asyn
   }
 });
 
-test('parity: snapshot and restore use one shared format in both directions', async () => {
+void test('parity: snapshot and restore use one shared format in both directions', () => {
   const data = { 'code:1': { code: '123456' }, 'budget:owner': { used: 3 } };
   for (const [aName, a] of makeStores()) {
     for (const [bName, b] of makeStores()) {
@@ -124,19 +124,19 @@ test('parity: snapshot and restore use one shared format in both directions', as
   }
 });
 
-test('DurableObjectStore: state survives a new store instance over the same storage', () => {
+void test('DurableObjectStore: state survives a new store instance over the same storage', () => {
   const storage = makeDOStorage();
   const first = new DurableObjectStore(storage);
-  first.transact(
-    (s) => s.getRef('k') === undefined && s.set('k', { kept: true })
-  );
+  first.transact((s) => {
+    if (s.getRef('k') === undefined) s.set('k', { kept: true });
+  });
   first.set('k', { kept: true });
   const second = new DurableObjectStore(storage);
   assert.deepEqual(second.get('k'), { kept: true });
   assert.deepEqual(second.keysWithPrefix('k'), ['k']);
 });
 
-test('DurableObjectStore: a throwing transaction rolls back (DO guarantee)', () => {
+void test('DurableObjectStore: a throwing transaction rolls back (DO guarantee)', () => {
   const store = new DurableObjectStore(makeDOStorage());
   store.set('a', 1);
   assert.throws(
@@ -150,7 +150,7 @@ test('DurableObjectStore: a throwing transaction rolls back (DO guarantee)', () 
   assert.equal(store.get('a'), 1);
 });
 
-test('DurableObjectStore: restoreFrom is atomic - a mid-restore failure leaves prior contents', () => {
+void test('DurableObjectStore: restoreFrom is atomic - a mid-restore failure leaves prior contents', () => {
   const storage = makeDOStorage();
   const store = new DurableObjectStore(storage);
   store.set('old', 1);
@@ -160,19 +160,21 @@ test('DurableObjectStore: restoreFrom is atomic - a mid-restore failure leaves p
     ['c', 3]
   ]);
   let inserts = 0;
-  const realExec = storage.sql.exec;
+  const realExec = storage.sql.exec.bind(storage.sql);
   storage.sql.exec = (query, ...params) => {
     if (/^\s*insert/i.test(query) && ++inserts === 2)
       throw new Error('crash mid-restore');
     return realExec(query, ...params);
   };
-  assert.throws(() => store.restoreFrom(snap), /crash mid-restore/);
+  assert.throws(() => {
+    store.restoreFrom(snap);
+  }, /crash mid-restore/);
   assert.equal(store.get('old'), 1);
   assert.equal(store.get('a'), undefined);
   assert.deepEqual(store.keysWithPrefix(''), ['old']);
 });
 
-test('DurableObjectStore: restoreFrom inside a transaction commits with it', () => {
+void test('DurableObjectStore: restoreFrom inside a transaction commits with it', () => {
   const store = new DurableObjectStore(makeDOStorage());
   store.set('x', 9);
   store.set('y', 8);
@@ -183,7 +185,7 @@ test('DurableObjectStore: restoreFrom inside a transaction commits with it', () 
   assert.deepEqual(store.get('only'), { v: 1 });
 });
 
-test('parity: snapshot inside a transaction sees the working copy', async () => {
+void test('parity: snapshot inside a transaction sees the working copy', () => {
   for (const [name, store] of makeStores()) {
     store.set('a', 1);
     store.set('b', 2);
@@ -210,7 +212,7 @@ test('parity: snapshot inside a transaction sees the working copy', async () => 
   }
 });
 
-test('parity: restore inside a transaction replaces wholesale, including transaction-created keys', async () => {
+void test('parity: restore inside a transaction replaces wholesale, including transaction-created keys', () => {
   for (const [name, store] of makeStores()) {
     store.set('db-key', 1);
     const snap = JSON.stringify([['restored', true]]);
@@ -225,7 +227,7 @@ test('parity: restore inside a transaction replaces wholesale, including transac
   }
 });
 
-test('parity: keysWithPrefix inside a transaction merges the working copy', async () => {
+void test('parity: keysWithPrefix inside a transaction merges the working copy', () => {
   for (const [name, store] of makeStores()) {
     store.set('code:keep', 1);
     store.set('code:drop', 2);

@@ -4,11 +4,13 @@ import assert from 'node:assert/strict';
 import { MockMailAdapter } from '../src/mail-mock.js';
 import { makeWorld, BrowserSession, OWNER } from './helpers.js';
 
-test('an uncertain send is not retried, counts against budget, and is reconciled', async () => {
+void test('an uncertain send is not retried, counts against budget, and is reconciled', async () => {
   let captured;
   const w = await makeWorld({
     mailerBehavior: ({ text }) => {
-      captured = text.match(/\b(\d{6})\b/)[1];
+      const match = text.match(/\b(\d{6})\b/);
+      assert.ok(match !== null, 'mock mail text has no six-digit code');
+      captured = match[1];
       return 'uncertain';
     }
   });
@@ -47,7 +49,7 @@ test('an uncertain send is not retried, counts against budget, and is reconciled
   assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' });
 });
 
-test('a failed send means no proof and a recorded reservation', async () => {
+void test('a failed send means no proof and a recorded reservation', async () => {
   const w = await makeWorld({ mailerBehavior: 'failed' });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -68,7 +70,7 @@ test('a failed send means no proof and a recorded reservation', async () => {
   assert.ok([200, 429].includes(res.status));
 });
 
-test('a double-click is one request', async () => {
+void test('a double-click is one request', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -93,7 +95,7 @@ test('a double-click is one request', async () => {
   assert.equal(w.store.keysWithPrefix('challenge:').length, 1);
 });
 
-test('a request without an idempotency header stays separate from the literal key null', async () => {
+void test('a request without an idempotency header stays separate from the literal key null', async () => {
   const w = await makeWorld();
   const browser1 = new BrowserSession(w);
   const browser2 = new BrowserSession(w);
@@ -135,7 +137,7 @@ test('a request without an idempotency header stays separate from the literal ke
   );
 });
 
-test('a storage failure closes the service: no send, plain message', async () => {
+void test('a storage failure closes the service: no send, plain message', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -158,7 +160,7 @@ test('a storage failure closes the service: no send, plain message', async () =>
   w.store.transact = realTransact;
 });
 
-test('an unreadable epoch closes every route', async () => {
+void test('an unreadable epoch closes every route', async () => {
   const w = await makeWorld();
   w.epoch.available = false;
   const browser = new BrowserSession(w);
@@ -175,7 +177,7 @@ test('an unreadable epoch closes every route', async () => {
   }
 });
 
-test('provider timeout: the person can resend after the cooldown and sign in', async () => {
+void test('provider timeout: the person can resend after the cooldown and sign in', async () => {
   let call = 0;
   const w = await makeWorld({
     mailerBehavior: () => (++call === 1 ? 'uncertain' : 'accepted')
@@ -215,11 +217,13 @@ test('provider timeout: the person can resend after the cooldown and sign in', a
   assert.equal(complete.status, 200, 'resent sign-in completes');
 });
 
-test('a failed send cannot verify: the undelivered code is dead on arrival', async () => {
+void test('a failed send cannot verify: the undelivered code is dead on arrival', async () => {
   let captured;
   const w = await makeWorld({
     mailerBehavior: ({ text }) => {
-      captured = text.match(/\d{6}/)[0];
+      const match = text.match(/\d{6}/);
+      assert.ok(match !== null, 'mock mail text has no six-digit code');
+      captured = match[0];
       return 'failed';
     }
   });
@@ -243,7 +247,7 @@ test('a failed send cannot verify: the undelivered code is dead on arrival', asy
   assert.deepEqual(await res.json(), { error: 'invalid_or_expired_code' });
 });
 
-test('an idempotent replay carries the binding cookie, so a fresh-browser retry can verify', async () => {
+void test('an idempotent replay carries the binding cookie, so a fresh-browser retry can verify', async () => {
   const w = await makeWorld();
   const browser1 = new BrowserSession(w);
   const browser2 = new BrowserSession(w); // the retry, after the first response was lost
@@ -279,7 +283,7 @@ test('an idempotent replay carries the binding cookie, so a fresh-browser retry 
 
 // Request id, send results and reconcile results follow docs/mail/mock-mail-adapter-contract.md;
 // the mock's provider id format and lastCode() are the mock's own conventions.
-test('mock mail adapter: request id required, accepted sends, reconcile results, last code', async () => {
+void test('mock mail adapter: request id required, accepted sends, reconcile results, last code', async () => {
   const mail = new MockMailAdapter();
   assert.equal(mail.lastCode(), undefined, 'no code before any send');
   await assert.rejects(
@@ -343,7 +347,7 @@ test('mock mail adapter: request id required, accepted sends, reconcile results,
 // The adapter contract promises Promise returns (docs/mail/mock-mail-adapter-contract.md);
 // failures reject instead of throwing synchronously, even when the failure comes from
 // inside the mock's own state.
-test('mock mail adapter: internal failures reject, never throw synchronously', async () => {
+void test('mock mail adapter: internal failures reject, never throw synchronously', async () => {
   const mail = new MockMailAdapter({
     behavior: () => {
       throw new Error('provider exploded');
@@ -376,11 +380,13 @@ test('mock mail adapter: internal failures reject, never throw synchronously', a
 // returns the same answer and sends nothing. The existing test 'a failed send
 // cannot verify' already covers the refused code; it is asserted again here
 // only so one test shows the whole sequence.
-test('after a failed send the provider is called once, and repeating the same request sends nothing', async () => {
+void test('after a failed send the provider is called once, and repeating the same request sends nothing', async () => {
   let sentCode;
   const w = await makeWorld({
     mailerBehavior: ({ text }) => {
-      sentCode = text.match(/\b(\d{6})\b/)[1];
+      const match = text.match(/\b(\d{6})\b/);
+      assert.ok(match !== null, 'mock mail text has no six-digit code');
+      sentCode = match[1];
       return 'failed';
     }
   });
@@ -422,7 +428,7 @@ test('after a failed send the provider is called once, and repeating the same re
 
 // R5: if a request throws after it registered its idempotency key, a retry
 // with the same key must be answered, not wait on the dead request.
-test('a request that throws after registering its key does not block a same-key retry', async () => {
+void test('a request that throws after registering its key does not block a same-key retry', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -431,18 +437,20 @@ test('a request that throws after registering its key does not block a same-key 
   let armed = true;
   w.store.transact = (fn) =>
     original((s) => {
-      const set = s.set;
+      const own = Object.getOwnPropertyDescriptor(s, 'set');
+      const set = s.set.bind(s);
       s.set = (k, v) => {
         if (armed && String(k).startsWith('idem:')) {
           armed = false;
           throw new Error('injected write failure');
         }
-        return set.call(s, k, v);
+        set(k, v);
       };
       try {
         return fn(s);
       } finally {
-        s.set = set;
+        if (own) Object.defineProperty(s, 'set', own);
+        else Reflect.deleteProperty(s, 'set');
       }
     });
   const first = await browser.postChallenge({
@@ -459,13 +467,17 @@ test('a request that throws after registering its key does not block a same-key 
       idempotencyKey: key
     }),
     new Promise((resolve) => {
-      retryTimer = setTimeout(() => resolve('hung'), 2000);
+      retryTimer = setTimeout(() => {
+        resolve('hung');
+      }, 2000);
     })
-  ]).finally(() => clearTimeout(retryTimer));
+  ]).finally(() => {
+    clearTimeout(retryTimer);
+  });
   assert.notEqual(retry, 'hung', 'the same-key retry is answered');
 });
 
-test('a request that throws before registering its key leaves no stale entry for a same-key retry', async () => {
+void test('a request that throws before registering its key leaves no stale entry for a same-key retry', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn(null);
   const key = 'throws-before-register';
@@ -485,23 +497,39 @@ test('a request that throws before registering its key leaves no stale entry for
       idempotencyKey: key
     }),
     new Promise((resolve) => {
-      retryTimer = setTimeout(() => resolve('hung'), 2000);
+      retryTimer = setTimeout(() => {
+        resolve('hung');
+      }, 2000);
     })
-  ]).finally(() => clearTimeout(retryTimer));
+  ]).finally(() => {
+    clearTimeout(retryTimer);
+  });
   assert.notEqual(retry, 'hung', 'the same-key retry is answered');
   assert.equal(retry.status, 200, 'and it is a normal first answer');
 });
 
 // Fails a test that waits on a request the service never answers.
+/**
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {string} label
+ * @returns {Promise<T>}
+ */
 function within(promise, label) {
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
+  /** @type {Promise<never>} */
   const limit = new Promise((_resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(label)), 2000);
+    timer = setTimeout(() => {
+      reject(new Error(label));
+    }, 2000);
   });
-  return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
+  return Promise.race([promise, limit]).finally(() => {
+    clearTimeout(timer);
+  });
 }
 
-test('a duplicate already waiting on a request that then throws gets the closed 500, and a later same-key retry works', async () => {
+void test('a duplicate already waiting on a request that then throws gets the closed 500, and a later same-key retry works', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn(null);
   const key = 'duplicate-waits-then-throws';
@@ -509,11 +537,13 @@ test('a duplicate already waiting on a request that then throws gets the closed 
 
   // Hold the first request at its keyed hashes, after it registered its key.
   let held = false;
-  let reachedHold;
+  /** @type {(value?: unknown) => void} */
+  let reachedHold = () => {};
   const holdReached = new Promise((resolve) => {
     reachedHold = resolve;
   });
-  let release;
+  /** @type {(value?: unknown) => void} */
+  let release = () => {};
   const gate = new Promise((resolve) => {
     release = resolve;
   });
@@ -527,32 +557,35 @@ test('a duplicate already waiting on a request that then throws gets the closed 
     return hmac(...args);
   };
   // Know when the duplicate has joined the first request.
-  let joined;
+  /** @type {(value?: unknown) => void} */
+  let joined = () => {};
   const duplicateJoined = new Promise((resolve) => {
     joined = resolve;
   });
   const log = w.service.log.bind(w.service);
   w.service.log = (event, outcome, source) => {
     if (outcome === 'duplicate') joined();
-    return log(event, outcome, source);
+    log(event, outcome, source);
   };
   // Fail the write of the key's record once the duplicate is waiting.
   let armed = false;
   const original = w.store.transact.bind(w.store);
   w.store.transact = (fn) =>
     original((s) => {
-      const set = s.set;
+      const own = Object.getOwnPropertyDescriptor(s, 'set');
+      const set = s.set.bind(s);
       s.set = (k, v) => {
         if (armed && String(k).startsWith('idem:')) {
           armed = false;
           throw new Error('injected write failure');
         }
-        return set.call(s, k, v);
+        set(k, v);
       };
       try {
         return fn(s);
       } finally {
-        s.set = set;
+        if (own) Object.defineProperty(s, 'set', own);
+        else Reflect.deleteProperty(s, 'set');
       }
     });
 
@@ -599,6 +632,11 @@ test('a duplicate already waiting on a request that then throws gets the closed 
 });
 
 const SERVICE = 'https://salutant.example.test';
+/**
+ * @param {Awaited<ReturnType<typeof makeWorld>>} w
+ * @param {string} path
+ * @param {RequestInit['body']} body
+ */
 const post = (w, path, body, headers = {}) =>
   w.worker.fetch(
     new Request(`${SERVICE}${path}`, {
@@ -608,7 +646,7 @@ const post = (w, path, body, headers = {}) =>
     })
   );
 
-test('a JSON null body or a missing body closes create and verify and does not block a same-key retry', async () => {
+void test('a JSON null body or a missing body closes create and verify and does not block a same-key retry', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn(null);
   for (const [key, body] of [
@@ -637,7 +675,7 @@ test('a JSON null body or a missing body closes create and verify and does not b
   }
 });
 
-test('JSON primitive and array bodies behave like an empty object', async () => {
+void test('JSON primitive and array bodies behave like an empty object', async () => {
   const w = await makeWorld();
   const empty = await post(w, '/v1/challenges', '{}');
   const emptyVerify = await post(w, '/v1/challenges/x/verify', '{}');

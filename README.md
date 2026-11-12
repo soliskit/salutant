@@ -9,7 +9,7 @@ before completing sign-in. Salutant does not manage the app's account or session
 
 This repo holds Phase 1: a local prototype that replaces outside services
 with stand-ins. It runs on any machine with
-Node.js 26, sends no real email, uses no accounts or
+Node.js 26.13.0, sends no real email, uses no accounts or
 credentials, and deploys nothing. Phase 1 is merged. Deployment, real
 sends, and account setup each need their own go-ahead.
 

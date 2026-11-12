@@ -92,7 +92,7 @@ function runSuite() {
       child.kill('SIGKILL');
       reject(
         new MeasurementFailure(
-          `suite exceeded ${TIMEOUT_MS / 60000} minutes; run failed, no numbers produced`
+          `suite exceeded ${String(TIMEOUT_MS / 60000)} minutes; run failed, no numbers produced`
         )
       );
     }, TIMEOUT_MS);

@@ -7,9 +7,32 @@
 
 export class CoverageConflict extends Error {}
 
-// entries: [{ url, source, functions: [...] }]
+/**
+ * @typedef {{ startOffset: number, endOffset: number, count: number }} V8Range
+ * @typedef {{
+ *   functionName: string,
+ *   ranges?: V8Range[],
+ *   isBlockCoverage?: boolean
+ * }} V8Function
+ * @typedef {{
+ *   url?: string,
+ *   source: string | undefined,
+ *   functions?: V8Function[]
+ * }} V8Entry
+ * @typedef {{
+ *   url: string,
+ *   source: string | undefined,
+ *   coverageList: (V8Function[] | undefined)[]
+ * }} MergedCoverage
+ */
+
 // returns Map url -> { url, source, coverageList: [functions, ...] }
+/**
+ * @param {V8Entry[]} entries
+ * @returns {Map<string, MergedCoverage>}
+ */
 export function mergeV8Entries(entries) {
+  /** @type {Map<string, MergedCoverage>} */
   const byUrl = new Map();
   for (const entry of entries) {
     if (!entry.url) continue;
@@ -39,6 +62,11 @@ export function mergeV8Entries(entries) {
 
 // A file on a list that never loaded counts as 0% for its pipeline: one
 // zero-count range over the whole file leaves every path uncovered.
+/**
+ * @param {string} url
+ * @param {string} source
+ * @returns {MergedCoverage}
+ */
 export function uncovered(url, source) {
   return {
     url,

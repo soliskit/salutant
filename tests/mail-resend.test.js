@@ -39,7 +39,7 @@ function adapter(fetchImpl) {
   return new ResendMailAdapter({ apiKey: KEY, from: FROM, fetchImpl });
 }
 
-test('constructor requires apiKey and from', () => {
+void test('constructor requires apiKey and from', () => {
   assert.throws(
     () => new ResendMailAdapter({ from: FROM }),
     /apiKey is required/
@@ -50,7 +50,7 @@ test('constructor requires apiKey and from', () => {
   );
 });
 
-test('send requires requestId', async () => {
+void test('send requires requestId', async () => {
   const a = adapter(stubFetch([]));
   await assert.rejects(
     () => a.send({ to: MSG.to, subject: MSG.subject, text: MSG.text }),
@@ -59,7 +59,7 @@ test('send requires requestId', async () => {
   await assert.rejects(() => a.reconcile(''), /requestId is required/);
 });
 
-test('accepted send: returns providerId, sends idempotency key and plain-text payload', async () => {
+void test('accepted send: returns providerId, sends idempotency key and plain-text payload', async () => {
   const f = stubFetch([{ status: 200, body: { id: 'prov-1' } }]);
   const a = adapter(f);
   const r = await a.send(MSG);
@@ -78,26 +78,26 @@ test('accepted send: returns providerId, sends idempotency key and plain-text pa
   });
 });
 
-test('provider refusal (4xx) is failed, not retried', async () => {
+void test('provider refusal (4xx) is failed, not retried', async () => {
   const f = stubFetch([{ status: 422, body: { message: 'invalid' } }]);
   const a = adapter(f);
   assert.deepEqual(await a.send(MSG), { outcome: 'failed' });
   assert.equal(f.calls.length, 1);
 });
 
-test('5xx and network failure are uncertain', async () => {
+void test('5xx and network failure are uncertain', async () => {
   const f1 = stubFetch([{ status: 500, body: {} }]);
   assert.deepEqual(await adapter(f1).send(MSG), { outcome: 'uncertain' });
   const f2 = stubFetch([{ throw: 'socket hangup' }]);
   assert.deepEqual(await adapter(f2).send(MSG), { outcome: 'uncertain' });
 });
 
-test('2xx without a provider id is uncertain', async () => {
+void test('2xx without a provider id is uncertain', async () => {
   const f = stubFetch([{ status: 200, body: {} }]);
   assert.deepEqual(await adapter(f).send(MSG), { outcome: 'uncertain' });
 });
 
-test('reconcile after accepted reads the provider record', async () => {
+void test('reconcile after accepted reads the provider record', async () => {
   const f = stubFetch([
     { status: 200, body: { id: 'prov-1' } },
     { status: 200, body: { id: 'prov-1', last_event: 'delivered' } }
@@ -110,7 +110,7 @@ test('reconcile after accepted reads the provider record', async () => {
   assert.equal(f.calls[1].opts.method, undefined);
 });
 
-test('reconcile of accepted send: 404 is absent, 5xx and network failure are unknown', async () => {
+void test('reconcile of accepted send: 404 is absent, 5xx and network failure are unknown', async () => {
   for (const [h, want] of [
     [{ status: 404, body: {} }, { state: 'absent' }],
     [{ status: 500, body: {} }, { state: 'unknown' }],
@@ -123,7 +123,7 @@ test('reconcile of accepted send: 404 is absent, 5xx and network failure are unk
   }
 });
 
-test('reconcile after uncertain with no providerId is unknown and never re-sends', async () => {
+void test('reconcile after uncertain with no providerId is unknown and never re-sends', async () => {
   const f = stubFetch([
     { throw: 'timeout' },
     { status: 200, body: { id: 'prov-1' } }
@@ -138,7 +138,7 @@ test('reconcile after uncertain with no providerId is unknown and never re-sends
   assert.equal(f.calls[0].opts.headers['idempotency-key'], 'req-1');
 });
 
-test('reconcile after accepted reads the provider record and never POSTs', async () => {
+void test('reconcile after accepted reads the provider record and never POSTs', async () => {
   const f = stubFetch([
     { status: 200, body: { id: 'prov-1' } },
     { status: 200, body: {} }
@@ -158,12 +158,12 @@ test('reconcile after accepted reads the provider record and never POSTs', async
   assert.match(f.calls[1].url, /\/emails\/prov-1$/);
 });
 
-test('reconcile of an unknown requestId is unknown', async () => {
+void test('reconcile of an unknown requestId is unknown', async () => {
   const a = adapter(stubFetch([]));
   assert.deepEqual(await a.reconcile('nope'), { state: 'unknown' });
 });
 
-test('a non-JSON provider body is uncertain, not accepted', async () => {
+void test('a non-JSON provider body is uncertain, not accepted', async () => {
   // The provider answered 200 but the body is not JSON (a proxy or
   // outage page): no provider id can be read, so the send is uncertain
   // and reconcile has no record to settle it.
@@ -174,7 +174,7 @@ test('a non-JSON provider body is uncertain, not accepted', async () => {
   assert.equal(f.calls.length, 1);
 });
 
-test('an accepted response rejects if the send record disappeared while awaiting fetch', async () => {
+void test('an accepted response rejects if the send record disappeared while awaiting fetch', async () => {
   const f = stubFetch([{ status: 200, body: { id: 'prov-1' } }]);
   const a = adapter(async (url, opts) => {
     assert.equal(a.sends.delete(MSG.requestId), true);

@@ -11,13 +11,21 @@ import {
   BrowserSession,
   honestSignIn,
   OWNER,
-  SERVICE_ORIGIN
+  SERVICE_ORIGIN,
+  readCreated
 } from './helpers.js';
 
 // The plan requires the storage-exercising suite to run against both
 // store drivers: MemoryStore (local twin) and DurableObjectStore (the
 // production binding), so storage behavior is proven against the same
 // interface the worker will use.
+/**
+ * @typedef {import('../src/service.js').ServiceStore & {
+ *   snapshot(): string,
+ *   restoreFrom(snapshot: string): void
+ * }} DriverStore
+ */
+/** @type {Array<[string, () => DriverStore]>} */
 const DRIVERS = [
   ['MemoryStore', () => new MemoryStore()],
   ['DurableObjectStore', () => new DurableObjectStore(makeDOStorage())]
@@ -26,13 +34,13 @@ const sortedEntries = (snap) =>
   JSON.parse(snap).sort(([a], [b]) => (a < b ? -1 : 1));
 
 for (const [driver, storeFactory] of DRIVERS) {
-  test(`[${driver}] restore rehearsal: without an epoch raise the service stays closed; after it, old items are rejected`, async () => {
+  void test(`[${driver}] restore rehearsal: without an epoch raise the service stays closed; after it, old items are rejected`, async () => {
     const w = await makeWorld({ storeFactory });
     const browser = new BrowserSession(w);
     const start = await w.app.startSignIn(null);
-    const created = await (
+    const created = await readCreated(
       await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-    ).json();
+    );
     await w.service.drain();
     const code = w.mailer.lastCode();
     const snapshot = w.store.snapshot();
@@ -84,13 +92,13 @@ for (const [driver, storeFactory] of DRIVERS) {
     assert.ok(fresh.verified.proof, 'service resumes on the new epoch');
   });
 
-  test(`[${driver}] an old-epoch code is refused after the epoch is raised`, async () => {
+  void test(`[${driver}] an old-epoch code is refused after the epoch is raised`, async () => {
     const w = await makeWorld({ storeFactory });
     const browser = new BrowserSession(w);
     const start = await w.app.startSignIn(null);
-    const created = await (
+    const created = await readCreated(
       await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-    ).json();
+    );
     await w.service.drain();
     const code = w.mailer.lastCode();
     w.epoch.value = 2; // owner raised the epoch after an incident
@@ -105,7 +113,7 @@ for (const [driver, storeFactory] of DRIVERS) {
   // R14 local fixture only: restore clears a proven wrong-try lockout.
   // The existing closed-service and raised-epoch rules must still reject it.
   // This does not test request/send counters or automatic restore detection.
-  test(`[${driver}] a restored challenge with its wrong-try lockout cleared stays refused through the restore epoch steps`, async () => {
+  void test(`[${driver}] a restored challenge with its wrong-try lockout cleared stays refused through the restore epoch steps`, async () => {
     const w = await makeWorld({ storeFactory });
     const browser = new BrowserSession(w);
     const start = await w.app.startSignIn(null);
@@ -149,7 +157,7 @@ for (const [driver, storeFactory] of DRIVERS) {
       3,
       'this fixture uses the existing default wrong-try limit'
     );
-    const wrongCode = `${(Number(code[0]) + 1) % 10}${code.slice(1)}`;
+    const wrongCode = `${String((Number(code[0]) + 1) % 10)}${code.slice(1)}`;
     assert.notEqual(
       wrongCode,
       code,
@@ -247,7 +255,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     assert.equal(w.store.keysWithPrefix('issuance:').length, 0);
   });
 
-  test(`[${driver}] routine rotation: the old key verifies during overlap and is gone after`, async () => {
+  void test(`[${driver}] routine rotation: the old key verifies during overlap and is gone after`, async () => {
     const w = await makeWorld({ storeFactory });
     const r = await honestSignIn(w, { redeem: false });
     assert.ok(r.verified.proof);
@@ -294,7 +302,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     assert.equal(stale.body.error, 'unknown_key');
   });
 
-  test(`[${driver}] emergency revoke: a warm app cache may accept within the bound; after it, fail closed`, async () => {
+  void test(`[${driver}] emergency revoke: a warm app cache may accept within the bound; after it, fail closed`, async () => {
     const w = await makeWorld({ storeFactory });
     const r = await honestSignIn(w, { redeem: false });
     const before = await w.app.handleExchange(
@@ -319,9 +327,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     // closed).
     w.advance(5 * 60_000 + 1);
     const realFetch = w.app.fetchJwks;
-    w.app.fetchJwks = async () => {
-      throw new Error('service unreachable');
-    };
+    w.app.fetchJwks = () => Promise.reject(new Error('service unreachable'));
     const closed = await w.app.handleExchange(
       { proof: r2.verified.proof, state: 'another-state-00000000' },
       SERVICE_ORIGIN
@@ -330,10 +336,12 @@ for (const [driver, storeFactory] of DRIVERS) {
     w.app.fetchJwks = realFetch;
   });
 
-  test(`[${driver}] a store restore does not bring back a revoked signing key`, async () => {
+  void test(`[${driver}] a store restore does not bring back a revoked signing key`, async () => {
     const w = await makeWorld({ storeFactory });
     const snapshot = w.store.snapshot();
-    w.store.transact((s) => s.set('restore-witness', { written: true }));
+    w.store.transact((s) => {
+      s.set('restore-witness', { written: true });
+    });
 
     // Two fresh sign-ins at the current epoch: one signed by k1, then one
     // signed by k2 after k2 becomes current.
@@ -385,9 +393,10 @@ for (const [driver, storeFactory] of DRIVERS) {
     assert.equal(accepted.status, 200, 'a proof from the current key works');
   });
 
-  test(`[${driver}] a proof from an earlier epoch is rejected and the app drops earlier sessions`, async () => {
+  void test(`[${driver}] a proof from an earlier epoch is rejected and the app drops earlier sessions`, async () => {
     const w = await makeWorld({ storeFactory });
     const r = await honestSignIn(w);
+    assert.ok(r.complete);
     assert.equal(r.complete.status, 200);
     const sessionId = r.complete.body.sessionId;
     assert.ok(w.app.sessionExists(sessionId));
@@ -408,7 +417,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     assert.ok(!w.app.sessionExists(sessionId));
   });
 
-  test(`[${driver}] the key endpoint reports the current epoch and honors the cache window`, async () => {
+  void test(`[${driver}] the key endpoint reports the current epoch and honors the cache window`, async () => {
     const w = await makeWorld({ storeFactory });
     const first = await (
       await w.service.fetch(

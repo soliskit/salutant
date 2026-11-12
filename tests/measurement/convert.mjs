@@ -12,6 +12,25 @@ import V8ToIstanbul from 'v8-to-istanbul';
 
 const { createFileCoverage } = libCoverage;
 
+/**
+ * @typedef {import('istanbul-lib-coverage').FileCoverageData} FileCoverageData
+ * @typedef {{ startOffset: number, endOffset: number, count: number }} V8Range
+ * @typedef {{
+ *   functionName: string,
+ *   ranges?: V8Range[],
+ *   isBlockCoverage?: boolean
+ * }} V8Function
+ * @typedef {(V8Function[] | undefined)[]} CoverageList
+ * @typedef {{ line: number, column?: number | null }} Position
+ * @typedef {{ start: Position, end: Position }} Span
+ * @typedef {{ covered: number, total: number }} Count
+ * @typedef {{
+ *   lines: Count,
+ *   branches: Count,
+ *   functions: Count & { measurable?: boolean }
+ * }} FileSummary
+ */
+
 // merged: { url, source, coverageList: [functions, ...] } ; path for the report
 // V8 lists a function only once it is compiled, so a load where a function
 // never compiled has no entry for it, and converting that load credits the
@@ -20,14 +39,19 @@ const { createFileCoverage } = libCoverage;
 // functions other loads of the same source observed removes only credit no
 // execution could have produced. This happens at the V8 level because the
 // converter's own function map drops anonymous functions entirely.
+/**
+ * @param {CoverageList} coverageList
+ * @returns {CoverageList}
+ */
 export function completeFunctionLists(coverageList) {
+  /** @type {Map<string, { name: string, start: number, end: number }>} */
   const union = new Map();
   for (const functions of coverageList) {
     for (const fn of functions || []) {
       if (!fn.ranges || fn.ranges.length === 0) continue;
       const start = Math.min(...fn.ranges.map((r) => r.startOffset));
       const end = Math.max(...fn.ranges.map((r) => r.endOffset));
-      const key = `${fn.functionName}@${start}-${end}`;
+      const key = `${fn.functionName}@${String(start)}-${String(end)}`;
       if (!union.has(key))
         union.set(key, { name: fn.functionName, start, end });
     }
@@ -38,7 +62,7 @@ export function completeFunctionLists(coverageList) {
         .filter((fn) => fn.ranges && fn.ranges.length > 0)
         .map(
           (fn) =>
-            `${fn.functionName}@${Math.min(...fn.ranges.map((r) => r.startOffset))}-${Math.max(...fn.ranges.map((r) => r.endOffset))}`
+            `${fn.functionName}@${String(Math.min(...fn.ranges.map((r) => r.startOffset)))}-${String(Math.max(...fn.ranges.map((r) => r.endOffset)))}`
         )
     );
     // Partial writes can list a function that ran while omitting its
@@ -51,6 +75,7 @@ export function completeFunctionLists(coverageList) {
         start: Math.min(...f.ranges.map((r) => r.startOffset)),
         end: Math.max(...f.ranges.map((r) => r.endOffset))
       }));
+    /** @type {V8Function[]} */
     const added = [];
     for (const [key, fn] of union) {
       if (present.has(key)) continue;
@@ -73,7 +98,17 @@ export function completeFunctionLists(coverageList) {
   });
 }
 
+/**
+ * @param {{
+ *   source: string | undefined,
+ *   coverageList?: CoverageList,
+ *   functions?: V8Function[]
+ * }} merged
+ * @param {string} path
+ * @returns {Promise<FileCoverageData>}
+ */
 export async function toFileCoverage(merged, path) {
+  /** @type {FileCoverageData[]} */
   const coverages = [];
   for (const functions of completeFunctionLists(
     merged.coverageList || [merged.functions]
@@ -96,6 +131,11 @@ export async function toFileCoverage(merged, path) {
 // real coverage into a false negative. Locations compare by line and
 // column; a statement sharing a line with code outside the body keeps its
 // own count because containment uses both.
+/**
+ * @param {Span} outer
+ * @param {Span} loc
+ * @returns {boolean}
+ */
 function contains(outer, loc) {
   const startCol = loc.start.column ?? 0;
   const outerStartCol = outer.start.column ?? 0;
@@ -110,6 +150,10 @@ function contains(outer, loc) {
   return startsInside && endsInside;
 }
 
+/**
+ * @param {FileCoverageData} coverage
+ * @returns {FileCoverageData}
+ */
 export function zeroUncalledFunctionBodies(coverage) {
   const out = { ...coverage, s: { ...coverage.s }, b: { ...coverage.b } };
   for (const [k, fn] of Object.entries(coverage.fnMap)) {
@@ -124,6 +168,11 @@ export function zeroUncalledFunctionBodies(coverage) {
   return out;
 }
 
+/**
+ * @param {Span} a
+ * @param {Span} b
+ * @returns {boolean}
+ */
 function sameLocation(a, b) {
   return (
     a.start.line === b.start.line &&
@@ -140,6 +189,11 @@ function sameLocation(a, b) {
 // already present takes the max count; a new location is appended under a
 // fresh key. A path is covered when any load executed it, and cumulative
 // writes (a mid-run snapshot plus the exit write) never double-count.
+/**
+ * @param {FileCoverageData} a
+ * @param {FileCoverageData} b
+ * @returns {FileCoverageData}
+ */
 export function maxMergeFileCoverages(a, b) {
   const out = {
     ...a,
@@ -201,8 +255,13 @@ export function maxMergeFileCoverages(a, b) {
   return out;
 }
 
-// files: [{ path, coverage }] -> per-file exact counts
+// per-file exact counts
+/**
+ * @param {{ path: string, coverage: FileCoverageData }[]} files
+ * @returns {Partial<Record<string, FileSummary>>}
+ */
 export function summarize(files) {
+  /** @type {Partial<Record<string, FileSummary>>} */
   const perFile = {};
   for (const f of files) {
     const summary = createFileCoverage(f.coverage).toSummary();

@@ -12,14 +12,14 @@ import { MockMailAdapter } from '../src/mail-mock.js';
 import { generateSigningKeyPair } from '../src/crypto.js';
 import { SERVICE_ORIGIN, APP_ORIGIN, OWNER } from './helpers.js';
 
-test('MemoryStore can be constructed from a snapshot', () => {
+void test('MemoryStore can be constructed from a snapshot', () => {
   const a = new MemoryStore();
   a.set('k', { n: 1 });
   const b = new MemoryStore(a.snapshot());
   assert.deepEqual(b.get('k'), { n: 1 });
 });
 
-test('SalutantService uses the wall clock when no clock is injected', async () => {
+void test('SalutantService uses the wall clock when no clock is injected', async () => {
   const keyPair = await generateSigningKeyPair();
   const signingKeys = new Map([
     ['k1', { ...keyPair, status: 'current', notAfterMs: null }]
@@ -29,8 +29,8 @@ test('SalutantService uses the wall clock when no clock is injected', async () =
     store: new MemoryStore(),
     mailer: new MockMailAdapter({ behavior: 'accepted' }),
     epochSource: {
-      async read() {
-        return 1;
+      read() {
+        return Promise.resolve(1);
       }
     },
     allowlist: [OWNER],
@@ -53,14 +53,12 @@ test('SalutantService uses the wall clock when no clock is injected', async () =
   );
 });
 
-test('StubApp uses the wall clock when no clock is injected', async () => {
+void test('StubApp uses the wall clock when no clock is injected', async () => {
   const appStore = new MemoryStore();
   const app = new StubApp({
     origin: APP_ORIGIN,
     serviceOrigin: SERVICE_ORIGIN,
-    fetchJwks: async () => {
-      throw new Error('not needed for this test');
-    },
+    fetchJwks: () => Promise.reject(new Error('not needed for this test')),
     store: appStore,
     stateHmacKeyBytes: globalThis.crypto.getRandomValues(new Uint8Array(32))
   });
@@ -72,11 +70,11 @@ test('StubApp uses the wall clock when no clock is injected', async () => {
   assert.ok(pending, 'pending state stored');
   assert.ok(
     pending.createdAtMs >= before && pending.createdAtMs <= after,
-    `createdAtMs ${pending.createdAtMs} not between ${before} and ${after}`
+    `createdAtMs ${pending.createdAtMs} not between ${String(before)} and ${String(after)}`
   );
 });
 
-test('MemoryStore snapshot decoding preserves the JSON-domain Map behavior', () => {
+void test('MemoryStore snapshot decoding preserves the JSON-domain Map behavior', () => {
   for (const value of [
     null,
     '',
@@ -101,7 +99,13 @@ test('MemoryStore snapshot decoding preserves the JSON-domain Map behavior', () 
       assert.throws(() => new MemoryStore(snapshot), TypeError, snapshot);
       const target = new MemoryStore();
       target.set('keep', 7);
-      assert.throws(() => target.restoreFrom(snapshot), TypeError, snapshot);
+      assert.throws(
+        () => {
+          target.restoreFrom(snapshot);
+        },
+        TypeError,
+        snapshot
+      );
       assert.equal(target.get('keep'), 7, 'failed restore leaves the old map');
       continue;
     }
@@ -113,7 +117,7 @@ test('MemoryStore snapshot decoding preserves the JSON-domain Map behavior', () 
   }
 });
 
-test('MemoryStore prefix lookup fails at a restored non-string key', () => {
+void test('MemoryStore prefix lookup fails at a restored non-string key', () => {
   const store = new MemoryStore('[["a",1],[2,3]]');
   assert.throws(() => store.keysWithPrefix('a'), TypeError);
   assert.equal(

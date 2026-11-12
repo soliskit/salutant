@@ -237,21 +237,38 @@ jobs:
           if [ "$verdict" = zero ]; then
             echo "Zero mutation targets: every changed path is an enumerated non-executable file."
           else
-            echo "Full sweep: all 8 shards."
+            echo "Full sweep: every source file; service.js runs as four line-range shards."
           fi
 
   mutation:
-    name: mutation (${{ matrix.file }})
+    name: mutation (${{ matrix.shard }})
     needs: plan
     if: needs.plan.outputs.verdict == 'full'
     runs-on: ubuntu-latest
     env:
       STRYKER_VERSION: '10.1.1'
-    timeout-minutes: 30
+    timeout-minutes: ${{ contains(matrix.shard, 'service') && 45 || 30 }}
     strategy:
       fail-fast: false
+      # service.js runs as four line-range shards so the wall time follows a
+      # smaller shard instead of the largest file. The ranges are contiguous
+      # from line 1, end with the 99999 sentinel to cover later file growth,
+      # and the AST check below re-verifies coverage before every ranged run:
+      # a mutated node type spanning a boundary fails the job instead of
+      # being silently skipped.
       matrix:
-        file: [assets, crypto, headers, mail-mock, service, storage, stub-app, worker]
+        include:
+          - { shard: assets, mutate: src/assets.js }
+          - { shard: crypto, mutate: src/crypto.js }
+          - { shard: headers, mutate: src/headers.js }
+          - { shard: mail-mock, mutate: src/mail-mock.js }
+          - { shard: service-1of4, mutate: 'src/service.js:1-247', shards: '1-247 248-546 547-904 905-99999' }
+          - { shard: service-2of4, mutate: 'src/service.js:248-546', shards: '1-247 248-546 547-904 905-99999' }
+          - { shard: service-3of4, mutate: 'src/service.js:547-904', shards: '1-247 248-546 547-904 905-99999' }
+          - { shard: service-4of4, mutate: 'src/service.js:905-99999', shards: '1-247 248-546 547-904 905-99999' }
+          - { shard: storage, mutate: src/storage.js }
+          - { shard: stub-app, mutate: src/stub-app.js }
+          - { shard: worker, mutate: src/worker.js }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -260,13 +277,130 @@ jobs:
         with:
           node-version-file: package.json
           cache: npm
-      # tsconfig.json is excluded from the mutation sandbox: it is a lint/typecheck
-      # artifact and Stryker's npx environment has no typescript package to process it.
+      # tsconfig.json stays excluded from the mutation sandbox, matching the
+      # unsharded baseline. Ranged shards run npm ci first so the AST check
+      # below can require espree from the lockfile; that also installs the full
+      # node_modules (including typescript) into those shards' environment, so
+      # the split-vs-unsplit qualification must compare in this same
+      # post-install environment, not against a no-node_modules baseline.
+      - run: npm ci
+        if: contains(matrix.mutate, ':')
+      - name: Verify line-range shards split the file exactly (AST check)
+        if: contains(matrix.mutate, ':')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mutate="${{ matrix.mutate }}"
+          file="${mutate%%:*}"
+          node --input-type=module - "$file" ${{ matrix.shards }} <<'GUARD'
+          // Fail-closed shard-boundary check for line-range mutation shards.
+          // Ranges must be contiguous from line 1 and cover the whole file (last
+          // range ends at EOF or the 99999 sentinel). No mutated-node type may span
+          // a range boundary (a spanning node is silently skipped by every shard);
+          // container types that no mutator targets may span because their children
+          // are still checked. Every range must contain at least one candidate
+          // mutable node (candidate presence is a static source check only - it is
+          // NOT proof of actual mutant generation; that is verified separately by
+          // comparing full mutant-report identities against an unsharded run).
+          import { readFileSync } from 'node:fs';
+          import { createRequire } from 'node:module';
+          const require = createRequire(process.cwd() + '/package.json');
+          const espree = require('espree');
+          const [file, ...ranges] = process.argv.slice(2);
+          const fail = (msg) => {
+            console.error(msg);
+            process.exit(1);
+          };
+          const MAY_SPAN = new Set([
+            'Program',
+            'ImportDeclaration',
+            'ExportNamedDeclaration',
+            'ExportDefaultDeclaration',
+            'ExportAllDeclaration',
+            'ClassDeclaration',
+            'ClassBody',
+            'MethodDefinition',
+            'PropertyDefinition',
+            'StaticBlock',
+            'FunctionDeclaration',
+            'VariableDeclaration',
+            'VariableDeclarator',
+          ]);
+          const source = readFileSync(file, 'utf8');
+          const lineCount = source.split('\n').length - (source.endsWith('\n') ? 1 : 0);
+          const boundaries = [];
+          const rangeList = [];
+          let expectStart = 1;
+          for (const r of ranges) {
+            const m = /^(\d+)-(\d+)$/.exec(r);
+            if (!m) fail(`Bad range "${r}"`);
+            const start = Number(m[1]);
+            const end = Number(m[2]);
+            if (start !== expectStart) fail(`Range gap or overlap at ${start} (expected ${expectStart})`);
+            if (start > lineCount) fail(`Range ${r} starts past end of file (${lineCount} lines)`);
+            if (end !== 99999 && end > lineCount) fail(`Range ${r} ends past end of file`);
+            if (end !== 99999) boundaries.push(end);
+            rangeList.push([start, Math.min(end, lineCount)]);
+            expectStart = end + 1;
+          }
+          // Tail coverage: the last range must reach EOF (fixed end == lineCount, or
+          // the 99999 sentinel which expectStart has already passed lineCount).
+          if (lineCount >= expectStart) {
+            fail(`Tail uncovered: file has ${lineCount} lines but ranges stop at ${expectStart - 1}`);
+          }
+          const ast = espree.parse(source, { ecmaVersion: 'latest', sourceType: 'module', loc: true });
+          const bad = [];
+          const candidates = rangeList.map(() => 0);
+          (function walk(node) {
+            if (!node || typeof node.type !== 'string') return;
+            if (!MAY_SPAN.has(node.type) && node.loc) {
+              for (const b of boundaries) {
+                if (node.loc.start.line <= b && node.loc.end.line >= b + 1) {
+                  bad.push(`${node.type} lines ${node.loc.start.line}-${node.loc.end.line} spans boundary ${b}`);
+                }
+              }
+              const s = node.loc.start.line;
+              const e = node.loc.end.line;
+              for (let i = 0; i < rangeList.length; i++) {
+                if (s >= rangeList[i][0] && e <= rangeList[i][1]) candidates[i]++;
+              }
+            }
+            for (const key of Object.keys(node)) {
+              const v = node[key];
+              if (Array.isArray(v)) v.forEach(walk);
+              else if (v && typeof v === 'object' && key !== 'loc') walk(v);
+            }
+          })(ast);
+          if (bad.length) fail(bad.join('\n'));
+          for (let i = 0; i < rangeList.length; i++) {
+            if (candidates[i] === 0) {
+              fail(`Range ${rangeList[i][0]}-${rangeList[i][1]} contains no candidate mutable nodes (candidate-count check; actual mutant identity is verified separately against an unsharded report)`);
+            }
+          }
+          console.log(`OK ${file}: ${boundaries.length} boundaries, ranges contiguous, tail covered, every range has candidate nodes, no mutable node spans`);
+          GUARD
       - run: >
           npx --yes "@stryker-mutator/core@${STRYKER_VERSION}" run
           --ignorePatterns tsconfig.json
           --testRunner command
           --commandRunner.command "exec node --test tests/*.test.js"
-          --mutate "src/${{ matrix.file }}.js"
-          --reporters ${{ matrix.file == 'service' && 'clear-text,progress-append-only,dots' || 'clear-text' }} --coverageAnalysis off
+          --mutate "${{ matrix.mutate }}"
+          --reporters ${{ contains(matrix.shard, 'service') && 'clear-text,progress-append-only,dots,json' || 'clear-text' }} --coverageAnalysis off
           --concurrency 1 --timeoutMS 20000
+      # A zero-mutant shard reports NaN score and passes green
+      # (salutant has no thresholds.break configured, so the score never
+      # fails a run), so a drift-emptied range would pass silently.
+      # Fail closed on an empty report for ranged shards; whole-file shards
+      # keep their existing reporters and behavior unchanged.
+      - name: Verify this ranged shard produced mutants
+        if: contains(matrix.mutate, ':')
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("reports/mutation/mutation.json", "utf8"));
+            const total = Object.values(r.files ?? {}).reduce((n, f) => n + (f.mutants?.length ?? 0), 0);
+            if (total === 0) { console.error("Vacuous shard: mutation report lists 0 mutants"); process.exit(1); }
+            console.log(`Report lists ${total} mutants.`);
+          '
+

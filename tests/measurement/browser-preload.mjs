@@ -69,7 +69,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
     async function take(why) {
       const at = Date.now();
       seq += 1;
-      const name = `${process.pid}-${seq}.json`;
+      const name = `${String(process.pid)}-${String(seq)}.json`;
       let result;
       try {
         ({ result } = await session.send('Profiler.takePreciseCoverage'));
@@ -131,7 +131,9 @@ if (process.env.SALUTANT_MEASURE === '1') {
       }
       return originalClose(...args);
     };
-    page.once('close', () => clearInterval(poll));
+    page.once('close', () => {
+      clearInterval(poll);
+    });
     return { take };
   }
 

@@ -13,7 +13,10 @@ import { makeDOStorage, SERVICE_ORIGIN, OWNER } from './helpers.js';
 
 async function importTap(run) {
   const pair = await generateSigningKeyPair();
-  const original = crypto.subtle.importKey;
+  const ownImportKey = Object.getOwnPropertyDescriptor(
+    crypto.subtle,
+    'importKey'
+  );
   const seen = [];
   crypto.subtle.importKey = async (
     format,
@@ -28,7 +31,11 @@ async function importTap(run) {
   try {
     await run(seen, pair);
   } finally {
-    crypto.subtle.importKey = original;
+    if (ownImportKey) {
+      Object.defineProperty(crypto.subtle, 'importKey', ownImportKey);
+    } else {
+      Reflect.deleteProperty(crypto.subtle, 'importKey');
+    }
   }
 }
 
@@ -71,7 +78,7 @@ function objectFor(env) {
   );
 }
 
-test('entry retains unknown registry metadata and validates only the iterated JSON shape', async () => {
+void test('entry retains unknown registry metadata and validates only the iterated JSON shape', async () => {
   await importTap(async (seen, pair) => {
     for (const keys of [[], '']) {
       const result = await importSigningKeys(
@@ -98,6 +105,7 @@ test('entry retains unknown registry metadata and validates only the iterated JS
       })
     );
     const key = result.signingKeys.get(7);
+    assert.ok(key);
     assert.equal(result.currentKid, 'current');
     assert.equal(key.publicKey, pair.publicKey);
     assert.equal(key.privateKey, pair.privateKey);
@@ -116,7 +124,7 @@ test('entry retains unknown registry metadata and validates only the iterated JS
   });
 });
 
-test('entry JWK conversion retains scalar DOMString and boolean semantics while normalizing the label', async () => {
+void test('entry JWK conversion retains scalar DOMString and boolean semantics while normalizing the label', async () => {
   await importTap(async (seen) => {
     for (const scalar of ['text', 7, false, null]) {
       const strings = Object.fromEntries(
@@ -163,7 +171,7 @@ test('entry JWK conversion retains scalar DOMString and boolean semantics while 
   });
 });
 
-test('entry rejects object or array JWK string members at conversion, before either import call', async () => {
+void test('entry rejects object or array JWK string members at conversion, before either import call', async () => {
   await importTap(async (seen) => {
     for (const member of [{}, []]) {
       for (const publicJwk of [
@@ -181,7 +189,7 @@ test('entry rejects object or array JWK string members at conversion, before eit
   });
 });
 
-test('entry JWK sequence and nested dictionary boundaries use JSON arrays, not strings or scalar records', async () => {
+void test('entry JWK sequence and nested dictionary boundaries use JSON arrays, not strings or scalar records', async () => {
   await importTap(async (seen) => {
     for (const value of [null, 'verify', 2, false, {}]) {
       for (const field of ['key_ops', 'oth']) {
@@ -206,7 +214,7 @@ test('entry JWK sequence and nested dictionary boundaries use JSON arrays, not s
   });
 });
 
-test('entry allowlist keeps null, string and array behavior and checks invalid iteration only inside service construction', async () => {
+void test('entry allowlist keeps null, string and array behavior and checks invalid iteration only inside service construction', async () => {
   for (const [value, expected] of [
     [null, []],
     ['ab', ['a', 'b']],
@@ -234,7 +242,7 @@ test('entry allowlist keeps null, string and array behavior and checks invalid i
   }
 });
 
-test('entry epoch read evaluates now but always returns a promise, retaining unknown values and rejected null reads', async () => {
+void test('entry epoch read evaluates now but always returns a promise, retaining unknown values and rejected null reads', async () => {
   for (const epoch of [{ value: { raw: true } }, {}, [], 7, 'text', false]) {
     const object = objectFor(await envFor({ EPOCH: JSON.stringify(epoch) }));
     const service = await object.service();

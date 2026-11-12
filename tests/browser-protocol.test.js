@@ -13,15 +13,19 @@ import {
   OWNER,
   ATTACKER,
   SERVICE_ORIGIN,
-  APP_ORIGIN
+  APP_ORIGIN,
+  readCreated,
+  readVerified
 } from './helpers.js';
 
-test('end to end: address, code, proof, exchange, session - with only first-party cookies in play', async () => {
+void test('end to end: address, code, proof, exchange, session - with only first-party cookies in play', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const r = await honestSignIn(w, { browser });
   assert.equal(r.page.status, 200);
+  assert.ok(r.exchange !== null, 'honest sign-in returned no exchange');
   assert.equal(r.exchange.status, 200);
+  assert.ok(r.complete);
   assert.equal(r.complete.status, 200);
   assert.equal(r.complete.body.sub, OWNER);
   // Every cookie set anywhere in the flow is first-party and host-only.
@@ -40,7 +44,7 @@ test('end to end: address, code, proof, exchange, session - with only first-part
   );
 });
 
-test('wrong and sibling origins are not served and cannot start challenges', async () => {
+void test('wrong and sibling origins are not served and cannot start challenges', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   for (const origin of [
@@ -59,10 +63,15 @@ test('wrong and sibling origins are not served and cannot start challenges', asy
   }
 });
 
-test('the verify response returns only the registered callback, and completion stays on the app origin', async () => {
+void test('the verify response returns only the registered callback, and completion stays on the app origin', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w);
   assert.equal(r.verified.callbackUrl, `${APP_ORIGIN}/auth/callback`);
+  assert.ok(r.exchange !== null, 'honest sign-in returned no exchange');
+  assert.ok(
+    'completeUrl' in r.exchange.body,
+    'exchange response has no completion URL'
+  );
   assert.equal(
     r.exchange.body.completeUrl,
     `${APP_ORIGIN}/auth/complete`,
@@ -75,7 +84,7 @@ test('the verify response returns only the registered callback, and completion s
   );
 });
 
-test('extra fields naming an outside address do not change the registered callback', async () => {
+void test('extra fields naming an outside address do not change the registered callback', async () => {
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
@@ -94,14 +103,14 @@ test('extra fields naming an outside address do not change the registered callba
     })
   );
   browser._storeCookies(res);
-  const created = await res.json();
+  const created = await readCreated(res);
   await w.service.drain();
   const verify = await browser.verify({
     challengeId: created.challengeId,
     code: w.mailer.lastCode(),
     address: OWNER
   });
-  const verified = await verify.json();
+  const verified = await readVerified(verify);
   assert.equal(
     verified.callbackUrl,
     `${APP_ORIGIN}/auth/callback`,
@@ -113,7 +122,7 @@ test('extra fields naming an outside address do not change the registered callba
   );
 });
 
-test('altered state is rejected at the exchange', async () => {
+void test('altered state is rejected at the exchange', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
   const state = r.verified.state;
@@ -126,7 +135,7 @@ test('altered state is rejected at the exchange', async () => {
   assert.notEqual(alteredState, state);
 });
 
-test('the exchange answers CORS for the service origin exactly, and nothing else', async () => {
+void test('the exchange answers CORS for the service origin exactly, and nothing else', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
   const good = await w.app.handleExchange(
@@ -143,7 +152,7 @@ test('the exchange answers CORS for the service origin exactly, and nothing else
   assert.equal(bad.acao, null);
 });
 
-test("login CSRF: an attacker-owned state or proof cannot log the victim into the attacker's session", async () => {
+void test("login CSRF: an attacker-owned state or proof cannot log the victim into the attacker's session", async () => {
   const w = await makeWorld({ allowlist: [OWNER, ATTACKER] });
 
   // The attacker completes their own sign-in as far as the exchange:
@@ -194,7 +203,7 @@ test("login CSRF: an attacker-owned state or proof cannot log the victim into th
   assert.equal(ownComplete.body.sub, ATTACKER);
 });
 
-test('a verified state expires: the bounded exchange window is 60 seconds', async () => {
+void test('a verified state expires: the bounded exchange window is 60 seconds', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
   const ok = await w.app.handleExchange(
@@ -207,7 +216,7 @@ test('a verified state expires: the bounded exchange window is 60 seconds', asyn
   assert.equal(late.status, 401, 'stale verified state is not completable');
 });
 
-test('completion window boundary: 59,999 ms after verification succeeds; 60,000 and 60,001 reject', async () => {
+void test('completion window boundary: 59,999 ms after verification succeeds; 60,000 and 60,001 reject', async () => {
   for (const [ms, ok] of [
     [59_999, true],
     [60_000, false],
@@ -226,35 +235,35 @@ test('completion window boundary: 59,999 ms after verification succeeds; 60,000 
   }
 });
 
-test('a second proof cannot re-verify an already-verified state', async () => {
+void test('a second proof cannot re-verify an already-verified state', async () => {
   // Two challenges share one app state id and both verify. Redeeming
   // the second proof against the already-verified state is refused as
   // bad_state: the state binding, not proof freshness, refuses it.
   const w = await makeWorld();
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const first = await (
+  const first = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
-  const second = await (
+  );
+  const second = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   const codeOf = (i) => w.mailer.outbox[i].text.match(/\b(\d{6})\b/)[1];
-  const v1 = await (
+  const v1 = await readVerified(
     await browser.verify({
       challengeId: first.challengeId,
       code: codeOf(0),
       address: OWNER
     })
-  ).json();
-  const v2 = await (
+  );
+  const v2 = await readVerified(
     await browser.verify({
       challengeId: second.challengeId,
       code: codeOf(1),
       address: OWNER
     })
-  ).json();
+  );
   assert.ok(v1.proof && v2.proof, 'both proofs issued for the one state');
   const ok = await w.app.handleExchange(
     { proof: v1.proof, state: v1.state },
@@ -269,7 +278,7 @@ test('a second proof cannot re-verify an already-verified state', async () => {
   assert.equal(again.body.error, 'bad_state');
 });
 
-test('completion without the pre-auth cookie is refused even with a verified state waiting', async () => {
+void test('completion without the pre-auth cookie is refused even with a verified state waiting', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w, { redeem: false });
   const exchange = await w.app.handleExchange(
@@ -301,7 +310,7 @@ test('completion without the pre-auth cookie is refused even with a verified sta
 // certificate made in a temporary folder at run time. Only the app's
 // callback is stubbed. The service cookie goes through the real browser.
 const ENGINE = process.env.SALUTANT_BROWSER;
-test(
+void test(
   'real browser: sign-in works and the browser keeps and returns the service cookie',
   { skip: ENGINE ? false : 'set SALUTANT_BROWSER=webkit or chromium to run' },
   async () => {
@@ -445,7 +454,7 @@ test(
 
 // The page shows its own message when the app refuses the final step. The
 // callback is answered with a refusal; the page must say so and stay put.
-test(
+void test(
   'real browser: a refused final step shows the sign-in failed message and does not navigate',
   { skip: ENGINE ? false : 'set SALUTANT_BROWSER=webkit or chromium to run' },
   async () => {
@@ -607,7 +616,7 @@ test(
 // link, a stripped redirect) must still fail safe: the empty-parameter
 // fallbacks run, the service refuses the parameterless request, and the
 // page shows only its generic messages without navigating away.
-test(
+void test(
   'real browser: the page without its launch parameters fails safe and stays on the page',
   { skip: ENGINE ? false : 'set SALUTANT_BROWSER=webkit or chromium to run' },
   async () => {
