@@ -275,7 +275,7 @@ void test('no plain code or address is stored; purge removes expired challenges'
   const w = await makeWorld();
   const r = await honestSignIn(w);
   const dump = JSON.stringify([...w.store.records]);
-  assert.ok(!dump.includes(r.code), 'no plain code in storage');
+  assert.ok(!dump.includes(String(r.code)), 'no plain code in storage');
   assert.ok(!dump.includes(OWNER), 'no plain address in storage');
   w.advance(30 * 60_000 + 3_600_000 + 1); // expiry plus the one-hour purge lag
   w.service.purge();

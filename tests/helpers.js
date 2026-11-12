@@ -254,11 +254,21 @@ export class BrowserSession {
   }
 }
 
+/** @typedef {Awaited<ReturnType<StubApp['handleComplete']>>} CompleteResult */
+/** @typedef {{ challengeId: string, [field: string]: unknown }} CreatedBody */
+/** @typedef {{ proof: string, state: string, [field: string]: unknown }} VerifiedBody */
 /**
- * @typedef {{ status: number }} CompleteResult
- * @typedef {{ challengeId: string, [field: string]: unknown }} CreatedBody
- * @typedef {{ proof: string, state: string, [field: string]: unknown }} VerifiedBody
- * @typedef {{ complete: CompleteResult | null, created: CreatedBody, verified: VerifiedBody, [field: string]: unknown }} HonestSignInResult
+ * @typedef {object} HonestSignInResult
+ * @property {Awaited<ReturnType<StubApp['startSignIn']>>} start
+ * @property {Response} page
+ * @property {Response} create
+ * @property {CreatedBody} created
+ * @property {ReturnType<MockMailAdapter['lastCode']>} code
+ * @property {Response} verify
+ * @property {VerifiedBody} verified
+ * @property {Awaited<ReturnType<StubApp['handleExchange']>> | null} exchange
+ * @property {CompleteResult | null} complete
+ * @property {BrowserSession} browser
  */
 
 /**
