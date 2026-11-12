@@ -43,6 +43,10 @@ jobs:
       # come from tools.json so they stay single-source, and the composed
       # name-at-version strings never appear in the tree (logging-hygiene).
       - run: npm i --no-save $(node -p "const t = require('./tests/measurement/tools.json').tools; Object.entries(t).map(([n, v]) => n + '@' + v).join(' ')")
+      - uses: actions/setup-python@v6
+      - run: pip install ruff==0.17.4
+      - run: ruff check .
+      - run: ruff format --check .
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
