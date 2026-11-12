@@ -47,7 +47,9 @@ export default defineConfig(
       'tests/sign-in-page.test.js',
       'tests/store-parity.test.js',
       'tests/stub-stored-boundaries.test.js',
-      'tests/code-generation.test.js'
+      'tests/code-generation.test.js',
+      'tests/mock-error-boundaries.test.js',
+      'tests/entry-json-boundaries.test.js'
     ],
     extends: [
       ...tseslint.configs.recommendedTypeChecked,
@@ -87,7 +89,9 @@ export default defineConfig(
         'tests/sign-in-page.test.js',
         'tests/store-parity.test.js',
         'tests/stub-stored-boundaries.test.js',
-        'tests/code-generation.test.js'
+        'tests/code-generation.test.js',
+        'tests/mock-error-boundaries.test.js',
+        'tests/entry-json-boundaries.test.js'
       ]
     })),
     languageOptions: {
@@ -131,7 +135,9 @@ export default defineConfig(
       'tests/sign-in-page.test.js',
       'tests/store-parity.test.js',
       'tests/stub-stored-boundaries.test.js',
-      'tests/code-generation.test.js'
+      'tests/code-generation.test.js',
+      'tests/mock-error-boundaries.test.js',
+      'tests/entry-json-boundaries.test.js'
     ],
     extends: [tseslint.configs.disableTypeChecked].map((config) => ({
       ...config,

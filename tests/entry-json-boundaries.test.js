@@ -298,6 +298,7 @@ void test('entry epoch read evaluates now but always returns a promise, retainin
   }
   const probeEnv = await envFor({ EPOCH: '{"epochProbe":true}' });
   const originalParse = JSON.parse;
+  /** @type {unknown} */
   const thrown = { sentinel: 'uncoerced rejection' };
   const order = [];
   const epochProbe = {
