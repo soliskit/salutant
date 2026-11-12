@@ -69,23 +69,28 @@ export function pageScriptLineShift() {
 // Shifts every location in an Istanbul file-coverage object by the given
 // number of lines, leaving columns and counts untouched.
 /**
- * @typedef {import('istanbul-lib-coverage').FileCoverageData} FileCoverageData
- * @typedef {import('istanbul-lib-coverage').FunctionMapping} FunctionMapping
- * @typedef {import('istanbul-lib-coverage').BranchMapping} BranchMapping
  * @typedef {{ line: number, column?: number | null }} Position
  * @typedef {{ start: Position, end: Position }} Span
- * @typedef {Omit<FunctionMapping, 'loc' | 'decl'> & {
+ * @typedef {{
+ *   name: string,
+ *   line: number,
  *   loc: Span,
  *   decl?: Span | null
  * }} ShiftFunction
- * @typedef {Omit<BranchMapping, 'loc' | 'locations'> & {
+ * @typedef {{
+ *   type: string,
+ *   line: number,
  *   loc: Span,
  *   locations?: Span[] | null
  * }} ShiftBranch
- * @typedef {Omit<FileCoverageData, 'statementMap' | 'fnMap' | 'branchMap'> & {
+ * @typedef {{
+ *   path: string,
  *   statementMap: Record<string, Span>,
  *   fnMap: Record<string, ShiftFunction>,
- *   branchMap: Record<string, ShiftBranch>
+ *   branchMap: Record<string, ShiftBranch>,
+ *   s: Record<string, number>,
+ *   f: Record<string, number>,
+ *   b: Record<string, number[]>
  * }} ShiftableCoverage
  */
 
