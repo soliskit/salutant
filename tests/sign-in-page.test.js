@@ -23,7 +23,7 @@ class FakeElement {
 }
 
 function ok(body, status = 200) {
-  return { ok: status < 400, status, json: async () => body };
+  return { ok: status < 400, status, json: () => Promise.resolve(body) };
 }
 
 function deferred() {
@@ -76,10 +76,10 @@ async function reachCodeStage(page) {
 
 void test('the first send carries an idempotency key and a network failure retries with the same key', async () => {
   let attempt = 0;
-  const page = loadPage(async () => {
+  const page = loadPage(() => {
     attempt += 1;
-    if (attempt === 1) throw new Error('network');
-    return ok({ challengeId: 'c1' });
+    if (attempt === 1) return Promise.reject(new Error('network'));
+    return Promise.resolve(ok({ challengeId: 'c1' }));
   });
   page.elements.address.value = 'owner@example.test';
   await page.elements['address-form'].fire('submit');
@@ -93,10 +93,12 @@ void test('the first send carries an idempotency key and a network failure retri
 
 void test('a changed address or any received response gets a new key', async () => {
   let attempt = 0;
-  const page = loadPage(async () => {
+  const page = loadPage(() => {
     attempt += 1;
-    if (attempt === 1) throw new Error('network');
-    return ok({ challengeId: `c${attempt}` }, attempt === 2 ? 500 : 200);
+    if (attempt === 1) return Promise.reject(new Error('network'));
+    return Promise.resolve(
+      ok({ challengeId: `c${attempt}` }, attempt === 2 ? 500 : 200)
+    );
   });
   page.elements.address.value = 'owner@example.test';
   await page.elements['address-form'].fire('submit');
@@ -112,9 +114,11 @@ void test('a changed address or any received response gets a new key', async () 
 });
 
 void test('a resend names its challenge, has its own key and shows the wait message on a refusal', async () => {
-  const page = loadPage(async (url, n) => {
-    if (n === 1) return ok({ challengeId: 'c1' });
-    return n === 2 ? ok({ error: 'cooldown' }, 429) : ok({}, 200);
+  const page = loadPage((url, n) => {
+    if (n === 1) return Promise.resolve(ok({ challengeId: 'c1' }));
+    return Promise.resolve(
+      n === 2 ? ok({ error: 'cooldown' }, 429) : ok({}, 200)
+    );
   });
   await reachCodeStage(page);
   await page.elements.resend.fire('click');
