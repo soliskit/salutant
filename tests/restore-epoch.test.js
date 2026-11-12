@@ -12,7 +12,8 @@ import {
   honestSignIn,
   OWNER,
   SERVICE_ORIGIN,
-  readCreated
+  readCreated,
+  keyIds
 } from './helpers.js';
 
 // The plan requires the storage-exercising suite to run against both
@@ -55,8 +56,11 @@ function reservationRecord(value) {
 }
 
 /** @param {string} snap */
-const sortedEntries = (snap) =>
-  JSON.parse(snap).sort(([a], [b]) => (a < b ? -1 : 1));
+const sortedEntries = (snap) => {
+  const entries = JSON.parse(snap);
+  assert.ok(Array.isArray(entries), 'the snapshot is a list of entries');
+  return entries.sort(([a], [b]) => (a < b ? -1 : 1));
+};
 
 for (const [driver, storeFactory] of DRIVERS) {
   void test(`[${driver}] restore rehearsal: without an epoch raise the service stays closed; after it, old items are rejected`, async () => {
@@ -295,8 +299,10 @@ for (const [driver, storeFactory] of DRIVERS) {
     // Rotate: k2 current, k1 overlapping for at least the proof lifetime
     // plus skew plus the staleness bound.
     const k2 = await generateSigningKeyPair();
+    const k1 = w.service.signingKeys.get('k1');
+    assert.ok(k1, 'the first signing key exists');
     w.service.signingKeys.set('k1', {
-      ...w.service.signingKeys.get('k1'),
+      ...k1,
       status: 'overlap',
       notAfterMs: w.getNow() + (5 * 60_000 + 60_000 + 10 * 60_000)
     });
@@ -321,17 +327,17 @@ for (const [driver, storeFactory] of DRIVERS) {
         new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
       )
     ).json();
-    assert.deepEqual(
-      jwks.keys.map((k) => k.kid),
-      ['k2']
-    );
+    assert.deepEqual(keyIds(jwks), ['k2']);
     // An app refreshing now rejects the old-key proof (fails closed on
     // unknown key after one refresh).
     const stale = await w.app.handleExchange(
       { proof: r.verified.proof, state: 'fresh-state-value-000000' },
       SERVICE_ORIGIN
     );
-    assert.equal(stale.body.error, 'unknown_key');
+    assert.equal(
+      'error' in stale.body ? stale.body.error : undefined,
+      'unknown_key'
+    );
   });
 
   void test(`[${driver}] emergency revoke: a warm app cache may accept within the bound; after it, fail closed`, async () => {
@@ -407,7 +413,7 @@ for (const [driver, storeFactory] of DRIVERS) {
       )
     ).json();
     assert.deepEqual(
-      listed.keys.map((k) => k.kid),
+      keyIds(listed),
       ['k2'],
       'the key list holds the current key and not the revoked one'
     );
@@ -418,7 +424,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     );
     assert.equal(refused.status, 400);
     assert.equal(
-      refused.body.error,
+      'error' in refused.body ? refused.body.error : undefined,
       'unknown_key',
       'a proof from the revoked key is an unknown key'
     );

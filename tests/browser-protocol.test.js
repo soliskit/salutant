@@ -18,6 +18,34 @@ import {
   readVerified
 } from './helpers.js';
 
+// The browser type named by SALUTANT_BROWSER. An unknown name fails here with
+// the same message as before.
+/**
+ * @param {typeof import('playwright')} playwright
+ * @param {string} engine
+ */
+function launcherFor(playwright, engine) {
+  const launcher =
+    engine === 'webkit'
+      ? playwright.webkit
+      : engine === 'chromium'
+        ? playwright.chromium
+        : engine === 'firefox'
+          ? playwright.firefox
+          : undefined;
+  assert.ok(launcher, `unknown engine: ${engine}`);
+  return launcher;
+}
+
+// The code in the last mail. A mailer that sent nothing fails here as an
+// assertion, where the missing code reached the page as undefined.
+/** @param {{ lastCode(): string | undefined }} mailer */
+function sentCode(mailer) {
+  const code = mailer.lastCode();
+  assert.ok(code, 'a sign-in code was mailed');
+  return code;
+}
+
 // The TCP port of the page server. A server that is missing or has no TCP
 // address fails here as an assertion, where reading the port was a TypeError.
 /** @param {import('node:https').Server | undefined} server */
@@ -342,8 +370,7 @@ void test(
   async () => {
     const playwright = await import('playwright');
     assert.ok(ENGINE, 'SALUTANT_BROWSER names the engine');
-    const launcher = playwright[ENGINE];
-    assert.ok(launcher, `unknown engine: ${ENGINE}`);
+    const launcher = launcherFor(playwright, ENGINE);
     const dir = mkdtempSync(join(tmpdir(), 'salutant-cert-'));
     const w = await makeWorld();
     /** @type {import('node:https').Server | undefined} */
@@ -446,7 +473,7 @@ void test(
       assert.equal(sb[0].httpOnly, true);
       assert.equal(sb[0].sameSite, 'Strict');
       assert.ok(sb[0].path.endsWith('/verify'));
-      await page.fill('#code', w.mailer.lastCode());
+      await page.fill('#code', sentCode(w.mailer));
       const verified = page.waitForResponse((r) => r.url().includes('/verify'));
       await page.click('#code-form button[type="submit"]');
       assert.equal(
@@ -470,7 +497,7 @@ void test(
       await page.waitForSelector('#code-form:not([hidden])');
       await w.service.drain();
       await context.clearCookies();
-      await page.fill('#code', w.mailer.lastCode());
+      await page.fill('#code', sentCode(w.mailer));
       await page.click('#code-form button[type="submit"]');
       await page.waitForFunction(() => {
         const message = document.getElementById('message');
@@ -498,8 +525,7 @@ void test(
   async () => {
     const playwright = await import('playwright');
     assert.ok(ENGINE, 'SALUTANT_BROWSER names the engine');
-    const launcher = playwright[ENGINE];
-    assert.ok(launcher, `unknown engine: ${ENGINE}`);
+    const launcher = launcherFor(playwright, ENGINE);
     const dir = mkdtempSync(join(tmpdir(), 'salutant-cert-'));
     const w = await makeWorld();
     /** @type {import('node:https').Server | undefined} */
@@ -587,7 +613,7 @@ void test(
       await page.click('#address-form button');
       await page.waitForSelector('#code-form:not([hidden])');
       await w.service.drain();
-      await page.fill('#code', w.mailer.lastCode());
+      await page.fill('#code', sentCode(w.mailer));
       await page.click('#code-form button[type="submit"]');
       await page.waitForFunction(() => {
         const message = document.getElementById('message');
@@ -653,7 +679,7 @@ void test(
       await page.waitForSelector('#code-form:not([hidden])');
       await w.service.drain();
       await page.route('**/v1/challenges/*/verify', (route) => route.abort());
-      await page.fill('#code', w.mailer.lastCode());
+      await page.fill('#code', sentCode(w.mailer));
       await page.click('#code-form button[type="submit"]');
       await page.waitForFunction(() => {
         const message = document.getElementById('message');
@@ -682,8 +708,7 @@ void test(
   async () => {
     const playwright = await import('playwright');
     assert.ok(ENGINE, 'SALUTANT_BROWSER names the engine');
-    const launcher = playwright[ENGINE];
-    assert.ok(launcher, `unknown engine: ${ENGINE}`);
+    const launcher = launcherFor(playwright, ENGINE);
     const dir = mkdtempSync(join(tmpdir(), 'salutant-cert-'));
     const w = await makeWorld();
     /** @type {import('node:https').Server | undefined} */

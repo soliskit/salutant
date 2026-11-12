@@ -114,7 +114,7 @@ function portOf(server) {
 // A merged entry the test then converts. A missing entry fails here as an
 // assertion, where it reached the converter as undefined.
 /**
- * @param {Map<string, import('../v8merge.mjs').MergedCoverage>} merged
+ * @param {Map<unknown, import('../v8merge.mjs').MergedCoverage>} merged
  * @param {string} key
  */
 function coverageOf(merged, key) {
@@ -697,11 +697,12 @@ async function capturedPageScriptLines() {
       await page.goto(base + '/');
       await page.fill('#address', 'owner@example.test');
       await page.click('#address-form button');
-      await page.waitForFunction(() =>
-        document
-          .getElementById('message')
-          .textContent.includes('Something went wrong')
-      );
+      await page.waitForFunction(() => {
+        const message = document.getElementById('message');
+        if (message === null)
+          throw new TypeError('the message element is missing');
+        return message.textContent?.includes('Something went wrong');
+      });
       const entries = await page.coverage.stopJSCoverage();
       await browser.close();
       const js = entries.filter((e) => new URL(e.url).pathname === '/app.js');
@@ -726,6 +727,7 @@ async function capturedPageScriptLines() {
       pageScriptLines = lineHits(cov);
     }
   );
+  assert.ok(pageScriptLines, 'the page script coverage was captured');
   return pageScriptLines;
 }
 

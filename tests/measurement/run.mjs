@@ -24,6 +24,7 @@ import { toFileCoverage, summarize } from './convert.mjs';
 import {
   MeasurementFailure,
   checkNavigationCoverage,
+  field,
   validateBrowserDir,
   validateServerDir
 } from './validate.mjs';
@@ -169,7 +170,7 @@ mkdirSync(join(outDir, 'browser'), { recursive: true });
 // The baseline names its production-source commit; the application source is
 // verified unchanged from it regardless of which branch the harness sits on,
 // and the harness revision is recorded separately.
-const PRODUCTION_COMMIT = '3889c1779112d18da4220c7ab8f10ca269e12ad6';
+const PRODUCTION_COMMIT = '61afadce68ec95502b56c41d7d928dddb6dacd25';
 const commit = git('rev-parse', 'HEAD');
 const appDiff = git('diff', '--name-only', PRODUCTION_COMMIT, '--', 'src');
 if (appDiff) {
@@ -200,11 +201,29 @@ checkServedScripts(browserCaptures);
 
 // Node pipeline: source comes from disk (V8 reports carry no source), which
 // the clean-tree check above ties to the pinned commit.
+/**
+ * fileURLToPath over a JSON-decoded coverage entry url. Only strings reach
+ * this call: validateServerDir returns just the entries whose url sits in the
+ * serverFiles string Set (SameValueZero), so every reachable value is a
+ * string. The original passed the raw value to fileURLToPath, which would
+ * throw its ERR_INVALID_ARG_TYPE TypeError on a non-string; on that provably
+ * unreachable state this guard throws a plain TypeError instead (disclosed
+ * unreachable-state error delta).
+ * @param {unknown} value
+ * @returns {string}
+ */
+function jsonFileUrlToPath(value) {
+  if (typeof value !== 'string') {
+    throw new TypeError('a server coverage entry url must be a string');
+  }
+  return fileURLToPath(value);
+}
+
 const serverMerged = mergeV8Entries(
   serverEntries.map((e) => ({
-    url: e.url,
-    source: readFile(fileURLToPath(e.url)),
-    functions: e.functions
+    url: field(e, 'url'),
+    source: readFile(jsonFileUrlToPath(field(e, 'url'))),
+    functions: field(e, 'functions')
   }))
 );
 // Browser scripts key by path, with content identity still enforced across
@@ -212,7 +231,11 @@ const serverMerged = mergeV8Entries(
 const browserMerged = mergeV8Entries(
   browserCaptures.map((e) => {
     try {
-      return { ...e, url: new URL(e.url).pathname };
+      return {
+        url: new URL(String(field(e, 'url'))).pathname,
+        source: field(e, 'source'),
+        functions: field(e, 'functions')
+      };
     } catch {
       return e;
     }

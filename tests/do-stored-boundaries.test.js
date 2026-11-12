@@ -60,6 +60,7 @@ void test('DO a missing cache entry from the public cache seam still fails at me
   const store = new DurableObjectStore(makeDOStorage());
   assert.throws(() => {
     store.transact((s) => {
+      assert.ok(s.tx);
       s.tx.set('k', undefined);
       s.get('k');
     });

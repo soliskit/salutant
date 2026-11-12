@@ -11,7 +11,8 @@ import {
   APP_ORIGIN,
   SERVICE_ORIGIN,
   readCreated,
-  readVerified
+  readVerified,
+  keyIds
 } from './helpers.js';
 import { generateSigningKeyPair } from '../src/crypto.js';
 
@@ -290,8 +291,5 @@ void test('a revoked signing key is never published in the key listing', async (
       new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
     )
   ).json();
-  assert.deepEqual(
-    listed.keys.map((k) => k.kid),
-    ['k2']
-  );
+  assert.deepEqual(keyIds(listed), ['k2']);
 });

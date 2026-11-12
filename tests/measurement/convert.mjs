@@ -9,18 +9,12 @@
 // counts accumulate.
 import libCoverage from 'istanbul-lib-coverage';
 import V8ToIstanbul from 'v8-to-istanbul';
+import { field } from './validate.mjs';
 
 const { createFileCoverage } = libCoverage;
 
 /**
  * @typedef {import('istanbul-lib-coverage').FileCoverageData} FileCoverageData
- * @typedef {{ startOffset: number, endOffset: number, count: number }} V8Range
- * @typedef {{
- *   functionName: string,
- *   ranges?: V8Range[],
- *   isBlockCoverage?: boolean
- * }} V8Function
- * @typedef {(V8Function[] | undefined)[]} CoverageList
  * @typedef {{ line: number, column?: number | null }} Position
  * @typedef {{ start: Position, end: Position }} Span
  * @typedef {{ covered: number, total: number }} Count
@@ -39,43 +33,85 @@ const { createFileCoverage } = libCoverage;
 // functions other loads of the same source observed removes only credit no
 // execution could have produced. This happens at the V8 level because the
 // converter's own function map drops anonymous functions entirely.
+// Reads of unknown wire data, kept identical to the property reads the
+// original inline code made: a falsy list counts as empty, and a truthy
+// non-array fails with the original TypeError text (verified against the
+// original expressions on pinned Node).
 /**
- * @param {CoverageList} coverageList
- * @returns {CoverageList}
+ * The union pass iterated `(functions || [])` directly: arrays and strings
+ * iterate (strings yield their characters, which carry no ranges), anything
+ * else fails as not iterable.
+ * @param {unknown} list
+ */
+function unionEntriesOf(list) {
+  if (!list) return [];
+  if (typeof list === 'string' || Array.isArray(list)) return list;
+  throw new TypeError('(functions || []) is not iterable');
+}
+
+/**
+ * The completion pass read its list through `.filter`, so a truthy non-array
+ * fails with the original property-access TypeError.
+ * @param {unknown} list
+ */
+function filterEntriesOf(list) {
+  if (!list) return [];
+  if (Array.isArray(list)) return list;
+  throw new TypeError('(functions || []).filter is not a function');
+}
+
+/**
+ * @param {unknown} fn
+ * @returns {{ start: number, end: number } | undefined}
+ */
+function spanOf(fn) {
+  const ranges = field(fn, 'ranges');
+  if (!ranges || field(ranges, 'length') === 0) return undefined;
+  if (!Array.isArray(ranges)) {
+    // The original evaluated fn.ranges.map here and failed with this
+    // TypeError (verified against the original expression on pinned Node).
+    throw new TypeError('fn.ranges.map is not a function');
+  }
+  return {
+    start: Math.min(...ranges.map((r) => Number(field(r, 'startOffset')))),
+    end: Math.max(...ranges.map((r) => Number(field(r, 'endOffset'))))
+  };
+}
+
+/**
+ * @param {unknown[]} coverageList
+ * @returns {unknown[]}
  */
 export function completeFunctionLists(coverageList) {
-  /** @type {Map<string, { name: string, start: number, end: number }>} */
+  /** @type {Map<string, { name: unknown, start: number, end: number }>} */
   const union = new Map();
-  for (const functions of coverageList) {
-    for (const fn of functions || []) {
-      if (!fn.ranges || fn.ranges.length === 0) continue;
-      const start = Math.min(...fn.ranges.map((r) => r.startOffset));
-      const end = Math.max(...fn.ranges.map((r) => r.endOffset));
-      const key = `${fn.functionName}@${String(start)}-${String(end)}`;
-      if (!union.has(key))
-        union.set(key, { name: fn.functionName, start, end });
+  for (const list of coverageList) {
+    for (const fn of unionEntriesOf(list)) {
+      const span = spanOf(fn);
+      if (!span) continue;
+      const name = field(fn, 'functionName');
+      const key = `${String(name)}@${String(span.start)}-${String(span.end)}`;
+      if (!union.has(key)) union.set(key, { name, ...span });
     }
   }
-  return coverageList.map((functions) => {
-    const present = new Set(
-      (functions || [])
-        .filter((fn) => fn.ranges && fn.ranges.length > 0)
-        .map(
-          (fn) =>
-            `${fn.functionName}@${String(Math.min(...(fn.ranges ?? []).map((r) => r.startOffset)))}-${String(Math.max(...(fn.ranges ?? []).map((r) => r.endOffset)))}`
-        )
-    );
+  return coverageList.map((list) => {
+    const functions = filterEntriesOf(list);
+    const present = new Set();
+    /** @type {{ start: number, end: number }[]} */
+    const presentSpans = [];
+    for (const fn of functions) {
+      const span = spanOf(fn);
+      if (!span) continue;
+      present.add(
+        `${String(field(fn, 'functionName'))}@${String(span.start)}-${String(span.end)}`
+      );
+      presentSpans.push(span);
+    }
     // Partial writes can list a function that ran while omitting its
     // ancestors; a zero span containing a present function's span would
     // erase real credit, so it is never inserted. The ancestor's own
     // statements are carried by complete takes.
-    const presentSpans = (functions || [])
-      .filter((f) => f.ranges && f.ranges.length > 0)
-      .map((f) => ({
-        start: Math.min(...(f.ranges ?? []).map((r) => r.startOffset)),
-        end: Math.max(...(f.ranges ?? []).map((r) => r.endOffset))
-      }));
-    /** @type {V8Function[]} */
+    /** @type {unknown[]} */
     const added = [];
     for (const [key, fn] of union) {
       if (present.has(key)) continue;
@@ -94,16 +130,56 @@ export function completeFunctionLists(coverageList) {
         ranges: [{ startOffset: fn.start, endOffset: fn.end, count: 0 }]
       });
     }
-    return added.length ? [...(functions || []), ...added] : functions;
+    return added.length ? [...functions, ...added] : list;
   });
+}
+
+// What v8-to-istanbul reads from one load's function list. Each field the
+// library uses is checked here and rebuilt, so the typed call below is true
+// for every list it receives. Shapes the library cannot use at all (a list
+// that is not an array, a block that is not an object or has no ranges list,
+// a null range) throw TypeError here, as they did inside the library. A
+// falsy functionName and any isBlockCoverage are read by truthiness in the
+// library, so they are normalized without changing what it does (the one
+// strict comparison, functionName === '(empty-report)', is unaffected because
+// a falsy name becomes ''). Three classes of shape are rejected here and were
+// accepted before: a range that is not an object (a number, string or
+// boolean), a range whose startOffset, endOffset or count is missing or not a
+// number (offsets are only used in arithmetic, so a numeric string was
+// coerced and worked, while count reaches the report raw, so a string count
+// was written into the output), and a truthy functionName that is not a
+// string (it was written into the report's function map as given).
+/**
+ * applyCoverage receives each take's blocks exactly as the original inline
+ * call delivered them: array takes pass through unchecked with no coercion,
+ * as before. completeFunctionLists above rejects every truthy non-array take
+ * with the original TypeErrors, so the only values that can arrive here
+ * non-array are falsy ones (a take carrying no functions entry at all -
+ * malformed fixture data only), which the original inline call forwarded to
+ * applyCoverage(blocks) whose first use is blocks.forEach. The throws below
+ * reproduce those exact library TypeErrors (execution-verified on pinned
+ * Node 26.13.0 with v8-to-istanbul 9.3.0).
+ * @param {unknown} functions
+ * @returns {import('inspector').Profiler.FunctionCoverage[]}
+ */
+function takeBlocks(functions) {
+  if (!Array.isArray(functions)) {
+    if (functions === undefined || functions === null) {
+      throw new TypeError(
+        `Cannot read properties of ${functions} (reading 'forEach')`
+      );
+    }
+    throw new TypeError('blocks.forEach is not a function');
+  }
+  return functions;
 }
 
 /**
  * @param {{
- *   url?: string,
- *   source: string | undefined,
- *   coverageList?: CoverageList,
- *   functions?: V8Function[]
+ *   url?: unknown,
+ *   source?: unknown,
+ *   coverageList?: unknown[],
+ *   functions?: unknown
  * }} merged
  * @param {string} path
  * @returns {Promise<FileCoverageData>}
@@ -114,11 +190,9 @@ export async function toFileCoverage(merged, path) {
   for (const functions of completeFunctionLists(
     merged.coverageList || [merged.functions]
   )) {
-    const converter = new V8ToIstanbul(path, 0, {
-      sources: { '': merged.source }
-    });
+    const converter = V8ToIstanbul(path, 0);
     await converter.load();
-    converter.applyCoverage(functions);
+    converter.applyCoverage(takeBlocks(functions));
     coverages.push(converter.toIstanbul()[path]);
   }
   return zeroUncalledFunctionBodies(coverages.reduce(maxMergeFileCoverages));

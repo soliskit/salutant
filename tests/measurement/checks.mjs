@@ -3,14 +3,14 @@
 // its HTML. Salutant is a zero-dependency repo with no lockfile, and the page
 // loads no third-party scripts, so the lockfile-registry and third-party
 // package checks do not apply; the run report records that reason.
-import { MeasurementFailure } from './validate.mjs';
+import { MeasurementFailure, field } from './validate.mjs';
 import { browserFiles, pageScriptSource } from './filelists.mjs';
 import { PAGE_HTML } from '../../src/assets.js';
 import { APP_ORIGIN } from '../helpers.js';
 
 // Every served own-code script in the captures must equal the checked-in
 // string it is served from. A mismatch fails the run.
-/** @param {import('./v8merge.mjs').V8Entry[]} browserEntries */
+/** @param {unknown[]} browserEntries */
 export function checkServedScripts(browserEntries) {
   const own = new Map(
     browserFiles().map((f) => [f.servedPath, pageScriptSource()])
@@ -24,20 +24,26 @@ export function checkServedScripts(browserEntries) {
   /** @type {Set<string>} */
   const seenVerified = new Set();
   for (const entry of browserEntries) {
-    if (!entry.url) continue;
+    const url = field(entry, 'url');
+    // Capture entries come from JSON, so url is a JSON value. Only strings
+    // and arrays can survive new URL(String(...)) below (arrays join with
+    // commas); every other JSON value falls into the catch and is skipped,
+    // exactly as before.
+    if (typeof url !== 'string' && !Array.isArray(url)) continue;
     let pathname;
     try {
-      pathname = new URL(entry.url).pathname;
+      pathname = new URL(String(url)).pathname;
     } catch {
       continue;
     }
     const expected = own.get(pathname);
     if (expected === undefined) continue;
-    if (entry.source === undefined) {
+    const source = field(entry, 'source');
+    if (source === undefined) {
       if (!seenVerified.has(pathname)) seenUnverifiable.add(pathname);
       continue;
     }
-    if (entry.source !== expected) {
+    if (source !== expected) {
       throw new MeasurementFailure(
         `served script differs from its checked-in source: ${pathname}`
       );
