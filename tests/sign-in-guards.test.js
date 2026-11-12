@@ -63,9 +63,11 @@ void test('a challenge request with a non-string address is rejected as a bad re
 void test('an uncertain send that the provider did accept reconciles to sent, and the code then verifies', async () => {
   // The provider accepted the message but its answer was lost: the send
   // reports uncertain while the provider record holds it (R5).
+  /** @type {Awaited<ReturnType<typeof makeWorld>>['mailer'] | null} */
   let mailer = null;
   const w = await makeWorld({
     mailerBehavior: (m) => {
+      assert.ok(mailer);
       mailer.outbox.push({
         ...m,
         providerId: `mock-late-${mailer.outbox.length + 1}`,

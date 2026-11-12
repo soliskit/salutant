@@ -537,11 +537,13 @@ void test('a duplicate already waiting on a request that then throws gets the cl
 
   // Hold the first request at its keyed hashes, after it registered its key.
   let held = false;
-  let reachedHold;
+  /** @type {(value?: unknown) => void} */
+  let reachedHold = () => {};
   const holdReached = new Promise((resolve) => {
     reachedHold = resolve;
   });
-  let release;
+  /** @type {(value?: unknown) => void} */
+  let release = () => {};
   const gate = new Promise((resolve) => {
     release = resolve;
   });
@@ -555,7 +557,8 @@ void test('a duplicate already waiting on a request that then throws gets the cl
     return hmac(...args);
   };
   // Know when the duplicate has joined the first request.
-  let joined;
+  /** @type {(value?: unknown) => void} */
+  let joined = () => {};
   const duplicateJoined = new Promise((resolve) => {
     joined = resolve;
   });

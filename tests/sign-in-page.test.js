@@ -27,7 +27,8 @@ function ok(body, status = 200) {
 }
 
 function deferred() {
-  let finish;
+  /** @type {(value?: unknown) => void} */
+  let finish = () => {};
   const promise = new Promise((resolve) => {
     finish = resolve;
   });

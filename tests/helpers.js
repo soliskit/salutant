@@ -227,7 +227,7 @@ export class BrowserSession {
   }
   /**
    * @param {object} options
-   * @param {string} options.address
+   * @param {string | number} options.address
    * @param {string} [options.appOrigin]
    * @param {string} options.stateId
    * @param {string | null} [options.idempotencyKey]
@@ -257,7 +257,7 @@ export class BrowserSession {
   /**
    * @param {object} options
    * @param {string} options.challengeId
-   * @param {string} options.address
+   * @param {string | number} options.address
    * @param {string | null} [options.idempotencyKey]
    */
   async resend({ challengeId, address, idempotencyKey = null }) {
@@ -274,7 +274,7 @@ export class BrowserSession {
     this._storeCookies(res);
     return res;
   }
-  /** @param {{challengeId: string, code: string | null | undefined, address: string, omitCookies?: boolean}} options */
+  /** @param {{challengeId: string, code: string | number | null | undefined, address: string | number, omitCookies?: boolean}} options */
   async verify({ challengeId, code, address, omitCookies = false }) {
     const path = `/v1/challenges/${encodeURIComponent(challengeId)}/verify`;
     /** @type {Record<string, string>} */
