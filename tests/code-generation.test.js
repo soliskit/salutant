@@ -15,6 +15,9 @@ void test('a draw exactly at the rejection limit is rejected; the next valid dra
   let calls = 0;
   globalThis.crypto.getRandomValues = (buf) => {
     if (calls >= draws.length) throw new Error('unexpected extra draw'); // fail closed
+    if (!(buf instanceof Uint32Array)) {
+      throw new TypeError('code-generation mock expects Uint32Array');
+    }
     buf[0] = draws[calls];
     calls += 1;
     return buf;

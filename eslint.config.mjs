@@ -23,7 +23,8 @@ export default defineConfig(
       'tests/headers.test.js',
       'tests/logging-hygiene.test.js',
       'tests/signing-key-jwk.test.js',
-      'tests/measurement/provision.mjs'
+      'tests/measurement/provision.mjs',
+      'tests/code-generation.test.js'
     ],
     extends: [
       ...tseslint.configs.recommendedTypeChecked,
@@ -39,7 +40,8 @@ export default defineConfig(
         'tests/headers.test.js',
         'tests/logging-hygiene.test.js',
         'tests/signing-key-jwk.test.js',
-        'tests/measurement/provision.mjs'
+        'tests/measurement/provision.mjs',
+        'tests/code-generation.test.js'
       ]
     })),
     languageOptions: {
@@ -56,7 +58,8 @@ export default defineConfig(
       'tests/headers.test.js',
       'tests/logging-hygiene.test.js',
       'tests/signing-key-jwk.test.js',
-      'tests/measurement/provision.mjs'
+      'tests/measurement/provision.mjs',
+      'tests/code-generation.test.js'
     ],
     extends: [tseslint.configs.disableTypeChecked].map((config) => ({
       ...config,
