@@ -13,6 +13,13 @@ import {
   readCreated
 } from './helpers.js';
 
+/**
+ * @typedef {import('../src/service.js').ServiceStore & {
+ *   snapshot(): string,
+ *   restoreFrom(snapshot: string): void
+ * }} DriverStore
+ */
+/** @type {Array<[string, () => DriverStore]>} */
 const DRIVERS = [
   ['MemoryStore', () => new MemoryStore()],
   ['DurableObjectStore', () => new DurableObjectStore(makeDOStorage())]

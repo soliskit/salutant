@@ -8,7 +8,9 @@ void test('an uncertain send is not retried, counts against budget, and is recon
   let captured;
   const w = await makeWorld({
     mailerBehavior: ({ text }) => {
-      captured = text.match(/\b(\d{6})\b/)[1];
+      const match = text.match(/\b(\d{6})\b/);
+      assert.ok(match !== null, 'mock mail text has no six-digit code');
+      captured = match[1];
       return 'uncertain';
     }
   });
@@ -219,7 +221,9 @@ void test('a failed send cannot verify: the undelivered code is dead on arrival'
   let captured;
   const w = await makeWorld({
     mailerBehavior: ({ text }) => {
-      captured = text.match(/\d{6}/)[0];
+      const match = text.match(/\d{6}/);
+      assert.ok(match !== null, 'mock mail text has no six-digit code');
+      captured = match[0];
       return 'failed';
     }
   });
@@ -380,7 +384,9 @@ void test('after a failed send the provider is called once, and repeating the sa
   let sentCode;
   const w = await makeWorld({
     mailerBehavior: ({ text }) => {
-      sentCode = text.match(/\b(\d{6})\b/)[1];
+      const match = text.match(/\b(\d{6})\b/);
+      assert.ok(match !== null, 'mock mail text has no six-digit code');
+      sentCode = match[1];
       return 'failed';
     }
   });

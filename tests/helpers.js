@@ -75,6 +75,52 @@ export class ControllableEpoch {
   }
 }
 
+/**
+ * @template {import('../src/service.js').ServiceStore} S
+ * @typedef {object} WorldOptions
+ * @property {number} [now]
+ * @property {string[]} [allowlist]
+ * @property {NonNullable<ConstructorParameters<typeof MockMailAdapter>[0]>['behavior']} [mailerBehavior]
+ * @property {NonNullable<ConstructorParameters<typeof SalutantService>[0]>['config']} [config]
+ * @property {NonNullable<ConstructorParameters<typeof StubApp>[0]>['config']} [appConfig]
+ * @property {() => S} [storeFactory]
+ */
+/**
+ * @template {import('../src/service.js').ServiceStore} S
+ * @typedef {object} World
+ * @property {SalutantService} service
+ * @property {ReturnType<typeof createWorker>} worker
+ * @property {StubApp} app
+ * @property {S} store
+ * @property {MemoryStore} appStore
+ * @property {MockMailAdapter} mailer
+ * @property {ControllableEpoch} epoch
+ * @property {NonNullable<import('../src/service.js').ServiceOptions['logSink']>} logSink
+ * @property {() => number} clock
+ * @property {(ms: number) => void} advance
+ * @property {(value: number) => void} setNow
+ * @property {() => number} getNow
+ */
+/**
+ * @overload
+ * @param {Omit<WorldOptions<MemoryStore>, 'storeFactory'> & { storeFactory?: undefined }} [options]
+ * @returns {Promise<World<MemoryStore>>}
+ */
+/**
+ * @template {import('../src/service.js').ServiceStore} S
+ * @overload
+ * @param {WorldOptions<S> & { storeFactory: () => S }} options
+ * @returns {Promise<World<S>>}
+ */
+/**
+ * @overload
+ * @param {WorldOptions<import('../src/service.js').ServiceStore>} [options]
+ * @returns {Promise<World<import('../src/service.js').ServiceStore>>}
+ */
+/**
+ * @param {WorldOptions<import('../src/service.js').ServiceStore>} [options]
+ * @returns {Promise<World<import('../src/service.js').ServiceStore>>}
+ */
 export async function makeWorld({
   now = 1_759_600_000_000, // fixed start so windows are deterministic
   allowlist = [OWNER],
