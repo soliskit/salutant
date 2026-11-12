@@ -29,20 +29,25 @@ function stubFetch(handlers) {
   /** @type {{ url: string, method: string | undefined, headers: Headers, body: string | undefined }[]} */
   const calls = [];
   /** @type {typeof fetch} */
-  const impl = async (input, init = {}) => {
-    assert.ok(typeof input === 'string', 'the adapter passes a string url');
-    calls.push({
-      url: input,
-      method: init.method,
-      headers: new Headers(init.headers),
-      body: typeof init.body === 'string' ? init.body : undefined
-    });
-    const h = handlers.shift();
-    if (!h) throw new Error(`unexpected fetch to ${input}`);
-    if ('throw' in h) throw new Error(h.throw);
-    return new Response(h.rawBody ?? JSON.stringify(h.body), {
-      status: h.status
-    });
+  const impl = (input, init = {}) => {
+    try {
+      assert.ok(typeof input === 'string', 'the adapter passes a string url');
+      calls.push({
+        url: input,
+        method: init.method,
+        headers: new Headers(init.headers),
+        body: typeof init.body === 'string' ? init.body : undefined
+      });
+      const h = handlers.shift();
+      if (!h) throw new Error(`unexpected fetch to ${input}`);
+      if ('throw' in h) throw new Error(h.throw);
+      return Promise.resolve(
+        new Response(h.rawBody ?? JSON.stringify(h.body), { status: h.status })
+      );
+    } catch (error) {
+      assert.ok(error instanceof Error);
+      return Promise.reject(error);
+    }
   };
   return Object.assign(impl, { calls });
 }
@@ -83,6 +88,7 @@ void test('accepted send: returns providerId, sends idempotency key and plain-te
   assert.equal(call.headers.get('idempotency-key'), 'req-1');
   assert.equal(call.headers.get('authorization'), `Bearer ${KEY}`);
   assert.ok(call.body !== undefined, 'the send carries a string body');
+  /** @type {unknown} */
   const body = JSON.parse(call.body);
   assert.deepEqual(body, {
     from: FROM,

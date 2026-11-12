@@ -13,7 +13,8 @@ import {
   OWNER,
   SERVICE_ORIGIN,
   readCreated,
-  keyIds
+  keyIds,
+  isRecord
 } from './helpers.js';
 
 // The plan requires the storage-exercising suite to run against both
@@ -57,9 +58,18 @@ function reservationRecord(value) {
 
 /** @param {string} snap */
 const sortedEntries = (snap) => {
+  /** @type {unknown} */
   const entries = JSON.parse(snap);
   assert.ok(Array.isArray(entries), 'the snapshot is a list of entries');
-  return entries.sort(([a], [b]) => (a < b ? -1 : 1));
+  const rows = entries.map((entry) => {
+    assert.ok(Array.isArray(entry));
+    /** @type {unknown} */
+    const key = entry[0];
+    /** @type {unknown} */
+    const value = entry[1];
+    return [key, value];
+  });
+  return rows.sort(([a], [b]) => (String(a) < String(b) ? -1 : 1));
 };
 
 for (const [driver, storeFactory] of DRIVERS) {
@@ -82,7 +92,9 @@ for (const [driver, storeFactory] of DRIVERS) {
       code,
       address: OWNER
     });
-    assert.ok((await used.json()).proof);
+    /** @type {unknown} */
+    const usedBody = await used.json();
+    assert.ok(isRecord(usedBody) && usedBody.proof);
     w.store.restoreFrom(snapshot);
     assert.ok(
       beforeConsume.length > 0,
@@ -151,9 +163,12 @@ for (const [driver, storeFactory] of DRIVERS) {
       stateId: start.stateId
     });
     assert.equal(create.status, 200);
+    /** @type {unknown} */
     const created = await create.json();
+    assert.ok(isRecord(created));
     assert.equal(created.status, 'ok');
-    assert.equal(typeof created.challengeId, 'string');
+    const { challengeId } = created;
+    assert.ok(typeof challengeId === 'string');
     await w.service.drain();
     const code = w.mailer.lastCode();
     assert.ok(code, 'a code was mailed');
@@ -163,9 +178,11 @@ for (const [driver, storeFactory] of DRIVERS) {
       'the original browser holds its binding cookie'
     );
 
-    const challengeKey = `challenge:${created.challengeId}`;
+    const challengeKey = `challenge:${challengeId}`;
     const original = challengeRecord(w.store.get(challengeKey));
     assert.ok(original, 'the challenge was stored');
+    const { requestId } = original;
+    assert.ok(typeof requestId === 'string');
     assert.equal(original.listed, true);
     assert.equal(original.state, 'open');
     assert.equal(original.attempts, 0);
@@ -179,8 +196,7 @@ for (const [driver, storeFactory] of DRIVERS) {
       'the original code is not expired'
     );
     assert.equal(
-      reservationRecord(w.store.get(`reservation:${original.requestId}`))
-        .outcome,
+      reservationRecord(w.store.get(`reservation:${requestId}`)).outcome,
       'accepted'
     );
     assert.equal(w.store.keysWithPrefix('issuance:').length, 0);
@@ -201,7 +217,7 @@ for (const [driver, storeFactory] of DRIVERS) {
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const response = await browser.verify({
-        challengeId: created.challengeId,
+        challengeId,
         code: wrongCode,
         address: OWNER
       });
@@ -218,7 +234,7 @@ for (const [driver, storeFactory] of DRIVERS) {
       'the wrong-try lockout was reached before restore'
     );
     const lockedCorrect = await browser.verify({
-      challengeId: created.challengeId,
+      challengeId,
       code,
       address: OWNER
     });
@@ -250,7 +266,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     // No automatic restore detection or production recovery is claimed.
     w.epoch.available = false;
     const closed = await browser.verify({
-      challengeId: created.challengeId,
+      challengeId,
       code,
       address: OWNER
     });
@@ -269,13 +285,12 @@ for (const [driver, storeFactory] of DRIVERS) {
       'expiry cannot explain the refusal'
     );
     assert.equal(
-      reservationRecord(w.store.get(`reservation:${original.requestId}`))
-        .outcome,
+      reservationRecord(w.store.get(`reservation:${requestId}`)).outcome,
       'accepted',
       'failed mail cannot explain the refusal'
     );
     const oldEpoch = await browser.verify({
-      challengeId: created.challengeId,
+      challengeId,
       code,
       address: OWNER
     });
@@ -322,6 +337,7 @@ for (const [driver, storeFactory] of DRIVERS) {
 
     // After the overlap ends the key endpoint no longer lists k1.
     w.advance(16 * 60_000);
+    /** @type {unknown} */
     const jwks = await (
       await w.service.fetch(
         new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
@@ -407,6 +423,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     );
     w.app.jwksCache = null;
 
+    /** @type {unknown} */
     const listed = await (
       await w.service.fetch(
         new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
@@ -461,18 +478,22 @@ for (const [driver, storeFactory] of DRIVERS) {
 
   void test(`[${driver}] the key endpoint reports the current epoch and honors the cache window`, async () => {
     const w = await makeWorld({ storeFactory });
+    /** @type {unknown} */
     const first = await (
       await w.service.fetch(
         new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
       )
     ).json();
+    assert.ok(isRecord(first));
     assert.equal(first.epoch, 1);
     w.epoch.value = 7;
+    /** @type {unknown} */
     const second = await (
       await w.service.fetch(
         new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
       )
     ).json();
+    assert.ok(isRecord(second));
     assert.equal(second.epoch, 7);
   });
 }

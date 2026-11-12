@@ -77,9 +77,32 @@ void test('StubApp uses the wall clock when no clock is injected', async () => {
   );
   assert.ok(
     pending.createdAtMs >= before && pending.createdAtMs <= after,
-    `createdAtMs ${pending.createdAtMs} not between ${String(before)} and ${String(after)}`
+    `createdAtMs ${String(pending.createdAtMs)} not between ${String(before)} and ${String(after)}`
   );
 });
+
+// The entries of a snapshot, decoded the way parseSnapshot in src/storage.js
+// decodes them: null and the empty string decode to an empty map, a non-list
+// or a non-object entry fails with a TypeError where parseSnapshot throws,
+// and any other object entry, array or plain, contributes its [0] and [1]
+// members.
+/**
+ * @param {unknown} value
+ * @returns {[unknown, unknown][]}
+ */
+function mapEntriesOf(value) {
+  if (value === null || value === '') return [];
+  if (!Array.isArray(value)) throw new TypeError('the snapshot is not a list');
+  return value.map((/** @type {unknown} */ entry) => {
+    if (typeof entry !== 'object' || entry === null)
+      throw new TypeError('an entry is not a pair');
+    /** @type {unknown} */
+    const k = Reflect.get(entry, 0);
+    /** @type {unknown} */
+    const v = Reflect.get(entry, 1);
+    return [k, v];
+  });
+}
 
 void test('MemoryStore snapshot decoding preserves the JSON-domain Map behavior', () => {
   for (const value of [
@@ -100,7 +123,9 @@ void test('MemoryStore snapshot decoding preserves the JSON-domain Map behavior'
     const snapshot = JSON.stringify(value);
     let expected;
     try {
-      expected = new Map(JSON.parse(snapshot));
+      /** @type {unknown} */
+      const parsed = JSON.parse(snapshot);
+      expected = new Map(mapEntriesOf(parsed));
     } catch (error) {
       assert.ok(error instanceof TypeError);
       assert.throws(() => new MemoryStore(snapshot), TypeError, snapshot);
