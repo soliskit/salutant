@@ -268,5 +268,12 @@ jobs:
           --testRunner command
           --commandRunner.command "exec node --test tests/*.test.js"
           --mutate "src/${{ matrix.file }}.js"
-          --reporters ${{ matrix.file == 'service' && 'clear-text,progress-append-only,dots' || 'clear-text' }} --coverageAnalysis off
+          --reporters ${{ matrix.file == 'service' && 'clear-text,progress-append-only,dots,json' || 'clear-text' }} --coverageAnalysis off
           --concurrency 1 --timeoutMS 20000
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-report-${{ matrix.file }}
+          path: reports/mutation/
+          overwrite: true
+
