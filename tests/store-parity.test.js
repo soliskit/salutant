@@ -25,7 +25,7 @@ function makeStores() {
   ];
 }
 
-void test('parity: set/get/delete/keysWithPrefix across the interface', async () => {
+void test('parity: set/get/delete/keysWithPrefix across the interface', () => {
   for (const [name, store] of makeStores()) {
     assert.equal(store.get('missing'), undefined, name);
     store.set('code:1', { code: '123456', attempts: 0 });
@@ -49,7 +49,7 @@ void test('parity: set/get/delete/keysWithPrefix across the interface', async ()
   }
 });
 
-void test('parity: get returns a copy; getRef inside transact mutates the stored value', async () => {
+void test('parity: get returns a copy; getRef inside transact mutates the stored value', () => {
   for (const [name, store] of makeStores()) {
     store.set('k', { n: 1, nested: { ok: true } });
     store.get('k').n = 999;
@@ -71,7 +71,7 @@ void test('parity: get returns a copy; getRef inside transact mutates the stored
   }
 });
 
-void test('parity: transact flushes get/set/delete changes on commit', async () => {
+void test('parity: transact flushes get/set/delete changes on commit', () => {
   for (const [name, store] of makeStores()) {
     store.set('a', 1);
     store.set('b', 2);
@@ -89,7 +89,7 @@ void test('parity: transact flushes get/set/delete changes on commit', async () 
   }
 });
 
-void test('parity: keysWithPrefix treats % and _ in keys as literal characters', async () => {
+void test('parity: keysWithPrefix treats % and _ in keys as literal characters', () => {
   for (const [name, store] of makeStores()) {
     store.set('rate:100%', 1);
     store.set('rate:100_x', 2);
@@ -103,7 +103,7 @@ void test('parity: keysWithPrefix treats % and _ in keys as literal characters',
   }
 });
 
-void test('parity: snapshot and restore use one shared format in both directions', async () => {
+void test('parity: snapshot and restore use one shared format in both directions', () => {
   const data = { 'code:1': { code: '123456' }, 'budget:owner': { used: 3 } };
   for (const [aName, a] of makeStores()) {
     for (const [bName, b] of makeStores()) {
@@ -185,7 +185,7 @@ void test('DurableObjectStore: restoreFrom inside a transaction commits with it'
   assert.deepEqual(store.get('only'), { v: 1 });
 });
 
-void test('parity: snapshot inside a transaction sees the working copy', async () => {
+void test('parity: snapshot inside a transaction sees the working copy', () => {
   for (const [name, store] of makeStores()) {
     store.set('a', 1);
     store.set('b', 2);
@@ -212,7 +212,7 @@ void test('parity: snapshot inside a transaction sees the working copy', async (
   }
 });
 
-void test('parity: restore inside a transaction replaces wholesale, including transaction-created keys', async () => {
+void test('parity: restore inside a transaction replaces wholesale, including transaction-created keys', () => {
   for (const [name, store] of makeStores()) {
     store.set('db-key', 1);
     const snap = JSON.stringify([['restored', true]]);
@@ -227,7 +227,7 @@ void test('parity: restore inside a transaction replaces wholesale, including tr
   }
 });
 
-void test('parity: keysWithPrefix inside a transaction merges the working copy', async () => {
+void test('parity: keysWithPrefix inside a transaction merges the working copy', () => {
   for (const [name, store] of makeStores()) {
     store.set('code:keep', 1);
     store.set('code:drop', 2);

@@ -29,8 +29,8 @@ void test('SalutantService uses the wall clock when no clock is injected', async
     store: new MemoryStore(),
     mailer: new MockMailAdapter({ behavior: 'accepted' }),
     epochSource: {
-      async read() {
-        return 1;
+      read() {
+        return Promise.resolve(1);
       }
     },
     allowlist: [OWNER],
@@ -58,9 +58,7 @@ void test('StubApp uses the wall clock when no clock is injected', async () => {
   const app = new StubApp({
     origin: APP_ORIGIN,
     serviceOrigin: SERVICE_ORIGIN,
-    fetchJwks: async () => {
-      throw new Error('not needed for this test');
-    },
+    fetchJwks: () => Promise.reject(new Error('not needed for this test')),
     store: appStore,
     stateHmacKeyBytes: globalThis.crypto.getRandomValues(new Uint8Array(32))
   });

@@ -320,9 +320,7 @@ for (const [driver, storeFactory] of DRIVERS) {
     // closed).
     w.advance(5 * 60_000 + 1);
     const realFetch = w.app.fetchJwks;
-    w.app.fetchJwks = async () => {
-      throw new Error('service unreachable');
-    };
+    w.app.fetchJwks = () => Promise.reject(new Error('service unreachable'));
     const closed = await w.app.handleExchange(
       { proof: r2.verified.proof, state: 'another-state-00000000' },
       SERVICE_ORIGIN

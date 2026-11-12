@@ -7,11 +7,41 @@ import { join } from 'node:path';
 
 export class MeasurementFailure extends Error {}
 
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+function isRecord(value) {
+  return typeof value === 'object' && value !== null;
+}
+
+// Reads a property the way plain property access did: null throws the same
+// TypeError, any other non-object has no such property.
+/**
+ * @param {unknown} value
+ * @param {string} key
+ * @returns {unknown}
+ */
+function field(value, key) {
+  if (value === null || value === undefined) {
+    throw new TypeError(
+      `Cannot read properties of ${String(value)} (reading '${key}')`
+    );
+  }
+  return isRecord(value) ? value[key] : undefined;
+}
+
+/**
+ * @param {string} dir
+ * @param {number} runStartedAt
+ * @param {Set<unknown>} serverUrls
+ */
 export function validateServerDir(dir, runStartedAt, serverUrls) {
   const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
   if (files.length === 0) {
     throw new MeasurementFailure(`no server coverage reports in ${dir}`);
   }
+  /** @type {unknown[]} */
   const entries = [];
   let filesWithApp = 0;
   for (const f of files) {
@@ -19,6 +49,7 @@ export function validateServerDir(dir, runStartedAt, serverUrls) {
     if (statSync(path).mtimeMs < runStartedAt - 1000) {
       throw new MeasurementFailure(`stale coverage report rejected: ${f}`);
     }
+    /** @type {unknown} */
     let parsed;
     try {
       parsed = JSON.parse(readFileSync(path, 'utf8'));
@@ -27,10 +58,13 @@ export function validateServerDir(dir, runStartedAt, serverUrls) {
         `cut-off or unreadable coverage report rejected: ${f}`
       );
     }
-    if (!Array.isArray(parsed.result)) {
+    const result = field(parsed, 'result');
+    if (!Array.isArray(result)) {
       throw new MeasurementFailure(`coverage report has no result array: ${f}`);
     }
-    const appEntries = parsed.result.filter((r) => serverUrls.has(r.url));
+    /** @type {unknown[]} */
+    const results = result;
+    const appEntries = results.filter((r) => serverUrls.has(field(r, 'url')));
     if (appEntries.length > 0) filesWithApp++;
     for (const r of appEntries) entries.push(r);
   }
@@ -42,8 +76,10 @@ export function validateServerDir(dir, runStartedAt, serverUrls) {
   return entries;
 }
 
+/** @param {string} dir */
 export function validateBrowserDir(dir) {
   const indexPath = join(dir, 'captures.index');
+  /** @type {string[]} */
   let indexed;
   try {
     indexed = readFileSync(indexPath, 'utf8')
@@ -73,8 +109,10 @@ export function validateBrowserDir(dir) {
       throw new MeasurementFailure(`unindexed browser capture: ${name}`);
     }
   }
+  /** @type {unknown[]} */
   const entries = [];
   for (const name of present) {
+    /** @type {unknown} */
     let parsed;
     try {
       parsed = JSON.parse(readFileSync(join(dir, name), 'utf8'));
@@ -83,10 +121,13 @@ export function validateBrowserDir(dir) {
         `cut-off or unreadable browser capture rejected: ${name}`
       );
     }
-    if (!Array.isArray(parsed.entries)) {
+    const found = field(parsed, 'entries');
+    if (!Array.isArray(found)) {
       throw new MeasurementFailure(`browser capture has no entries: ${name}`);
     }
-    entries.push(...parsed.entries);
+    /** @type {unknown[]} */
+    const items = found;
+    entries.push(...items);
   }
   return entries;
 }
@@ -95,19 +136,46 @@ export function validateBrowserDir(dir) {
 // navigation must have a capture taken shortly before it - an API-wrapped
 // take or a poll - so a navigation can never silently drop a document's
 // coverage.
+/** @param {string} dir */
 export function checkNavigationCoverage(dir) {
-  const captures = readdirSync(dir)
-    .filter((f) => f.endsWith('.json'))
-    .map((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')));
-  const takes = captures.map((c) => c.at).sort((a, b) => a - b);
+  const names = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  /** @type {unknown[]} */
+  const captures = names.map((f) => {
+    /** @type {unknown} */
+    const parsed = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+    return parsed;
+  });
+  /** @type {number[]} */
+  const takes = [];
+  captures.forEach((c, index) => {
+    const at = field(c, 'at');
+    if (typeof at !== 'number') {
+      throw new MeasurementFailure(
+        `capture has no numeric time: ${names[index] ?? ''}`
+      );
+    }
+    takes.push(at);
+  });
+  takes.sort((a, b) => a - b);
   for (const capture of captures) {
-    const navs = capture.navigations || [];
-    for (let i = 1; i < navs.length; i++) {
-      const at = navs[i].at;
+    const navs = field(capture, 'navigations');
+    if (!navs) continue;
+    const length = Number(
+      typeof navs === 'string' ? navs.length : field(navs, 'length')
+    );
+    for (let i = 1; i < length; i++) {
+      const nav =
+        typeof navs === 'string' ? navs.charAt(i) : field(navs, String(i));
+      const at = field(nav, 'at');
+      if (typeof at !== 'number') {
+        throw new MeasurementFailure(
+          `navigation ${String(i)} has no numeric time`
+        );
+      }
       const covered = takes.some((t) => t <= at && t >= at - 600);
       if (!covered) {
         throw new MeasurementFailure(
-          `coverage data is missing across a navigation to ${navs[i].url}: no capture in the 600ms before it`
+          `coverage data is missing across a navigation to ${String(field(nav, 'url'))}: no capture in the 600ms before it`
         );
       }
     }

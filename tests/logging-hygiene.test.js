@@ -56,7 +56,7 @@ function* walk(dir) {
   }
 }
 
-void test('the working tree holds no secrets or personal addresses', async () => {
+void test('the working tree holds no secrets or personal addresses', () => {
   const hits = [];
   for (const file of walk(ROOT)) {
     const text = readFileSync(file, 'utf8');
