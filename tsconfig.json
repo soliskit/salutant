@@ -23,7 +23,8 @@
   "include": [
     "src/**/*.js",
     "scripts/**/*.js",
-    "tests/measurement/v8merge.mjs"
+    "tests/measurement/v8merge.mjs",
+    "tests/measurement/validate.mjs"
   ],
   "exclude": ["node_modules"]
 }
