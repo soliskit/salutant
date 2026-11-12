@@ -19,6 +19,7 @@ export default defineConfig(
       'scripts/**/*.js',
       'tests/measurement/v8merge.mjs',
       'tests/measurement/validate.mjs',
+      'tests/measurement/checks.mjs',
       'tests/measurement/filelists.mjs',
       'tests/headers.test.js',
       'tests/logging-hygiene.test.js',
@@ -36,6 +37,7 @@ export default defineConfig(
         'scripts/**/*.js',
         'tests/measurement/v8merge.mjs',
         'tests/measurement/validate.mjs',
+        'tests/measurement/checks.mjs',
         'tests/measurement/filelists.mjs',
         'tests/headers.test.js',
         'tests/logging-hygiene.test.js',
@@ -54,6 +56,7 @@ export default defineConfig(
     ignores: [
       'tests/measurement/v8merge.mjs',
       'tests/measurement/validate.mjs',
+      'tests/measurement/checks.mjs',
       'tests/measurement/filelists.mjs',
       'tests/headers.test.js',
       'tests/logging-hygiene.test.js',

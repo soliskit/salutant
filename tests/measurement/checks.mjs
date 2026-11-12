@@ -10,6 +10,7 @@ import { APP_ORIGIN } from '../helpers.js';
 
 // Every served own-code script in the captures must equal the checked-in
 // string it is served from. A mismatch fails the run.
+/** @param {import('./v8merge.mjs').V8Entry[]} browserEntries */
 export function checkServedScripts(browserEntries) {
   const own = new Map(
     browserFiles().map((f) => [f.servedPath, pageScriptSource()])
@@ -18,9 +19,12 @@ export function checkServedScripts(browserEntries) {
   // a retrieval gap, not content. Every retrieved source for a known path
   // must match, and a known path seen only through irretrievable sources
   // fails the run as unverifiable.
+  /** @type {Set<string>} */
   const seenUnverifiable = new Set();
+  /** @type {Set<string>} */
   const seenVerified = new Set();
   for (const entry of browserEntries) {
+    if (!entry.url) continue;
     let pathname;
     try {
       pathname = new URL(entry.url).pathname;
@@ -50,6 +54,10 @@ export function checkServedScripts(browserEntries) {
 
 // Detects script written inside a page's HTML, including event-handler
 // attributes. Fixture-proven; a page that carries one fails the check.
+/**
+ * @param {string} html
+ * @param {string} pageName
+ */
 export function findInlineScripts(html, pageName) {
   const problems = [];
   const scriptTags = html.match(/<script\b[^>]*>/gi) || [];
@@ -71,6 +79,7 @@ export function findInlineScripts(html, pageName) {
 // Fetches the sign-in page from a verification server (never a measured one)
 // and checks both the inline-script rule and that the served HTML matches the
 // checked-in string it is served from.
+/** @param {string} baseUrl */
 export async function checkPages(baseUrl) {
   const res = await fetch(
     `${baseUrl}/?app=${encodeURIComponent(APP_ORIGIN)}&state=${'x'.repeat(24)}`
