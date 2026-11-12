@@ -19,7 +19,11 @@ export default defineConfig(
       'scripts/**/*.js',
       'tests/measurement/v8merge.mjs',
       'tests/measurement/validate.mjs',
-      'tests/measurement/filelists.mjs'
+      'tests/measurement/filelists.mjs',
+      'tests/headers.test.js',
+      'tests/logging-hygiene.test.js',
+      'tests/signing-key-jwk.test.js',
+      'tests/measurement/provision.mjs'
     ],
     extends: [
       ...tseslint.configs.recommendedTypeChecked,
@@ -31,7 +35,11 @@ export default defineConfig(
         'scripts/**/*.js',
         'tests/measurement/v8merge.mjs',
         'tests/measurement/validate.mjs',
-        'tests/measurement/filelists.mjs'
+        'tests/measurement/filelists.mjs',
+        'tests/headers.test.js',
+        'tests/logging-hygiene.test.js',
+        'tests/signing-key-jwk.test.js',
+        'tests/measurement/provision.mjs'
       ]
     })),
     languageOptions: {
@@ -44,7 +52,11 @@ export default defineConfig(
     ignores: [
       'tests/measurement/v8merge.mjs',
       'tests/measurement/validate.mjs',
-      'tests/measurement/filelists.mjs'
+      'tests/measurement/filelists.mjs',
+      'tests/headers.test.js',
+      'tests/logging-hygiene.test.js',
+      'tests/signing-key-jwk.test.js',
+      'tests/measurement/provision.mjs'
     ],
     extends: [tseslint.configs.disableTypeChecked].map((config) => ({
       ...config,

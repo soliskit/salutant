@@ -23,6 +23,7 @@ void test('end to end: address, code, proof, exchange, session - with only first
   const browser = new BrowserSession(w);
   const r = await honestSignIn(w, { browser });
   assert.equal(r.page.status, 200);
+  assert.ok(r.exchange !== null, 'honest sign-in returned no exchange');
   assert.equal(r.exchange.status, 200);
   assert.ok(r.complete);
   assert.equal(r.complete.status, 200);
@@ -66,6 +67,11 @@ void test('the verify response returns only the registered callback, and complet
   const w = await makeWorld();
   const r = await honestSignIn(w);
   assert.equal(r.verified.callbackUrl, `${APP_ORIGIN}/auth/callback`);
+  assert.ok(r.exchange !== null, 'honest sign-in returned no exchange');
+  assert.ok(
+    'completeUrl' in r.exchange.body,
+    'exchange response has no completion URL'
+  );
   assert.equal(
     r.exchange.body.completeUrl,
     `${APP_ORIGIN}/auth/complete`,

@@ -26,12 +26,16 @@ void test('responses for allowed and unlisted addresses differ only in the permi
   assert.equal(a.status, b.status);
   // Headers: same names, same values. The per-challenge cookie differs
   // only in its random name/value and path id - its shape is identical.
+  /** @param {Response} res */
   const names = (res) => [...res.headers.keys()];
   assert.deepEqual(names(rAllowed), names(rUnlisted));
-  const norm = (v) =>
-    v
+  /** @param {string | null} v */
+  const norm = (v) => {
+    assert.ok(v !== null, 'response has no set-cookie header');
+    return v
       .replace(/sb_[^=]+=[^;]+/, 'sb_ID=BINDING')
       .replace(/challenges\/[^/]+/, 'challenges/ID');
+  };
   for (const n of names(rAllowed)) {
     const a = rAllowed.headers.get(n);
     const b = rUnlisted.headers.get(n);
@@ -46,6 +50,7 @@ void test('responses for allowed and unlisted addresses differ only in the permi
 void test('quota-state: driving the limits leaves allowed and unlisted classes indistinguishable', async () => {
   const w = await makeWorld({ config: { sendsPerAddressPer30Minutes: 1000 } });
   const start = await w.app.startSignIn(null);
+  /** @param {string} address */
   const run = async (address) => {
     const browser = new BrowserSession(w);
     const out = [];
@@ -73,7 +78,9 @@ void test('timing protocol: 200 interleaved requests per class, 3 runs, within t
   const PER_CLASS = 200;
   const HARD_MAX_MS = 50;
   const BASE_TOLERANCE_MS = 20;
+  /** @type {{ allowed: number[], unlisted: number[] }} */
   const medians = { allowed: [], unlisted: [] };
+  /** @type {{ allowed: number[], unlisted: number[] }} */
   const p95s = { allowed: [], unlisted: [] };
   const gaps = [];
   for (let run = 0; run < RUNS; run++) {
@@ -85,12 +92,15 @@ void test('timing protocol: 200 interleaved requests per class, 3 runs, within t
         activeChallengesPerAddress: 10000
       }
     });
+    /** @type {{ allowed: number[], unlisted: number[] }} */
     const samples = { allowed: [], unlisted: [] };
     for (let i = 0; i < PER_CLASS; i++) {
-      for (const [klass, address] of [
+      /** @type {Array<['allowed' | 'unlisted', string]>} */
+      const classAddresses = [
         ['allowed', OWNER],
         ['unlisted', STRANGER]
-      ]) {
+      ];
+      for (const [klass, address] of classAddresses) {
         const browser = new BrowserSession(w);
         const start = await w.app.startSignIn(null);
         const t0 = performance.now();
@@ -103,7 +113,9 @@ void test('timing protocol: 200 interleaved requests per class, 3 runs, within t
         samples[klass].push(performance.now() - t0);
       }
     }
-    for (const klass of ['allowed', 'unlisted']) {
+    /** @type {Array<'allowed' | 'unlisted'>} */
+    const classes = ['allowed', 'unlisted'];
+    for (const klass of classes) {
       const sorted = [...samples[klass]].sort((a, b) => a - b);
       medians[klass].push(sorted[Math.floor(sorted.length / 2)]);
       p95s[klass].push(sorted[Math.floor(sorted.length * 0.95)]);
@@ -113,6 +125,7 @@ void test('timing protocol: 200 interleaved requests per class, 3 runs, within t
       p95: Math.abs(p95s.allowed[run] - p95s.unlisted[run])
     });
   }
+  /** @param {number[]} xs */
   const spread = (xs) => Math.max(...xs) - Math.min(...xs);
   const withinClass = Math.max(
     spread(medians.allowed),

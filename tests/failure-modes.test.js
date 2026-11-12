@@ -503,8 +503,16 @@ void test('a request that throws before registering its key leaves no stale entr
 });
 
 // Fails a test that waits on a request the service never answers.
+/**
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {string} label
+ * @returns {Promise<T>}
+ */
 function within(promise, label) {
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
+  /** @type {Promise<never>} */
   const limit = new Promise((_resolve, reject) => {
     timer = setTimeout(() => {
       reject(new Error(label));
@@ -615,6 +623,11 @@ void test('a duplicate already waiting on a request that then throws gets the cl
 });
 
 const SERVICE = 'https://salutant.example.test';
+/**
+ * @param {Awaited<ReturnType<typeof makeWorld>>} w
+ * @param {string} path
+ * @param {RequestInit['body']} body
+ */
 const post = (w, path, body, headers = {}) =>
   w.worker.fetch(
     new Request(`${SERVICE}${path}`, {

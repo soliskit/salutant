@@ -94,6 +94,10 @@ void test('a proof response carries no-store and the page limits connect-src to 
   assert.equal(r.verify.headers.get('cache-control'), 'no-store');
   const csp = r.page.headers.get('content-security-policy');
   assert.ok(
+    csp !== null,
+    'page response has no content-security-policy header'
+  );
+  assert.ok(
     csp.includes(`connect-src 'self' ${APP_ORIGIN}`),
     'connect-src is exact'
   );
@@ -106,11 +110,15 @@ void test('a proof response carries no-store and the page limits connect-src to 
 });
 
 void test('the policy header has exactly the documented directives, semicolon separated, none empty', () => {
-  const parse = (h) =>
-    h
-      .get('content-security-policy')
-      .split(';')
-      .map((d) => d.trim());
+  /** @param {ReturnType<typeof securityHeaders>} h */
+  const parse = (h) => {
+    const csp = h.get('content-security-policy');
+    assert.ok(
+      csp !== null,
+      'policy headers have no content-security-policy header'
+    );
+    return csp.split(';').map((d) => d.trim());
+  };
   const documented = [
     "default-src 'none'",
     "script-src 'self'",

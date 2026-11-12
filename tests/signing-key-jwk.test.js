@@ -19,6 +19,7 @@ void test('R2: exportSigningPrivateJwk emits the registered label and preserves 
   const raw = await crypto.subtle.exportKey('jwk', privateKey);
   const jwk = await exportSigningPrivateJwk(privateKey);
   assert.equal(jwk.alg, 'EdDSA');
+  /** @type {Omit<typeof jwk, 'alg'> & { alg?: string }} */
   const restOut = { ...jwk };
   delete restOut.alg;
   const restRaw = { ...raw };
@@ -51,8 +52,10 @@ void test('R1: normalizeEd25519Jwk rewrites the nonstandard label without mutati
   const out = normalizeEd25519Jwk(input);
   assert.equal(out.alg, 'EdDSA');
   assert.equal(input.alg, 'Ed25519');
+  /** @type {Omit<typeof out, 'alg'> & { alg?: string }} */
   const restOut = { ...out };
   delete restOut.alg;
+  /** @type {Omit<typeof input, 'alg'> & { alg?: string }} */
   const restIn = { ...input };
   delete restIn.alg;
   assert.deepEqual(restOut, restIn);

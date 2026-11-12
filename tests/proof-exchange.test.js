@@ -29,6 +29,7 @@ async function freshProof(w) {
 void test('a valid proof redeems into exactly one session', async () => {
   const w = await makeWorld();
   const r = await freshProof(w);
+  assert.ok(r.exchange !== null, 'honest sign-in returned no exchange');
   assert.equal(r.exchange.status, 200);
   assert.ok(r.complete);
   assert.equal(r.complete.status, 200);
@@ -180,6 +181,7 @@ void test('an unknown key id is rejected after one refresh', async () => {
 void test('a reused state value is rejected', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w);
+  assert.ok(r.exchange !== null, 'honest sign-in returned no exchange');
   assert.equal(r.exchange.status, 200);
   // second exchange of the same proof+state: replayed
   const again = await w.app.handleExchange(
