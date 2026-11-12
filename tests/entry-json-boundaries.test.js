@@ -50,17 +50,11 @@ async function importTap(run) {
    * @param {boolean} extractable
    * @param {Iterable<string>} usages
    */
-  crypto.subtle.importKey = async (
-    format,
-    jwk,
-    algorithm,
-    extractable,
-    usages
-  ) => {
+  crypto.subtle.importKey = (format, jwk, algorithm, extractable, usages) => {
     seen.push({ format, jwk, algorithm, extractable, usages });
-    return Array.from(usages)[0] === 'verify'
-      ? pair.publicKey
-      : pair.privateKey;
+    return Promise.resolve(
+      Array.from(usages)[0] === 'verify' ? pair.publicKey : pair.privateKey
+    );
   };
   try {
     await run(seen, pair);
@@ -288,7 +282,9 @@ void test('entry allowlist keeps null, string and array behavior and checks inva
 });
 
 void test('entry epoch read evaluates now but always returns a promise, retaining unknown values and rejected null reads', async () => {
-  for (const epoch of [{ value: { raw: true } }, {}, [], 7, 'text', false]) {
+  /** @type {unknown[]} */
+  const epochs = [{ value: { raw: true } }, {}, [], 7, 'text', false];
+  for (const epoch of epochs) {
     const object = objectFor(await envFor({ EPOCH: JSON.stringify(epoch) }));
     const service = await object.service();
     const result = service.epochSource.read();
@@ -302,6 +298,7 @@ void test('entry epoch read evaluates now but always returns a promise, retainin
   }
   const probeEnv = await envFor({ EPOCH: '{"epochProbe":true}' });
   const originalParse = JSON.parse;
+  /** @type {unknown} */
   const thrown = { sentinel: 'uncoerced rejection' };
   const order = [];
   const epochProbe = {
@@ -313,8 +310,12 @@ void test('entry epoch read evaluates now but always returns a promise, retainin
   /** @type {unknown} */
   let rejected;
   try {
-    JSON.parse = (text, ...rest) =>
-      text === probeEnv.EPOCH ? epochProbe : originalParse(text, ...rest);
+    JSON.parse = (text, ...rest) => {
+      /** @type {unknown} */
+      const parsed =
+        text === probeEnv.EPOCH ? epochProbe : originalParse(text, ...rest);
+      return parsed;
+    };
     const probeService = await objectFor(probeEnv).service();
     assert.doesNotThrow(() => {
       rejected = probeService.epochSource.read();

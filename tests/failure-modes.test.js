@@ -2,7 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MockMailAdapter } from '../src/mail-mock.js';
-import { makeWorld, BrowserSession, OWNER } from './helpers.js';
+import {
+  makeWorld,
+  BrowserSession,
+  OWNER,
+  readCreated,
+  readVerified
+} from './helpers.js';
 
 void test('an uncertain send is not retried, counts against budget, and is reconciled', async () => {
   let captured;
@@ -16,9 +22,9 @@ void test('an uncertain send is not retried, counts against budget, and is recon
   });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   assert.equal(w.mailer.attempts.length, 1, 'no automatic retry');
   assert.equal(
@@ -59,12 +65,14 @@ void test('a failed send means no proof and a recorded reservation', async () =>
   const w = await makeWorld({ mailerBehavior: 'failed' });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
+  const { requestId } = created;
+  assert.ok(typeof requestId === 'string');
   const reservation = w.store.transact((s) =>
-    s.getRef(`reservation:${created.requestId}`)
+    s.getRef(`reservation:${requestId}`)
   );
   assert.ok(
     typeof reservation === 'object' &&
@@ -99,7 +107,8 @@ void test('a double-click is one request', async () => {
     })
   ]);
   await w.service.drain();
-  const [b1, b2] = [await r1.json(), await r2.json()];
+  const b1 = await readCreated(r1);
+  const b2 = await readCreated(r2);
   assert.equal(b1.requestId, b2.requestId);
   assert.equal(b1.challengeId, b2.challengeId);
   assert.equal(w.mailer.outbox.length, 1, 'one mail for one logical request');
@@ -131,7 +140,7 @@ void test('a request without an idempotency header stays separate from the liter
     stateId: first.stateId,
     idempotencyKey: 'null'
   });
-  const firstBody = await firstResponse.json();
+  const firstBody = await readCreated(firstResponse);
   assert.equal(firstResponse.status, 200);
   assert.equal(firstBody.status, 'ok');
   await w.service.drain();
@@ -139,7 +148,7 @@ void test('a request without an idempotency header stays separate from the liter
     address: OWNER,
     stateId: second.stateId
   });
-  const secondBody = await secondResponse.json();
+  const secondBody = await readCreated(secondResponse);
   await w.service.drain();
   assert.equal(secondResponse.status, 200);
   assert.equal(secondBody.status, 'ok');
@@ -204,9 +213,9 @@ void test('provider timeout: the person can resend after the cooldown and sign i
   });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
   assert.equal(w.mailer.attempts.length, 1);
   w.advance(61_000);
@@ -223,7 +232,7 @@ void test('provider timeout: the person can resend after the cooldown and sign i
     code,
     address: OWNER
   });
-  const verified = await ok.json();
+  const verified = await readVerified(ok);
   assert.ok(verified.proof);
   // The resent code must complete the whole sign-in: the exchange
   // window runs from proof issuance, so a resend after the 60s
@@ -249,12 +258,14 @@ void test('a failed send cannot verify: the undelivered code is dead on arrival'
   });
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
-  ).json();
+  );
   await w.service.drain();
+  const { requestId } = created;
+  assert.ok(typeof requestId === 'string');
   const reservation = w.store.transact((s) =>
-    s.getRef(`reservation:${created.requestId}`)
+    s.getRef(`reservation:${requestId}`)
   );
   assert.ok(
     typeof reservation === 'object' &&
@@ -294,14 +305,14 @@ void test('an idempotent replay carries the binding cookie, so a fresh-browser r
   );
   await w.service.drain();
   const code = w.mailer.lastCode();
-  const created = await replay.json();
+  const created = await readCreated(replay);
   const ok = await browser2.verify({
     challengeId: created.challengeId,
     code,
     address: OWNER
   });
   assert.ok(
-    (await ok.json()).proof,
+    (await readVerified(ok)).proof,
     'the retrying browser is bound and can verify'
   );
 });
@@ -418,16 +429,18 @@ void test('after a failed send the provider is called once, and repeating the sa
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
   const key = 'failed-send-key-1';
-  const created = await (
+  const created = await readCreated(
     await browser.postChallenge({
       address: OWNER,
       stateId: start.stateId,
       idempotencyKey: key
     })
-  ).json();
+  );
   await w.service.drain();
+  const { requestId } = created;
+  assert.ok(typeof requestId === 'string');
   const reservation = w.store.transact((s) =>
-    s.getRef(`reservation:${created.requestId}`)
+    s.getRef(`reservation:${requestId}`)
   );
   assert.ok(
     typeof reservation === 'object' &&
@@ -451,7 +464,8 @@ void test('after a failed send the provider is called once, and repeating the sa
     stateId: start.stateId,
     idempotencyKey: key
   });
-  assert.equal((await replay.json()).requestId, created.requestId);
+  const replayBody = await readCreated(replay);
+  assert.equal(replayBody.requestId, created.requestId);
   await w.service.drain();
   assert.equal(w.mailer.attempts.length, 1, 'the replay sent nothing');
 });
@@ -491,21 +505,23 @@ void test('a request that throws after registering its key does not block a same
   assert.equal(first.status, 500, 'the failed request is closed');
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let retryTimer;
+  /** @type {Promise<'hung'>} */
+  const hung = new Promise((resolve) => {
+    retryTimer = setTimeout(() => {
+      resolve('hung');
+    }, 2000);
+  });
   const retry = await Promise.race([
     new BrowserSession(w).postChallenge({
       address: OWNER,
       stateId: start.stateId,
       idempotencyKey: key
     }),
-    new Promise((resolve) => {
-      retryTimer = setTimeout(() => {
-        resolve('hung');
-      }, 2000);
-    })
+    hung
   ]).finally(() => {
     clearTimeout(retryTimer);
   });
-  assert.notEqual(retry, 'hung', 'the same-key retry is answered');
+  assert.ok(retry !== 'hung', 'the same-key retry is answered');
 });
 
 void test('a request that throws before registering its key leaves no stale entry for a same-key retry', async () => {
@@ -522,21 +538,23 @@ void test('a request that throws before registering its key leaves no stale entr
   w.epoch.available = true;
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let retryTimer;
+  /** @type {Promise<'hung'>} */
+  const hung = new Promise((resolve) => {
+    retryTimer = setTimeout(() => {
+      resolve('hung');
+    }, 2000);
+  });
   const retry = await Promise.race([
     new BrowserSession(w).postChallenge({
       address: OWNER,
       stateId: start.stateId,
       idempotencyKey: key
     }),
-    new Promise((resolve) => {
-      retryTimer = setTimeout(() => {
-        resolve('hung');
-      }, 2000);
-    })
+    hung
   ]).finally(() => {
     clearTimeout(retryTimer);
   });
-  assert.notEqual(retry, 'hung', 'the same-key retry is answered');
+  assert.ok(retry !== 'hung', 'the same-key retry is answered');
   assert.equal(retry.status, 200, 'and it is a normal first answer');
 });
 
@@ -649,7 +667,7 @@ void test('a duplicate already waiting on a request that then throws gets the cl
     'the same-key retry was not answered'
   );
   assert.equal(retry.status, 200);
-  const created = await retry.json();
+  const created = await readCreated(retry);
   await within(w.service.drain(), 'the mail queue did not drain');
   const verified = await within(
     browser.verify({
@@ -660,7 +678,7 @@ void test('a duplicate already waiting on a request that then throws gets the cl
     'the verify was not answered'
   );
   assert.equal(verified.status, 200);
-  assert.ok((await verified.json()).proof, 'the retry yields a proof');
+  assert.ok((await readVerified(verified)).proof, 'the retry yields a proof');
 });
 
 const SERVICE = 'https://salutant.example.test';
@@ -681,10 +699,12 @@ const post = (w, path, body, headers = {}) =>
 void test('a JSON null body or a missing body closes create and verify and does not block a same-key retry', async () => {
   const w = await makeWorld();
   const start = await w.app.startSignIn(null);
-  for (const [key, body] of [
+  /** @type {Array<[string, string | undefined]>} */
+  const bodies = [
     ['null-body', 'null'],
     ['no-body', undefined]
-  ]) {
+  ];
+  for (const [key, body] of bodies) {
     const create = await within(
       post(w, '/v1/challenges', body, { 'idempotency-key': key }),
       `${key}: the keyed create was never answered`

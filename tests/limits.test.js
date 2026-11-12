@@ -7,7 +7,8 @@ import {
   honestSignIn,
   OWNER,
   STRANGER,
-  readCreated
+  readCreated,
+  isRecord
 } from './helpers.js';
 
 // Narrow a stored record to an object that carries the members the test
@@ -130,7 +131,10 @@ void test('sends per address per 30 minutes: the fourth request is refused indis
   // R3: over the send budget the listed address gets the same generic
   // 200 an unlisted address always gets - a 429 would reveal membership.
   assert.equal(res.status, 200);
-  assert.equal((await res.json()).status, 'ok');
+  /** @type {unknown} */
+  const body = await res.json();
+  assert.ok(isRecord(body));
+  assert.equal(body.status, 'ok');
   await w.service.drain();
   assert.equal(w.mailer.outbox.length, 3);
 });
@@ -304,7 +308,10 @@ void test('R8 attack, honest owner path: slot-filling delays the owner, and the 
     stateId: s3.stateId,
     headers: { 'cf-connecting-ip': '198.51.100.7' }
   });
-  assert.equal((await refused.json()).status, 'ok');
+  /** @type {unknown} */
+  const refusedBody = await refused.json();
+  assert.ok(isRecord(refusedBody));
+  assert.equal(refusedBody.status, 'ok');
   await w.service.drain();
   assert.equal(w.mailer.outbox.length, 2, 'no third mail');
   // Honest owner path: the mailed code from the attacker's challenge is
@@ -335,8 +342,10 @@ void test('R8 attack, honest owner path: slot-filling delays the owner, and the 
     code,
     address: OWNER
   });
+  /** @type {unknown} */
+  const attackerBody = await attackerTry.json();
   assert.ok(
-    (await attackerTry.json()).proof,
+    isRecord(attackerBody) && attackerBody.proof,
     'the code itself was never invalidated'
   );
   // The delay ends when the attacker's challenges expire: the owner's
@@ -723,9 +732,9 @@ const ALIGNED = Date.UTC(2026, 0, 1);
  * @param {string} [address]
  */
 async function create(w, browser, address = OWNER) {
-  return (
+  return readCreated(
     await browser.postChallenge({ address, stateId: 's'.repeat(24) })
-  ).json();
+  );
 }
 
 void test('rolling sends age out individually at 30 minutes; requests stay hourly', async () => {
@@ -868,6 +877,7 @@ void test('default code works just before 30 minutes but expires at the boundary
     const c = await create(w, b);
     await w.service.drain();
     w.advance(elapsed);
+    /** @type {unknown} */
     const result = await (
       await b.verify({
         challengeId: c.challengeId,
@@ -875,6 +885,7 @@ void test('default code works just before 30 minutes but expires at the boundary
         code: w.mailer.lastCode()
       })
     ).json();
+    assert.ok(isRecord(result));
     if (elapsed < HALF_HOUR) assert.ok(result.proof);
     else assert.deepEqual(result, { error: 'invalid_or_expired_code' });
   }
@@ -1087,6 +1098,7 @@ void test('resends count toward the per-address hourly request limit, shared wit
     address: STRANGER
   });
   assert.equal(strangerEleventh.status, 429);
+  /** @type {unknown} */
   const strangerBody = await strangerEleventh.json();
   assert.deepEqual(strangerBody, { error: 'rate_limited' });
   const listedAgain = await browser.resend({

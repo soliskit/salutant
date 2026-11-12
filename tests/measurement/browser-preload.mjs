@@ -81,7 +81,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
         if (/closed/i.test(String(error))) return;
         writeFileSync(
           join(captureDir, `${name}.failed`),
-          `takePreciseCoverage threw during ${why}: ${error}\n`
+          `takePreciseCoverage threw during ${why}: ${String(error)}\n`
         );
         return;
       }
@@ -181,6 +181,7 @@ if (process.env.SALUTANT_MEASURE === '1') {
 
   const instrumented = new WeakSet();
   const closing = new WeakSet();
+  /** @type {WeakMap<import('playwright').Page, Awaited<ReturnType<typeof instrument>>>} */
   const takesByPage = new WeakMap();
 
   /** @param {import('playwright').BrowserContext} context */

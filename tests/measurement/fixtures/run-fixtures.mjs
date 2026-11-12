@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import libCoverage from 'istanbul-lib-coverage';
 import { chromium } from 'playwright';
 import { PAGE_HTML, PAGE_JS } from '../../../src/assets.js';
+import { isRecord } from '../../helpers.js';
 import { CoverageConflict, mergeV8Entries, uncovered } from '../v8merge.mjs';
 import { toFileCoverage, summarize } from '../convert.mjs';
 import {
@@ -69,15 +70,21 @@ async function nodeCoverageFor(fileAbs) {
       if (code === 0) {
         resolve(undefined);
       } else {
-        reject(new Error(`fixture exited ${code}`));
+        reject(new Error(`fixture exited ${String(code)}`));
       }
     });
   });
   const url = 'file://' + fileAbs;
+  /** @type {Array<Record<string, unknown>>} */
   const entries = [];
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+    /** @type {unknown} */
     const d = JSON.parse(readFileSync(join(dir, f), 'utf8'));
-    for (const r of d.result) if (r.url === url) entries.push(r);
+    assert(isRecord(d) && Array.isArray(d.result));
+    for (const r of d.result) {
+      assert(isRecord(r));
+      if (r.url === url) entries.push(r);
+    }
   }
   assert(entries.length > 0, `no coverage entry for ${url}`);
   const source = readFileSync(fileAbs, 'utf8');
@@ -124,7 +131,7 @@ function coverageOf(merged, key) {
 }
 
 /**
- * @param {Record<string, { type: string, body: string }>} routes
+ * @param {Partial<Record<string, { type: string, body: string }>>} routes
  * @param {(base: string) => unknown} fn
  */
 async function withFixtureServer(routes, fn) {
@@ -139,9 +146,13 @@ async function withFixtureServer(routes, fn) {
     res.writeHead(200, { 'content-type': route.type });
     res.end(route.body);
   });
-  await new Promise((resolve) => server.listen(0, () => resolve(undefined)));
+  await new Promise((resolve) => {
+    server.listen(0, () => {
+      resolve(undefined);
+    });
+  });
   try {
-    await fn(`http://localhost:${portOf(server)}`);
+    await fn(`http://localhost:${String(portOf(server))}`);
   } finally {
     server.close();
   }
@@ -223,6 +234,7 @@ await proof(
     ]);
     const cov = await toFileCoverage(coverageOf(merged, '/fx.js'), abs);
     const fc = createFileCoverage(cov);
+    /** @type {Record<number, number | undefined>} */
     const lines = fc.getLineCoverage();
     assert.equal(
       lines[2] ?? 0,
@@ -269,6 +281,7 @@ await proof(
     ]);
     const cov = await toFileCoverage(coverageOf(merged, '/n.js'), abs);
     const fc = createFileCoverage(cov);
+    /** @type {Record<number, number | undefined>} */
     const lines = fc.getLineCoverage();
     assert.equal(lines[3] ?? 0, 0, 'inner body must be uncovered');
     assert.equal(lines[5] ?? 0, 0, 'outer body statement must be uncovered');
@@ -318,6 +331,7 @@ await proof(
     ]);
     const cov = await toFileCoverage(coverageOf(merged, '/o.js'), abs);
     const fc = createFileCoverage(cov);
+    /** @type {Record<number, number | undefined>} */
     const lines = fc.getLineCoverage();
     assert.equal(lines[3] ?? 0, 1, 'the executed return must stay covered');
     for (const [k, fn] of Object.entries(cov.fnMap)) {
@@ -531,7 +545,7 @@ console.log('child done')
           if (code === 0) {
             resolve(undefined);
           } else {
-            reject(new Error(`child exited ${code}`));
+            reject(new Error(`child exited ${String(code)}`));
           }
         });
         proc.on('error', reject);
@@ -543,12 +557,20 @@ console.log('child done')
       f.endsWith('.json')
     );
     assert(captures.length > 0, 'preload produced no captures');
+    /** @type {Array<Record<string, unknown>>} */
     const entries = [];
     for (const f of captures) {
+      /** @type {unknown} */
       const d = JSON.parse(readFileSync(join(dir, 'browser', f), 'utf8'));
-      entries.push(...d.entries);
+      assert(isRecord(d) && Array.isArray(d.entries));
+      for (const e of d.entries) {
+        assert(isRecord(e));
+        entries.push(e);
+      }
     }
-    const js = entries.filter((e) => e.url.endsWith('/before.js'));
+    const js = entries.filter(
+      (e) => typeof e.url === 'string' && e.url.endsWith('/before.js')
+    );
     assert(js.length > 0, 'the pre-navigation document must be captured');
     const abs = tempScript('before.js', 'function g() {\n  return 1\n}\ng()\n');
     const merged = mergeV8Entries(
@@ -701,7 +723,7 @@ async function capturedPageScriptLines() {
         const message = document.getElementById('message');
         if (message === null)
           throw new TypeError('the message element is missing');
-        return message.textContent?.includes('Something went wrong');
+        return message.textContent.includes('Something went wrong');
       });
       const entries = await page.coverage.stopJSCoverage();
       await browser.close();
@@ -742,7 +764,7 @@ function lineOfOccurrence(marker, n) {
   for (let i = 0; i <= n; i++) {
     at = fileSource.indexOf(marker, at + 1);
     if (at === -1)
-      throw new Error(`marker not found: ${marker} occurrence ${n}`);
+      throw new Error(`marker not found: ${marker} occurrence ${String(n)}`);
   }
   return fileSource.slice(0, at).split('\n').length;
 }

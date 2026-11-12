@@ -10,14 +10,16 @@ const message = {
 };
 
 void test('mock send preserves Error identity and wraps other thrown reasons without converting them', async () => {
-  for (const thrown of [
+  /** @type {unknown[]} */
+  const thrownReasons = [
     new Error('original'),
     undefined,
     null,
     'reason',
     7,
     { reason: 'object' }
-  ]) {
+  ];
+  for (const thrown of thrownReasons) {
     const adapter = new MockMailAdapter({
       behavior: () => {
         throw thrown;
@@ -40,14 +42,16 @@ void test('mock send preserves Error identity and wraps other thrown reasons wit
 });
 
 void test('mock reconcile preserves Error identity and wraps non-Error reasons after recording its read attempt', async () => {
-  for (const thrown of [
+  /** @type {unknown[]} */
+  const thrownReasons = [
     new Error('original'),
     undefined,
     null,
     'reason',
     7,
     { reason: 'object' }
-  ]) {
+  ];
+  for (const thrown of thrownReasons) {
     const adapter = new MockMailAdapter();
     adapter.outbox.find = () => {
       throw thrown;

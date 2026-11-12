@@ -277,7 +277,11 @@ void test('completion window boundary: 59,999 ms after verification succeeds; 60
     assert.equal(exchange.status, 200, 'setup exchange');
     w.advance(ms);
     const complete = await w.app.handleComplete(`pre=${r.start.cookieValue}`);
-    assert.equal(complete.status === 200, ok, `completion at +${ms} ms`);
+    assert.equal(
+      complete.status === 200,
+      ok,
+      `completion at +${String(ms)} ms`
+    );
   }
 });
 
@@ -298,7 +302,7 @@ void test('a second proof cannot re-verify an already-verified state', async () 
   /** @param {number} i */
   const codeOf = (i) => {
     const found = w.mailer.outbox[i].text.match(/\b(\d{6})\b/);
-    assert.ok(found, `message ${i} carries a six-digit code`);
+    assert.ok(found, `message ${String(i)} carries a six-digit code`);
     return found[1];
   };
   const v1 = await readVerified(
@@ -405,36 +409,41 @@ void test(
           key: readFileSync(join(dir, 'k.pem')),
           cert: readFileSync(join(dir, 'c.pem'))
         },
-        async (req, res) => {
-          // The app's completion page is not the service's, and the app
-          // callback is stubbed: answer it here with a plain page so the
-          // browser's own handling of a JSON document is not under test.
-          if (req.url === '/done') {
-            res.setHeader('content-type', 'text/html; charset=utf-8');
-            res.end('<!doctype html><title>done</title>');
-            return;
-          }
-          const chunks = [];
-          for await (const c of req) chunks.push(c);
-          const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
-          const out = await w.worker.fetch(
-            new Request(`https://localhost:${portOf(server)}${req.url}`, {
-              method: req.method,
-              headers: Object.fromEntries(
-                Object.entries(req.headers).map(([name, value]) => [
-                  name,
-                  String(value)
-                ])
-              ),
-              body: hasBody ? Buffer.concat(chunks) : undefined
-            })
-          );
-          const cookies = out.headers.getSetCookie();
-          for (const [k, v] of out.headers)
-            if (k !== 'set-cookie') res.setHeader(k, v);
-          if (cookies.length) res.setHeader('set-cookie', cookies);
-          res.statusCode = out.status;
-          res.end(Buffer.from(await out.arrayBuffer()));
+        (req, res) => {
+          void (async () => {
+            // The app's completion page is not the service's, and the app
+            // callback is stubbed: answer it here with a plain page so the
+            // browser's own handling of a JSON document is not under test.
+            if (req.url === '/done') {
+              res.setHeader('content-type', 'text/html; charset=utf-8');
+              res.end('<!doctype html><title>done</title>');
+              return;
+            }
+            const chunks = [];
+            for await (const c of req) chunks.push(c);
+            const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
+            const out = await w.worker.fetch(
+              new Request(
+                `https://localhost:${String(portOf(server))}${String(req.url)}`,
+                {
+                  method: req.method,
+                  headers: Object.fromEntries(
+                    Object.entries(req.headers).map(([name, value]) => [
+                      name,
+                      String(value)
+                    ])
+                  ),
+                  body: hasBody ? Buffer.concat(chunks) : undefined
+                }
+              )
+            );
+            const cookies = out.headers.getSetCookie();
+            for (const [k, v] of out.headers)
+              if (k !== 'set-cookie') res.setHeader(k, v);
+            if (cookies.length) res.setHeader('set-cookie', cookies);
+            res.statusCode = out.status;
+            res.end(Buffer.from(await out.arrayBuffer()));
+          })();
         }
       );
       await new Promise((resolve) =>
@@ -442,7 +451,7 @@ void test(
           resolve(undefined);
         })
       );
-      const origin = `https://localhost:${portOf(server)}`;
+      const origin = `https://localhost:${String(portOf(server))}`;
       browser = await launcher.launch();
       const context = await browser.newContext({ ignoreHTTPSErrors: true });
       const page = await context.newPage();
@@ -503,7 +512,7 @@ void test(
         const message = document.getElementById('message');
         if (message === null)
           throw new TypeError('the message element is missing');
-        return message.textContent?.includes('did not work');
+        return message.textContent.includes('did not work');
       });
       assert.ok(
         page.url().startsWith(`${origin}/?app=`),
@@ -560,28 +569,33 @@ void test(
           key: readFileSync(join(dir, 'k.pem')),
           cert: readFileSync(join(dir, 'c.pem'))
         },
-        async (req, res) => {
-          const chunks = [];
-          for await (const c of req) chunks.push(c);
-          const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
-          const out = await w.worker.fetch(
-            new Request(`https://localhost:${portOf(server)}${req.url}`, {
-              method: req.method,
-              headers: Object.fromEntries(
-                Object.entries(req.headers).map(([name, value]) => [
-                  name,
-                  String(value)
-                ])
-              ),
-              body: hasBody ? Buffer.concat(chunks) : undefined
-            })
-          );
-          const cookies = out.headers.getSetCookie();
-          for (const [k, v] of out.headers)
-            if (k !== 'set-cookie') res.setHeader(k, v);
-          if (cookies.length) res.setHeader('set-cookie', cookies);
-          res.statusCode = out.status;
-          res.end(Buffer.from(await out.arrayBuffer()));
+        (req, res) => {
+          void (async () => {
+            const chunks = [];
+            for await (const c of req) chunks.push(c);
+            const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
+            const out = await w.worker.fetch(
+              new Request(
+                `https://localhost:${String(portOf(server))}${String(req.url)}`,
+                {
+                  method: req.method,
+                  headers: Object.fromEntries(
+                    Object.entries(req.headers).map(([name, value]) => [
+                      name,
+                      String(value)
+                    ])
+                  ),
+                  body: hasBody ? Buffer.concat(chunks) : undefined
+                }
+              )
+            );
+            const cookies = out.headers.getSetCookie();
+            for (const [k, v] of out.headers)
+              if (k !== 'set-cookie') res.setHeader(k, v);
+            if (cookies.length) res.setHeader('set-cookie', cookies);
+            res.statusCode = out.status;
+            res.end(Buffer.from(await out.arrayBuffer()));
+          })();
         }
       );
       await new Promise((resolve) =>
@@ -589,7 +603,7 @@ void test(
           resolve(undefined);
         })
       );
-      const origin = `https://localhost:${portOf(server)}`;
+      const origin = `https://localhost:${String(portOf(server))}`;
       browser = await launcher.launch();
       const context = await browser.newContext({ ignoreHTTPSErrors: true });
       const page = await context.newPage();
@@ -743,28 +757,33 @@ void test(
           key: readFileSync(join(dir, 'k.pem')),
           cert: readFileSync(join(dir, 'c.pem'))
         },
-        async (req, res) => {
-          const chunks = [];
-          for await (const c of req) chunks.push(c);
-          const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
-          const out = await w.worker.fetch(
-            new Request(`https://localhost:${portOf(server)}${req.url}`, {
-              method: req.method,
-              headers: Object.fromEntries(
-                Object.entries(req.headers).map(([name, value]) => [
-                  name,
-                  String(value)
-                ])
-              ),
-              body: hasBody ? Buffer.concat(chunks) : undefined
-            })
-          );
-          const cookies = out.headers.getSetCookie();
-          for (const [k, v] of out.headers)
-            if (k !== 'set-cookie') res.setHeader(k, v);
-          if (cookies.length) res.setHeader('set-cookie', cookies);
-          res.statusCode = out.status;
-          res.end(Buffer.from(await out.arrayBuffer()));
+        (req, res) => {
+          void (async () => {
+            const chunks = [];
+            for await (const c of req) chunks.push(c);
+            const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
+            const out = await w.worker.fetch(
+              new Request(
+                `https://localhost:${String(portOf(server))}${String(req.url)}`,
+                {
+                  method: req.method,
+                  headers: Object.fromEntries(
+                    Object.entries(req.headers).map(([name, value]) => [
+                      name,
+                      String(value)
+                    ])
+                  ),
+                  body: hasBody ? Buffer.concat(chunks) : undefined
+                }
+              )
+            );
+            const cookies = out.headers.getSetCookie();
+            for (const [k, v] of out.headers)
+              if (k !== 'set-cookie') res.setHeader(k, v);
+            if (cookies.length) res.setHeader('set-cookie', cookies);
+            res.statusCode = out.status;
+            res.end(Buffer.from(await out.arrayBuffer()));
+          })();
         }
       );
       await new Promise((resolve) =>
@@ -772,7 +791,7 @@ void test(
           resolve(undefined);
         })
       );
-      const origin = `https://localhost:${portOf(server)}`;
+      const origin = `https://localhost:${String(portOf(server))}`;
       browser = await launcher.launch();
       const context = await browser.newContext({ ignoreHTTPSErrors: true });
       const page = await context.newPage();
@@ -793,7 +812,7 @@ void test(
         const message = document.getElementById('message');
         if (message === null)
           throw new TypeError('the message element is missing');
-        return message.textContent?.includes('a code is on its way');
+        return message.textContent.includes('a code is on its way');
       });
       await page.waitForSelector('#code-form:not([hidden])');
       // Entering any code goes to an empty challenge id and is refused;
@@ -804,7 +823,7 @@ void test(
         const message = document.getElementById('message');
         if (message === null)
           throw new TypeError('the message element is missing');
-        return message.textContent?.includes('did not work');
+        return message.textContent.includes('did not work');
       });
       assert.equal(page.url(), bare, 'the page never navigated');
       assert.equal(w.mailer.attempts.length, 0, 'no mail was attempted');

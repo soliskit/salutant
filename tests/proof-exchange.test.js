@@ -9,7 +9,8 @@ import {
   SERVICE_ORIGIN,
   APP_ORIGIN,
   readCreated,
-  readVerified
+  readVerified,
+  isRecord
 } from './helpers.js';
 import {
   generateSigningKeyPair,
@@ -82,11 +83,14 @@ function stateRecord(value) {
 async function tampered(w, mutate) {
   const r = await honestSignIn(w);
   const [, p] = r.verified.proof.split('.');
-  const claims = JSON.parse(
+  /** @type {unknown} */
+  const parsedClaims = JSON.parse(
     new TextDecoder().decode(
       (await import('../src/crypto.js')).fromBase64Url(p)
     )
   );
+  assert.ok(isRecord(parsedClaims));
+  const claims = parsedClaims;
   mutate(claims);
   const key = w.service.signingKeys.get('k1');
   assert.ok(key, 'the k1 signing key is present');
@@ -133,11 +137,14 @@ void test('an altered proof body fails its signature', async () => {
   const w = await makeWorld();
   const r = await honestSignIn(w);
   const [h, p, s] = r.verified.proof.split('.');
-  const claims = JSON.parse(
+  /** @type {unknown} */
+  const parsedClaims = JSON.parse(
     new TextDecoder().decode(
       (await import('../src/crypto.js')).fromBase64Url(p)
     )
   );
+  assert.ok(isRecord(parsedClaims));
+  const claims = parsedClaims;
   claims.sub = 'someone-else@example.test';
   const forged = `${h}.${toBase64Url(new TextEncoder().encode(JSON.stringify(claims)))}.${s}`;
   const res = await w.app.handleExchange(
@@ -255,12 +262,16 @@ void test('a correctly signed proof missing required claims is rejected', async 
     // Mutate this sign-in's own claims so the missing field is the only
     // defect: nonce, epoch and audience all match.
     const [, p] = r.verified.proof.split('.');
-    const claims = JSON.parse(
+    /** @type {unknown} */
+    const parsedClaims = JSON.parse(
       new TextDecoder().decode(
         (await import('../src/crypto.js')).fromBase64Url(p)
       )
     );
-    delete claims[field];
+    assert.ok(isRecord(parsedClaims));
+    const claims = Object.fromEntries(
+      Object.entries(parsedClaims).filter(([key]) => key !== field)
+    );
     const key = w.service.signingKeys.get('k1');
     assert.ok(key);
     const token = await signProof(claims, key.privateKey, 'k1');
@@ -283,11 +294,14 @@ void test('a correctly signed numeric subject is rejected before identity bindin
     'setup state belongs to this sign-in'
   );
   const [, payload] = r.verified.proof.split('.');
-  const claims = JSON.parse(
+  /** @type {unknown} */
+  const parsedClaims = JSON.parse(
     new TextDecoder().decode(
       (await import('../src/crypto.js')).fromBase64Url(payload)
     )
   );
+  assert.ok(isRecord(parsedClaims));
+  const claims = parsedClaims;
   claims.sub = 123;
   const key = w.service.signingKeys.get('k1');
   assert.ok(key);
@@ -367,7 +381,7 @@ void test('exchange window boundary: 59,999 ms after issuance succeeds; 60,000 a
       { proof: r.verified.proof, state: r.verified.state },
       SERVICE_ORIGIN
     );
-    assert.equal(res.status === 200, ok, `exchange at +${ms} ms`);
+    assert.equal(res.status === 200, ok, `exchange at +${String(ms)} ms`);
   }
 });
 

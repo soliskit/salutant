@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { PAGE_JS } from '../src/assets.js';
+import { isRecord } from './helpers.js';
 
 class FakeElement {
   constructor() {
@@ -78,11 +79,10 @@ function loadPage(respond) {
      * @param {{ headers: Record<string, string>, body: string }} init
      */
     fetch: (url, init) => {
-      calls.push({
-        url,
-        key: init.headers['idempotency-key'],
-        body: JSON.parse(init.body)
-      });
+      /** @type {unknown} */
+      const body = JSON.parse(init.body);
+      assert.ok(isRecord(body));
+      calls.push({ url, key: init.headers['idempotency-key'], body });
       return respond(url, calls.length);
     }
   });
@@ -119,7 +119,7 @@ void test('a changed address or any received response gets a new key', async () 
     attempt += 1;
     if (attempt === 1) return Promise.reject(new Error('network'));
     return Promise.resolve(
-      ok({ challengeId: `c${attempt}` }, attempt === 2 ? 500 : 200)
+      ok({ challengeId: `c${String(attempt)}` }, attempt === 2 ? 500 : 200)
     );
   });
   page.elements.address.value = 'owner@example.test';

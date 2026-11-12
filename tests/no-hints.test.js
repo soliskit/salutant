@@ -4,7 +4,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
-import { makeWorld, BrowserSession, OWNER, STRANGER } from './helpers.js';
+import {
+  makeWorld,
+  BrowserSession,
+  isRecord,
+  OWNER,
+  STRANGER
+} from './helpers.js';
 
 void test('responses for allowed and unlisted addresses differ only in the permitted fields', async () => {
   const w = await makeWorld();
@@ -19,7 +25,11 @@ void test('responses for allowed and unlisted addresses differ only in the permi
     stateId: start.stateId
   });
   assert.equal(rAllowed.status, rUnlisted.status);
-  const [a, b] = [await rAllowed.json(), await rUnlisted.json()];
+  /** @type {unknown} */
+  const a = await rAllowed.json();
+  /** @type {unknown} */
+  const b = await rUnlisted.json();
+  assert.ok(isRecord(a) && isRecord(b));
   // Permitted differences: the request id (and the challenge id it
   // needs to function). Everything else is byte-identical.
   assert.deepEqual(Object.keys(a).sort(), Object.keys(b).sort());

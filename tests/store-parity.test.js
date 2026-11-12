@@ -124,9 +124,14 @@ void test('parity: snapshot and restore use one shared format in both directions
         data['budget:owner'],
         `${aName} -> ${bName}`
       );
+      /** @type {unknown} */
+      const bSnapshot = JSON.parse(b.snapshot());
+      /** @type {unknown} */
+      const aSnapshot = JSON.parse(a.snapshot());
+      assert.ok(Array.isArray(aSnapshot) && Array.isArray(bSnapshot));
       assert.deepEqual(
-        JSON.parse(b.snapshot()).sort(),
-        JSON.parse(a.snapshot()).sort(),
+        bSnapshot.sort(),
+        aSnapshot.sort(),
         `${aName} -> ${bName}`
       );
     }
@@ -204,6 +209,7 @@ void test('parity: snapshot inside a transaction sees the working copy', () => {
       s.set('c', 3);
       return s.snapshot();
     });
+    /** @type {unknown} */
     const parsed = JSON.parse(snap);
     assert.ok(Array.isArray(parsed), 'the snapshot is a list of entries');
     const entries = parsed.sort(([x], [y]) => (x < y ? -1 : 1));

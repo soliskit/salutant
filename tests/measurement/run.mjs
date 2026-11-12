@@ -19,6 +19,7 @@ import {
   pageScriptLineShift,
   shiftCoverageLines
 } from './filelists.mjs';
+import { isRecord } from '../helpers.js';
 import { mergeV8Entries, uncovered } from './v8merge.mjs';
 import { toFileCoverage, summarize } from './convert.mjs';
 import {
@@ -43,19 +44,38 @@ function git(...gitArgs) {
   return execFileSync('git', gitArgs, { cwd: root, encoding: 'utf8' }).trim();
 }
 
-/** @param {string} name */
+/**
+ * @param {string} name
+ * @returns {string}
+ */
 function toolVersion(name) {
-  return JSON.parse(
+  /** @type {unknown} */
+  const pkg = JSON.parse(
     readFileSync(join(root, 'node_modules', name, 'package.json'), 'utf8')
-  ).version;
+  );
+  if (!isRecord(pkg) || typeof pkg.version !== 'string') {
+    throw new MeasurementFailure(
+      `measurement tool ${name} has no readable version`
+    );
+  }
+  return pkg.version;
 }
 
 // The pins the report's numbers are only meaningful against, mirroring the
 // version assertion the WebKit check runs on its own install. A mismatch
 // fails the run instead of producing numbers from a different toolchain.
 function checkToolVersions() {
+  /** @type {unknown} */
   const manifest = JSON.parse(readFileSync(join(here, 'tools.json'), 'utf8'));
+  if (!isRecord(manifest) || !isRecord(manifest.tools)) {
+    throw new MeasurementFailure('tools.json has no tools map');
+  }
   for (const [name, pinned] of Object.entries(manifest.tools)) {
+    if (typeof pinned !== 'string') {
+      throw new MeasurementFailure(
+        `tools.json pin for ${name} is not a string`
+      );
+    }
     let installed;
     try {
       installed = toolVersion(name);
@@ -105,7 +125,9 @@ function runSuite() {
       if (code === 0) resolve();
       else
         reject(
-          new MeasurementFailure(`suite exited ${code}; measurement run failed`)
+          new MeasurementFailure(
+            `suite exited ${String(code)}; measurement run failed`
+          )
         );
     });
   });
@@ -128,28 +150,33 @@ function portOf(server) {
 async function withVerificationServer(fn) {
   const { makeWorld } = await import('../helpers.js');
   const w = await makeWorld();
-  const server = http.createServer(async (req, res) => {
-    const chunks = [];
-    for await (const c of req) chunks.push(c);
-    const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
-    const out = await w.worker.fetch(
-      new Request(`http://localhost:${portOf(server)}${req.url}`, {
-        method: req.method,
-        headers: Object.fromEntries(
-          Object.entries(req.headers).map(([name, value]) => [
-            name,
-            String(value)
-          ])
-        ),
-        body: hasBody ? Buffer.concat(chunks) : undefined
-      })
-    );
-    const cookies = out.headers.getSetCookie();
-    for (const [k, v] of out.headers)
-      if (k !== 'set-cookie') res.setHeader(k, v);
-    if (cookies.length) res.setHeader('set-cookie', cookies);
-    res.statusCode = out.status;
-    res.end(Buffer.from(await out.arrayBuffer()));
+  const server = http.createServer((req, res) => {
+    void (async () => {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
+      const out = await w.worker.fetch(
+        new Request(
+          `http://localhost:${String(portOf(server))}${req.url ?? '/'}`,
+          {
+            method: req.method,
+            headers: Object.fromEntries(
+              Object.entries(req.headers).map(([name, value]) => [
+                name,
+                String(value)
+              ])
+            ),
+            body: hasBody ? Buffer.concat(chunks) : undefined
+          }
+        )
+      );
+      const cookies = out.headers.getSetCookie();
+      for (const [k, v] of out.headers)
+        if (k !== 'set-cookie') res.setHeader(k, v);
+      if (cookies.length) res.setHeader('set-cookie', cookies);
+      res.statusCode = out.status;
+      res.end(Buffer.from(await out.arrayBuffer()));
+    })();
   });
   await new Promise((resolve) =>
     server.listen(0, '127.0.0.1', () => {
@@ -157,7 +184,7 @@ async function withVerificationServer(fn) {
     })
   );
   try {
-    await fn(`http://localhost:${portOf(server)}`);
+    await fn(`http://localhost:${String(portOf(server))}`);
   } finally {
     server.close();
   }
@@ -330,7 +357,7 @@ for (const rel of [
     continue;
   }
   console.log(
-    `${rel}: lines ${s.lines.covered}/${s.lines.total}, branches ${s.branches.covered}/${s.branches.total}, functions ${s.functions.covered}/${s.functions.total}`
+    `${rel}: lines ${String(s.lines.covered)}/${String(s.lines.total)}, branches ${String(s.branches.covered)}/${String(s.branches.total)}, functions ${String(s.functions.covered)}/${String(s.functions.total)}`
   );
 }
 console.log(`report: ${join(outDir, 'report.json')}`);

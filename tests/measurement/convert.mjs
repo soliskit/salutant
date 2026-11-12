@@ -53,10 +53,15 @@ function unionEntriesOf(list) {
  * The completion pass read its list through `.filter`, so a truthy non-array
  * fails with the original property-access TypeError.
  * @param {unknown} list
+ * @returns {unknown[]}
  */
 function filterEntriesOf(list) {
   if (!list) return [];
-  if (Array.isArray(list)) return list;
+  if (Array.isArray(list)) {
+    /** @type {unknown[]} */
+    const entries = list;
+    return entries;
+  }
   throw new TypeError('(functions || []).filter is not a function');
 }
 
@@ -166,12 +171,14 @@ function takeBlocks(functions) {
   if (!Array.isArray(functions)) {
     if (functions === undefined || functions === null) {
       throw new TypeError(
-        `Cannot read properties of ${functions} (reading 'forEach')`
+        `Cannot read properties of ${String(functions)} (reading 'forEach')`
       );
     }
     throw new TypeError('blocks.forEach is not a function');
   }
-  return functions;
+  /** @type {import('inspector').Profiler.FunctionCoverage[]} */
+  const blocks = functions;
+  return blocks;
 }
 
 /**
@@ -264,6 +271,34 @@ function sameLocation(a, b) {
 // already present takes the max count; a new location is appended under a
 // fresh key. A path is covered when any load executed it, and cumulative
 // writes (a mid-run snapshot plus the exit write) never double-count.
+// istanbul's data types mark every list as present; a parsed report can omit
+// one, so the merge reads each list through these lookups. They keep the
+// original `|| []` behavior exactly: a falsy value reads as the empty list
+// and a truthy non-array fails with a TypeError instead of passing silently.
+/**
+ * @param {unknown} value
+ * @returns {import('istanbul-lib-coverage').Range[]}
+ */
+function rangeListOf(value) {
+  if (!value) return [];
+  if (!Array.isArray(value)) throw new TypeError('list is not an array');
+  /** @type {import('istanbul-lib-coverage').Range[]} */
+  const list = value;
+  return list;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number[]}
+ */
+function numberListOf(value) {
+  if (!value) return [];
+  if (!Array.isArray(value)) throw new TypeError('list is not an array');
+  /** @type {number[]} */
+  const list = value;
+  return list;
+}
+
 /**
  * @param {FileCoverageData} a
  * @param {FileCoverageData} b
@@ -306,10 +341,10 @@ export function maxMergeFileCoverages(a, b) {
       // Sub-location arrays also differ structurally across loads, so merge
       // path counts by sub-location identity, never element-wise.
       const mk = match[0];
-      const locs = (out.branchMap[mk].locations || []).slice();
-      const counts = (out.b[mk] || []).slice();
-      const incLocs = bbr.locations || [];
-      const incCounts = b.b[bk] || [];
+      const locs = rangeListOf(out.branchMap[mk].locations).slice();
+      const counts = numberListOf(out.b[mk]).slice();
+      const incLocs = rangeListOf(bbr.locations);
+      const incCounts = numberListOf(b.b[bk]);
       incLocs.forEach((loc, i) => {
         const j = locs.findIndex((x) => sameLocation(x, loc));
         if (j === -1) {
@@ -323,7 +358,7 @@ export function maxMergeFileCoverages(a, b) {
       out.b[mk] = counts;
     } else {
       out.branchMap[String(nextBr)] = bbr;
-      out.b[String(nextBr)] = (b.b[bk] || []).slice();
+      out.b[String(nextBr)] = numberListOf(b.b[bk]).slice();
       nextBr++;
     }
   }
