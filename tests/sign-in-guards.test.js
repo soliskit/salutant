@@ -12,7 +12,8 @@ import {
   SERVICE_ORIGIN,
   readCreated,
   readVerified,
-  keyIds
+  keyIds,
+  isRecord
 } from './helpers.js';
 import { generateSigningKeyPair } from '../src/crypto.js';
 
@@ -86,7 +87,7 @@ void test('an uncertain send that the provider did accept reconciles to sent, an
       assert.ok(mailer);
       mailer.outbox.push({
         ...m,
-        providerId: `mock-late-${mailer.outbox.length + 1}`,
+        providerId: `mock-late-${String(mailer.outbox.length + 1)}`,
         acceptedAt: Date.now()
       });
       return 'uncertain';
@@ -95,9 +96,13 @@ void test('an uncertain send that the provider did accept reconciles to sent, an
   mailer = w.mailer;
   const browser = new BrowserSession(w);
   const start = await w.app.startSignIn(null);
+  /** @type {unknown} */
   const created = await (
     await browser.postChallenge({ address: OWNER, stateId: start.stateId })
   ).json();
+  assert.ok(isRecord(created));
+  const { requestId, challengeId } = created;
+  assert.ok(typeof requestId === 'string' && typeof challengeId === 'string');
   await w.service.drain();
   assert.equal(
     w.mailer.reconciliations.length,
@@ -105,7 +110,7 @@ void test('an uncertain send that the provider did accept reconciles to sent, an
     'uncertain send is reconciled'
   );
   const reservation = w.store.transact((s) =>
-    s.getRef(`reservation:${created.requestId}`)
+    s.getRef(`reservation:${requestId}`)
   );
   assert.ok(
     typeof reservation === 'object' &&
@@ -121,7 +126,7 @@ void test('an uncertain send that the provider did accept reconciles to sent, an
   );
   // A code known to be delivered may be tried (R5): sign-in completes.
   const verify = await browser.verify({
-    challengeId: created.challengeId,
+    challengeId,
     code: w.mailer.lastCode(),
     address: OWNER
   });
@@ -194,7 +199,9 @@ void test('a resend naming a non-string address is answered like any resend, but
     address: 42
   });
   assert.equal(res.status, 200);
+  /** @type {unknown} */
   const body = await res.json();
+  assert.ok(isRecord(body));
   assert.equal(body.status, 'ok');
   assert.notEqual(
     body.challengeId,
@@ -208,7 +215,9 @@ void test('a resend naming a non-string address is answered like any resend, but
     code: w.mailer.lastCode(),
     address: OWNER
   });
-  assert.ok((await verify.json()).proof);
+  /** @type {unknown} */
+  const proofBody = await verify.json();
+  assert.ok(isRecord(proofBody) && proofBody.proof);
 });
 
 void test('a verify with non-string fields is one counted wrong try, answered generically', async () => {
@@ -273,12 +282,13 @@ void test('a revoked signing key is never published in the key listing', async (
   const revokedKey = w.service.signingKeys.get('k1');
   assert.ok(revokedKey, 'the k1 signing key is present');
   revokedKey.status = 'revoked';
+  /** @type {unknown} */
   const bare = await (
     await w.service.fetch(
       new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
     )
   ).json();
-  assert.deepEqual(bare.keys, [], 'the only key is revoked');
+  assert.deepEqual(keyIds(bare), [], 'the only key is revoked');
   // A current key still publishes; the revoked one stays absent.
   const k2 = await generateSigningKeyPair();
   w.service.signingKeys.set('k2', {
@@ -286,6 +296,7 @@ void test('a revoked signing key is never published in the key listing', async (
     status: 'current',
     notAfterMs: null
   });
+  /** @type {unknown} */
   const listed = await (
     await w.service.fetch(
       new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)

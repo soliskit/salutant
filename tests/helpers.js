@@ -56,8 +56,8 @@ export function makeDOStorage() {
     setAlarm(ms) {
       storage.alarmMs = ms;
     },
-    async getAlarm() {
-      return storage.alarmMs;
+    getAlarm() {
+      return Promise.resolve(storage.alarmMs);
     },
     sql: {
       /** @param {string} query @param {import("node:sqlite").SQLInputValue[]} params */
@@ -93,9 +93,10 @@ export class ControllableEpoch {
     this.value = value;
     this.available = true;
   }
-  async read() {
-    if (!this.available) throw new Error('epoch source unavailable');
-    return this.value;
+  read() {
+    if (!this.available)
+      return Promise.reject(new Error('epoch source unavailable'));
+    return Promise.resolve(this.value);
   }
 }
 
@@ -190,7 +191,10 @@ export async function makeWorld({
         new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
       );
       if (!r.ok) throw new Error('jwks unavailable');
-      return r.json();
+      /** @type {unknown} */
+      const body = await r.json();
+      assert.ok(isJwksBody(body));
+      return body;
     },
     store: appStore,
     stateHmacKeyBytes: globalThis.crypto.getRandomValues(new Uint8Array(32)),
@@ -457,6 +461,35 @@ export function bodyText(response) {
   return response.text();
 }
 
+// A parsed JSON object, failing here as an assertion when the value is a
+// list or not an object at all.
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+/**
+ * The body StubApp's fetchJwks must return: a key list whose keys carry
+ * string ids plus the numeric epoch.
+ * @param {unknown} body
+ * @returns {body is { keys: (JsonWebKey & { kid: string })[]; epoch: number }}
+ */
+function isJwksBody(body) {
+  return (
+    isRecord(body) &&
+    Array.isArray(body.keys) &&
+    body.keys.every((key) => isRecord(key) && typeof key.kid === 'string') &&
+    typeof body.epoch === 'number'
+  );
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+export function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 // The key ids in a key listing. A listing without a keys list, or a key
 // without an id, fails here as an assertion on the list that is returned.
 /** @param {unknown} listing */
@@ -468,9 +501,11 @@ export function keyIds(listing) {
       Array.isArray(listing.keys),
     'the key listing carries a keys list'
   );
-  return listing.keys.map((key) =>
-    typeof key === 'object' && key !== null && 'kid' in key
-      ? key.kid
-      : undefined
-  );
+  return listing.keys.map((key) => {
+    /** @type {unknown} */
+    const item = key;
+    if (typeof item !== 'object' || item === null || !('kid' in item))
+      return undefined;
+    return item.kid;
+  });
 }

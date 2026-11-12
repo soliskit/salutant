@@ -8,7 +8,8 @@ import {
   honestSignIn,
   OWNER,
   STRANGER,
-  readCreated
+  readCreated,
+  isRecord
 } from './helpers.js';
 import { DurableObjectStore } from '../src/do-store.js';
 
@@ -135,8 +136,12 @@ void test('a correct third try still succeeds after two wrong tries', async () =
     code,
     address: OWNER
   });
+  /** @type {unknown} */
   const body = await third.json();
-  assert.ok(body.proof, 'the correct code on the third try must issue a proof');
+  assert.ok(
+    isRecord(body) && body.proof,
+    'the correct code on the third try must issue a proof'
+  );
 });
 
 void test('many simultaneous submits of one correct code give exactly one success', async () => {
@@ -152,10 +157,17 @@ void test('many simultaneous submits of one correct code give exactly one succes
     Array.from({ length: 25 }, () =>
       browser
         .verify({ challengeId: created.challengeId, code, address: OWNER })
-        .then((r) => r.json())
+        .then(async (r) => {
+          /** @type {unknown} */
+          const body = await r.json();
+          return body;
+        })
     )
   );
-  const proofs = results.filter((r) => r.proof);
+  const proofs = results.filter((r) => {
+    assert.ok(isRecord(r));
+    return Boolean(r.proof);
+  });
   assert.equal(
     proofs.length,
     1,
@@ -169,12 +181,12 @@ void test('a resend gives the challenge a new code and kills only its earlier co
   const browserB = new BrowserSession(w);
   const startA = await w.app.startSignIn(null);
   const startB = await w.app.startSignIn(null);
-  const a = await (
+  const a = await readCreated(
     await browserA.postChallenge({ address: OWNER, stateId: startA.stateId })
-  ).json();
-  const b = await (
+  );
+  const b = await readCreated(
     await browserB.postChallenge({ address: OWNER, stateId: startB.stateId })
-  ).json();
+  );
   await w.service.drain();
   const firstCode = codeOf(
     w.mailer.outbox.find((m) => m.requestId === a.requestId)
@@ -200,7 +212,12 @@ void test('a resend gives the challenge a new code and kills only its earlier co
     code: bCode,
     address: OWNER
   });
-  assert.ok((await bTry.json()).proof, 'separate challenge coexists');
+  /** @type {unknown} */
+  const bTryBody = await bTry.json();
+  assert.ok(
+    isRecord(bTryBody) && bTryBody.proof,
+    'separate challenge coexists'
+  );
 });
 
 void test('a resend before the cooldown is refused', async () => {
@@ -223,9 +240,9 @@ void test('codes bind to their challenge: a code from one fails on another', asy
   const browser = new BrowserSession(w);
   const s1 = await w.app.startSignIn(null);
   const s2 = await w.app.startSignIn(null);
-  const c1 = await (
+  const c1 = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: s1.stateId })
-  ).json();
+  );
   const c2 = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: s2.stateId })
   );
@@ -263,7 +280,9 @@ void test('codes bind to the browser: verify without the binding cookie fails', 
     code,
     address: OWNER
   });
-  assert.ok((await ok.json()).proof);
+  /** @type {unknown} */
+  const okBody = await ok.json();
+  assert.ok(isRecord(okBody) && okBody.proof);
 });
 
 void test('at most two active challenges per address; a third is refused with the same message and sends no mail', async () => {
@@ -272,15 +291,15 @@ void test('at most two active challenges per address; a third is refused with th
   const s1 = await w.app.startSignIn(null);
   const s2 = await w.app.startSignIn(null);
   const s3 = await w.app.startSignIn(null);
-  const r1 = await (
+  const r1 = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: s1.stateId })
-  ).json();
-  const r2 = await (
+  );
+  const r2 = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: s2.stateId })
-  ).json();
-  const r3 = await (
+  );
+  const r3 = await readCreated(
     await browser.postChallenge({ address: OWNER, stateId: s3.stateId })
-  ).json();
+  );
   await w.service.drain();
   assert.equal(r1.status, 'ok');
   assert.equal(r2.status, 'ok');
@@ -322,7 +341,9 @@ void test('an unlisted address gets the same response shape and no mail', async 
     address: STRANGER,
     stateId: start.stateId
   });
+  /** @type {unknown} */
   const body = await res.json();
+  assert.ok(isRecord(body));
   assert.equal(res.status, 200);
   assert.equal(body.status, 'ok');
   await w.service.drain();
@@ -369,10 +390,15 @@ void test('a resend that cannot be honored answers like one that can, and sends 
   const sent = w.mailer.attempts.length;
   assert.equal(sent, 2, 'the honest resend is the only extra send');
   /** @param {Response} res */
-  const shape = async (res) => ({
-    status: res.status,
-    keys: Object.keys(await res.json()).sort()
-  });
+  const shape = async (res) => {
+    /** @type {unknown} */
+    const parsed = await res.json();
+    assert.ok(isRecord(parsed));
+    return {
+      status: res.status,
+      keys: Object.keys(parsed).sort()
+    };
+  };
   const expected = await shape(honest);
   assert.deepEqual(expected, {
     status: 200,
@@ -400,7 +426,9 @@ void test('a resend that cannot be honored answers like one that can, and sends 
     code,
     address: OWNER
   });
-  assert.ok((await used.json()).proof);
+  /** @type {unknown} */
+  const usedBody = await used.json();
+  assert.ok(isRecord(usedBody) && usedBody.proof);
   w.advance(61_000);
   const afterUse = await browser.resend({
     challengeId: created.challengeId,
@@ -437,7 +465,10 @@ void test('a resend racing a verify of the old code never leaves both codes work
     })
   ]);
   await w.service.drain();
-  const oldWorked = Boolean((await oldTry.json()).proof);
+  /** @type {unknown} */
+  const oldTryBody = await oldTry.json();
+  assert.ok(isRecord(oldTryBody));
+  const oldWorked = Boolean(oldTryBody.proof);
   let newWorked = false;
   if (w.mailer.outbox.length > sentBefore) {
     const newCode = w.mailer.lastCode();
@@ -447,7 +478,10 @@ void test('a resend racing a verify of the old code never leaves both codes work
       code: newCode,
       address: OWNER
     });
-    newWorked = Boolean((await newTry.json()).proof);
+    /** @type {unknown} */
+    const newTryBody = await newTry.json();
+    assert.ok(isRecord(newTryBody));
+    newWorked = Boolean(newTryBody.proof);
   }
   assert.ok(
     !(oldWorked && newWorked),
@@ -477,7 +511,9 @@ async function seededForPurge(worldOptions) {
     code: w.mailer.lastCode(),
     address: OWNER
   });
-  assert.ok((await verify.json()).proof, 'proof issued');
+  /** @type {unknown} */
+  const verifyBody = await verify.json();
+  assert.ok(isRecord(verifyBody) && verifyBody.proof, 'proof issued');
   return { w, t0, tv };
 }
 
@@ -536,7 +572,7 @@ void test('purge writes nothing while every record is kept', async () => {
   t.w.service.purge(t.w.getNow());
   assert.equal(storage.writes, 0, 'a kept record is never rewritten');
   for (const [k, v] of kept)
-    assert.deepEqual(t.w.store.get(k), v, `${k} is unchanged`);
+    assert.deepEqual(t.w.store.get(k), v, `${String(k)} is unchanged`);
 });
 
 void test('purge deletes only the due records and writes nothing else', async () => {
@@ -563,5 +599,5 @@ void test('purge deletes only the due records and writes nothing else', async ()
     'only the deletions write; kept records are not rewritten'
   );
   for (const [k, v] of kept)
-    assert.deepEqual(v, before.get(k), `${k} is unchanged`);
+    assert.deepEqual(v, before.get(k), `${String(k)} is unchanged`);
 });

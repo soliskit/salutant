@@ -13,7 +13,13 @@ import {
   exportSigningPrivateJwk,
   toBase64Url
 } from '../src/crypto.js';
-import { makeDOStorage, SERVICE_ORIGIN, APP_ORIGIN, OWNER } from './helpers.js';
+import {
+  makeDOStorage,
+  keyIds,
+  SERVICE_ORIGIN,
+  APP_ORIGIN,
+  OWNER
+} from './helpers.js';
 
 // Object context stand-in: storage plus the platform's construction-time
 // gate, which the shim runs immediately.
@@ -57,7 +63,7 @@ async function alarmOf(ctx) {
 function pageOnlyWorker(apps) {
   return createWorker({
     apps,
-    async fetch() {
+    fetch() {
       assert.fail('the code-entry page does not reach the service');
     }
   });
@@ -109,9 +115,9 @@ void test('the worker forwards every request to the one named object', async () 
       get(id) {
         return {
           /** @param {Request} request */
-          async fetch(request) {
+          fetch(request) {
             seen.push([id, request.url]);
-            return new Response('from the object');
+            return Promise.resolve(new Response('from the object'));
           }
         };
       }
@@ -157,14 +163,15 @@ void test('the object key endpoint returns the epoch from its configured environ
   );
   assert.equal(response.status, 200);
   assert.match(headerOf(response, 'content-type'), /^application\/json/);
+  /** @type {unknown} */
   const body = await response.json();
+  assert.ok(typeof body === 'object' && body !== null && 'epoch' in body);
   assert.equal(
     body.epoch,
     7,
     'the endpoint reads the configured epoch, not a fixed default'
   );
-  assert.equal(body.keys.length, 1);
-  assert.equal(body.keys[0].kid, 'k1');
+  assert.deepEqual(keyIds(body), ['k1']);
 });
 
 // Checks the worker fallback for a normal registry containing a non-empty
