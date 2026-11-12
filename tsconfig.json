@@ -24,7 +24,8 @@
     "src/**/*.js",
     "scripts/**/*.js",
     "tests/measurement/v8merge.mjs",
-    "tests/measurement/validate.mjs"
+    "tests/measurement/validate.mjs",
+    "tests/measurement/filelists.mjs"
   ],
   "exclude": ["node_modules"]
 }

@@ -37,6 +37,7 @@ export function browserFiles() {
   ];
 }
 
+/** @param {import('node:fs').PathOrFileDescriptor} abs */
 export function readFile(abs) {
   return readFileSync(abs, 'utf8');
 }
@@ -67,11 +68,39 @@ export function pageScriptLineShift() {
 
 // Shifts every location in an Istanbul file-coverage object by the given
 // number of lines, leaving columns and counts untouched.
+/**
+ * @typedef {import('istanbul-lib-coverage').FileCoverageData} FileCoverageData
+ * @typedef {import('istanbul-lib-coverage').FunctionMapping} FunctionMapping
+ * @typedef {import('istanbul-lib-coverage').BranchMapping} BranchMapping
+ * @typedef {{ line: number, column?: number | null }} Position
+ * @typedef {{ start: Position, end: Position }} Span
+ * @typedef {Omit<FunctionMapping, 'loc' | 'decl'> & {
+ *   loc: Span,
+ *   decl?: Span | null
+ * }} ShiftFunction
+ * @typedef {Omit<BranchMapping, 'loc' | 'locations'> & {
+ *   loc: Span,
+ *   locations?: Span[] | null
+ * }} ShiftBranch
+ * @typedef {Omit<FileCoverageData, 'statementMap' | 'fnMap' | 'branchMap'> & {
+ *   statementMap: Record<string, Span>,
+ *   fnMap: Record<string, ShiftFunction>,
+ *   branchMap: Record<string, ShiftBranch>
+ * }} ShiftableCoverage
+ */
+
+/**
+ * @param {ShiftableCoverage} coverage
+ * @param {number} shift
+ * @returns {ShiftableCoverage}
+ */
 export function shiftCoverageLines(coverage, shift) {
+  /** @param {Span} loc */
   const shiftLoc = (loc) => ({
     start: { ...loc.start, line: loc.start.line + shift },
     end: { ...loc.end, line: loc.end.line + shift }
   });
+  /** @type {ShiftableCoverage} */
   const out = {
     ...coverage,
     statementMap: {},
