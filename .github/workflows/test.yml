@@ -37,9 +37,16 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
+      # The measurement files the type gates check import the same pinned
+      # tools provision.mjs installs; --no-save keeps them out of the
+      # package manifest and lockfile, matching the WebKit job. The pins
+      # come from tools.json so they stay single-source, and the composed
+      # name-at-version strings never appear in the tree (logging-hygiene).
+      - run: npm i --no-save $(node -p "const t = require('./tests/measurement/tools.json').tools; Object.entries(t).map(([n, v]) => n + '@' + v).join(' ')")
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
+      - run: npm run typecheck:all
       - name: Run the tests
         shell: bash
         run: |

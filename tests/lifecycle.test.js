@@ -40,8 +40,25 @@ void test('a wrong code gives one generic error and counts a try', async () => {
   });
   assert.deepEqual(await wrong.json(), { error: 'invalid_or_expired_code' });
   const c = w.store.transact((s) => s.get(`challenge:${created.challengeId}`));
-  assert.equal(c.attempts, 1);
+  assert.equal(challengeRecord(c).attempts, 1);
 });
+
+// Narrow a stored record to an object that carries the members the test
+// then reads, so the test fails here, not at a later read, if the record
+// is missing or not an object. The member values stay unknown.
+/** @param {unknown} value */
+function challengeRecord(value) {
+  assert.ok(typeof value === 'object' && value !== null && 'attempts' in value);
+  return value;
+}
+
+/** @param {{ text: string } | undefined} message */
+function codeOf(message) {
+  assert.ok(message, 'a message was sent');
+  const found = message.text.match(/\d{6}/);
+  assert.ok(found, 'the message carries a six-digit code');
+  return found[0];
+}
 
 void test('an expired code fails', async () => {
   const w = await makeWorld();
@@ -159,13 +176,13 @@ void test('a resend gives the challenge a new code and kills only its earlier co
     await browserB.postChallenge({ address: OWNER, stateId: startB.stateId })
   ).json();
   await w.service.drain();
-  const firstCode = w.mailer.outbox
-    .find((m) => m.requestId === a.requestId)
-    ?.text.match(/\d{6}/)[0];
+  const firstCode = codeOf(
+    w.mailer.outbox.find((m) => m.requestId === a.requestId)
+  );
   w.advance(61_000); // past the resend cooldown
   await browserA.resend({ challengeId: a.challengeId, address: OWNER });
   await w.service.drain();
-  const newCode = w.mailer.outbox.at(-1).text.match(/\d{6}/)[0];
+  const newCode = codeOf(w.mailer.outbox.at(-1));
   assert.notEqual(newCode, firstCode);
   // The old code of the resent challenge is dead.
   const oldTry = await browserA.verify({
@@ -175,9 +192,9 @@ void test('a resend gives the challenge a new code and kills only its earlier co
   });
   assert.deepEqual(await oldTry.json(), { error: 'invalid_or_expired_code' });
   // The other challenge is untouched: its code still works.
-  const bCode = w.mailer.outbox
-    .find((m) => m.requestId === b.requestId)
-    ?.text.match(/\d{6}/)[0];
+  const bCode = codeOf(
+    w.mailer.outbox.find((m) => m.requestId === b.requestId)
+  );
   const bTry = await browserB.verify({
     challengeId: b.challengeId,
     code: bCode,
@@ -213,9 +230,9 @@ void test('codes bind to their challenge: a code from one fails on another', asy
     await browser.postChallenge({ address: OWNER, stateId: s2.stateId })
   );
   await w.service.drain();
-  const code1 = w.mailer.outbox
-    .find((m) => m.requestId === c1.requestId)
-    .text.match(/\d{6}/)[0];
+  const code1 = codeOf(
+    w.mailer.outbox.find((m) => m.requestId === c1.requestId)
+  );
   const cross = await browser.verify({
     challengeId: c2.challengeId,
     code: code1,
@@ -527,7 +544,9 @@ void test('purge deletes only the due records and writes nothing else', async ()
   const t = await seededForPurge({
     storeFactory: () => new DurableObjectStore(storage)
   });
-  const deadline = PURGE_DEADLINES.find(([p]) => p === 'challenge:')[1](t);
+  const challengeDeadline = PURGE_DEADLINES.find(([p]) => p === 'challenge:');
+  assert.ok(challengeDeadline, 'the challenge purge family is listed');
+  const deadline = challengeDeadline[1](t);
   const before = new Map();
   for (const p of PURGE_FAMILIES)
     for (const k of t.w.store.keysWithPrefix(p))

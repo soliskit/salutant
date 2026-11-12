@@ -15,26 +15,39 @@ const MSG = {
   text: 'Your sign-in code is 123456.'
 };
 
+/**
+ * @typedef {{ status: number, body?: unknown, rawBody?: string }
+ *   | { throw: string }} Handler
+ */
+
+// A fetch stand-in that answers from a queue of handlers with real
+// Response objects. The adapter reads only ok, status and json(), and a
+// real Response derives ok from status and fails json() on a non-JSON body.
+// Each recorded call keeps the url, method, headers and string body.
+/** @param {Handler[]} handlers */
 function stubFetch(handlers) {
+  /** @type {{ url: string, method: string | undefined, headers: Headers, body: string | undefined }[]} */
   const calls = [];
-  const impl = async (url, opts = {}) => {
-    calls.push({ url, opts });
+  /** @type {typeof fetch} */
+  const impl = async (input, init = {}) => {
+    assert.ok(typeof input === 'string', 'the adapter passes a string url');
+    calls.push({
+      url: input,
+      method: init.method,
+      headers: new Headers(init.headers),
+      body: typeof init.body === 'string' ? init.body : undefined
+    });
     const h = handlers.shift();
-    if (!h) throw new Error(`unexpected fetch to ${url}`);
-    if (h.throw) throw new Error(h.throw);
-    return {
-      ok: h.ok ?? (h.status >= 200 && h.status < 300),
-      status: h.status,
-      json: async () => {
-        if (h.rawBody !== undefined) throw new SyntaxError('Unexpected token');
-        return h.body;
-      }
-    };
+    if (!h) throw new Error(`unexpected fetch to ${input}`);
+    if ('throw' in h) throw new Error(h.throw);
+    return new Response(h.rawBody ?? JSON.stringify(h.body), {
+      status: h.status
+    });
   };
-  impl.calls = calls;
-  return impl;
+  return Object.assign(impl, { calls });
 }
 
+/** @param {typeof fetch} fetchImpl */
 function adapter(fetchImpl) {
   return new ResendMailAdapter({ apiKey: KEY, from: FROM, fetchImpl });
 }
@@ -66,10 +79,11 @@ void test('accepted send: returns providerId, sends idempotency key and plain-te
   assert.deepEqual(r, { outcome: 'accepted', providerId: 'prov-1' });
   const call = f.calls[0];
   assert.equal(call.url, 'https://api.resend.com/emails');
-  assert.equal(call.opts.method, 'POST');
-  assert.equal(call.opts.headers['idempotency-key'], 'req-1');
-  assert.equal(call.opts.headers.authorization, `Bearer ${KEY}`);
-  const body = JSON.parse(call.opts.body);
+  assert.equal(call.method, 'POST');
+  assert.equal(call.headers.get('idempotency-key'), 'req-1');
+  assert.equal(call.headers.get('authorization'), `Bearer ${KEY}`);
+  assert.ok(call.body !== undefined, 'the send carries a string body');
+  const body = JSON.parse(call.body);
   assert.deepEqual(body, {
     from: FROM,
     to: [MSG.to],
@@ -107,15 +121,17 @@ void test('reconcile after accepted reads the provider record', async () => {
   const r = await a.reconcile('req-1');
   assert.deepEqual(r, { state: 'sent', providerId: 'prov-1' });
   assert.equal(f.calls[1].url, 'https://api.resend.com/emails/prov-1');
-  assert.equal(f.calls[1].opts.method, undefined);
+  assert.equal(f.calls[1].method, undefined);
 });
 
 void test('reconcile of accepted send: 404 is absent, 5xx and network failure are unknown', async () => {
-  for (const [h, want] of [
+  /** @type {[Handler, { state: string }][]} */
+  const cases = [
     [{ status: 404, body: {} }, { state: 'absent' }],
     [{ status: 500, body: {} }, { state: 'unknown' }],
     [{ throw: 'reset' }, { state: 'unknown' }]
-  ]) {
+  ];
+  for (const [h, want] of cases) {
     const f = stubFetch([{ status: 200, body: { id: 'prov-1' } }, h]);
     const a = adapter(f);
     await a.send(MSG);
@@ -134,8 +150,8 @@ void test('reconcile after uncertain with no providerId is unknown and never re-
   // Contract: reconcile settles without resending. It must make no call
   // at all here, and the only POST ever issued is the original send.
   assert.equal(f.calls.length, 1);
-  assert.equal(f.calls[0].opts.method, 'POST');
-  assert.equal(f.calls[0].opts.headers['idempotency-key'], 'req-1');
+  assert.equal(f.calls[0].method, 'POST');
+  assert.equal(f.calls[0].headers.get('idempotency-key'), 'req-1');
 });
 
 void test('reconcile after accepted reads the provider record and never POSTs', async () => {
@@ -153,8 +169,8 @@ void test('reconcile after accepted reads the provider record and never POSTs', 
     providerId: 'prov-1'
   });
   assert.equal(f.calls.length, 2);
-  assert.equal(f.calls[0].opts.method, 'POST');
-  assert.notEqual(f.calls[1].opts.method, 'POST');
+  assert.equal(f.calls[0].method, 'POST');
+  assert.notEqual(f.calls[1].method, 'POST');
   assert.match(f.calls[1].url, /\/emails\/prov-1$/);
 });
 

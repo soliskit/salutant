@@ -5,57 +5,47 @@
 // V8 refines block ranges as code executes - so counts are not zipped here;
 // the converter accumulates every load onto the file's own structure.
 
+import { field, jsonToString } from './validate.mjs';
+
 export class CoverageConflict extends Error {}
 
 /**
- * @typedef {{ startOffset: number, endOffset: number, count: number }} V8Range
  * @typedef {{
- *   functionName: string,
- *   ranges?: V8Range[],
- *   isBlockCoverage?: boolean
- * }} V8Function
- * @typedef {{
- *   url?: string,
- *   source: string | undefined,
- *   functions?: V8Function[]
- * }} V8Entry
- * @typedef {{
- *   url: string,
- *   source: string | undefined,
- *   coverageList: (V8Function[] | undefined)[]
+ *   url: unknown,
+ *   source: unknown,
+ *   coverageList: unknown[]
  * }} MergedCoverage
  */
 
 // returns Map url -> { url, source, coverageList: [functions, ...] }
 /**
- * @param {V8Entry[]} entries
- * @returns {Map<string, MergedCoverage>}
+ * @param {unknown[]} entries
+ * @returns {Map<unknown, MergedCoverage>}
  */
 export function mergeV8Entries(entries) {
-  /** @type {Map<string, MergedCoverage>} */
+  /** @type {Map<unknown, MergedCoverage>} */
   const byUrl = new Map();
   for (const entry of entries) {
-    if (!entry.url) continue;
-    const existing = byUrl.get(entry.url);
+    const url = field(entry, 'url');
+    if (!url) continue;
+    const source = field(entry, 'source');
+    const functions = field(entry, 'functions');
+    const existing = byUrl.get(url);
     if (!existing) {
-      byUrl.set(entry.url, {
-        url: entry.url,
-        source: entry.source,
-        coverageList: [entry.functions]
-      });
+      byUrl.set(url, { url, source, coverageList: [functions] });
       continue;
     }
     // A take whose source could not be retrieved carries source undefined;
     // that is a retrieval gap, not a content signal, so it joins the file
     // without voting on identity. Two defined sources that differ still
     // fail the run, and a file with no defined source fails at conversion.
-    if (existing.source === undefined) existing.source = entry.source;
-    else if (entry.source !== undefined && existing.source !== entry.source) {
+    if (existing.source === undefined) existing.source = source;
+    else if (source !== undefined && existing.source !== source) {
       throw new CoverageConflict(
-        `coverage conflict: ${entry.url} appeared with two different contents`
+        `coverage conflict: ${jsonToString(url)} appeared with two different contents`
       );
     }
-    existing.coverageList.push(entry.functions);
+    existing.coverageList.push(functions);
   }
   return byUrl;
 }

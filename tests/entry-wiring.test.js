@@ -31,6 +31,38 @@ function makeCtx() {
   };
 }
 
+// A response header the test then reads as text. A missing header fails
+// here as an assertion, where a null read failed later.
+/**
+ * @param {Response} response
+ * @param {string} name
+ */
+function headerOf(response, name) {
+  const value = response.headers.get(name);
+  assert.ok(value !== null, `the response has a ${name} header`);
+  return value;
+}
+
+// The scheduled alarm time. No alarm fails here as an assertion.
+/** @param {ReturnType<typeof makeCtx>} ctx */
+async function alarmOf(ctx) {
+  const alarm = await ctx.storage.getAlarm();
+  assert.ok(alarm !== null, 'an alarm is scheduled');
+  return alarm;
+}
+
+// A worker over a registry of apps. The page route answers before any
+// call to the service, so a forwarded request fails the test.
+/** @param {{ origin: string }[]} apps */
+function pageOnlyWorker(apps) {
+  return createWorker({
+    apps,
+    async fetch() {
+      assert.fail('the code-entry page does not reach the service');
+    }
+  });
+}
+
 async function makeEnv() {
   const pair = await generateSigningKeyPair();
   const bytes = () =>
@@ -101,12 +133,12 @@ void test('the object builds the service once and serves page assets through it'
   );
   const first = await object.fetch(new Request(`${SERVICE_ORIGIN}/app.js`));
   assert.equal(first.status, 200);
-  assert.match(first.headers.get('content-type'), /^text\/javascript/);
+  assert.match(headerOf(first, 'content-type'), /^text\/javascript/);
   const built = object.workerPromise;
   assert.ok(built, 'the first request builds the service');
   const second = await object.fetch(new Request(`${SERVICE_ORIGIN}/style.css`));
   assert.equal(second.status, 200);
-  assert.match(second.headers.get('content-type'), /^text\/css/);
+  assert.match(headerOf(second, 'content-type'), /^text\/css/);
   assert.equal(
     object.workerPromise,
     built,
@@ -124,7 +156,7 @@ void test('the object key endpoint returns the epoch from its configured environ
     new Request(`${SERVICE_ORIGIN}/.well-known/jwks.json`)
   );
   assert.equal(response.status, 200);
-  assert.match(response.headers.get('content-type'), /^application\/json/);
+  assert.match(headerOf(response, 'content-type'), /^application\/json/);
   const body = await response.json();
   assert.equal(
     body.epoch,
@@ -138,18 +170,17 @@ void test('the object key endpoint returns the epoch from its configured environ
 // Checks the worker fallback for a normal registry containing a non-empty
 // app origin. It makes no policy claim about configuring an empty origin.
 void test('the code-entry page rejects a missing app parameter for a registered non-empty origin', async () => {
-  const worker = createWorker({ apps: [{ origin: APP_ORIGIN }] });
+  const worker = pageOnlyWorker([{ origin: APP_ORIGIN }]);
   const response = await worker.fetch(new Request(`${SERVICE_ORIGIN}/`));
   assert.equal(response.status, 400);
-  assert.match(response.headers.get('content-type'), /^text\/html/);
-  const directives = response.headers
-    .get('content-security-policy')
+  assert.match(headerOf(response, 'content-type'), /^text\/html/);
+  const directives = headerOf(response, 'content-security-policy')
     .split(';')
     .map((part) => part.trim());
   assert.ok(directives.includes("connect-src 'self'"));
   assert.ok(directives.includes("form-action 'none'"));
   assert.ok(
-    !response.headers.get('content-security-policy').includes(APP_ORIGIN)
+    !headerOf(response, 'content-security-policy').includes(APP_ORIGIN)
   );
 });
 
@@ -157,16 +188,13 @@ void test('the code-entry page rejects a missing app parameter for a registered 
 // for each registered origin and still refused for an unregistered one.
 void test('the code-entry page is served for each registered app origin and refused for an unregistered one', async () => {
   const second = 'https://second.example.test';
-  const worker = createWorker({
-    apps: [{ origin: APP_ORIGIN }, { origin: second }]
-  });
+  const worker = pageOnlyWorker([{ origin: APP_ORIGIN }, { origin: second }]);
   for (const origin of [APP_ORIGIN, second]) {
     const response = await worker.fetch(
       new Request(`${SERVICE_ORIGIN}/?app=${encodeURIComponent(origin)}`)
     );
     assert.equal(response.status, 200, `${origin} is registered`);
-    const directives = response.headers
-      .get('content-security-policy')
+    const directives = headerOf(response, 'content-security-policy')
       .split(';')
       .map((part) => part.trim());
     assert.ok(
@@ -188,12 +216,12 @@ void test('construction schedules the hourly alarm once', async () => {
   const ctx = makeCtx();
   new SalutantStoreDO(ctx, await makeEnv());
   await new Promise((resolve) => setImmediate(resolve));
-  const first = await ctx.storage.getAlarm();
+  const first = await alarmOf(ctx);
   assert.ok(first > Date.now(), 'the first alarm is in the future');
   new SalutantStoreDO(ctx, await makeEnv());
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(
-    await ctx.storage.getAlarm(),
+    await alarmOf(ctx),
     first,
     'a wake keeps the already scheduled alarm'
   );
@@ -215,7 +243,7 @@ void test('the alarm purges a record past its retention and reschedules', async 
     .toArray();
   assert.deepEqual(remaining, [], 'the expired record is purged');
   assert.ok(
-    (await ctx.storage.getAlarm()) > Date.now(),
+    (await alarmOf(ctx)) > Date.now(),
     'the next hourly alarm is scheduled'
   );
   const page = await object.fetch(new Request(`${SERVICE_ORIGIN}/app.js`));
@@ -232,7 +260,7 @@ void test('a failing purge still reschedules the alarm', async () => {
   );
   await assert.rejects(object.alarm(), SyntaxError);
   assert.ok(
-    (await ctx.storage.getAlarm()) > Date.now(),
+    (await alarmOf(ctx)) > Date.now(),
     'the alarm is rescheduled despite the failure'
   );
 });

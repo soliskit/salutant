@@ -9,6 +9,37 @@ import {
   readCreated
 } from './helpers.js';
 
+// Narrow a stored record to an object that carries the members the test
+// then reads or overwrites. The test fails here, rather than at a later
+// property read, if the record is missing or not an object.
+/** @param {unknown} value */
+function counterRecord(value) {
+  assert.ok(typeof value === 'object' && value !== null && 'count' in value);
+  return value;
+}
+
+/** @param {unknown} value */
+function timestampsRecord(value) {
+  assert.ok(
+    typeof value === 'object' && value !== null && 'timestamps' in value
+  );
+  return value;
+}
+
+/** @param {unknown} value */
+function challengeRecord(value) {
+  assert.ok(
+    typeof value === 'object' &&
+      value !== null &&
+      'state' in value &&
+      'attempts' in value &&
+      'appOrigin' in value &&
+      'codeHmac' in value &&
+      'bindingHmac' in value
+  );
+  return value;
+}
+
 /**
  * @param {Awaited<ReturnType<typeof makeWorld>>} w
  * @param {string | null} [key]
@@ -93,7 +124,7 @@ void test('malformed additive operands close counter requests and stop purge at 
   ]) {
     const { w } = await createdWorld();
     const key = w.store.keysWithPrefix('counter:reqsrc:')[0];
-    const record = w.store.getRef(key);
+    const record = counterRecord(w.store.getRef(key));
     record.count = value;
     const oldChallenges = w.store.keysWithPrefix('challenge:').length;
     const response = await create(w);
@@ -173,8 +204,11 @@ void test('nullish challenge members fail at their first read and a primitive re
 void test('stored non-string code and binding HMACs fail at decoder use before consumption [R5]', async () => {
   for (const field of ['codeHmac', 'bindingHmac']) {
     const { w, browser, created } = await createdWorld();
-    const record = w.store.getRef(`challenge:${created.challengeId}`);
-    record[field] = 7;
+    const record = challengeRecord(
+      w.store.getRef(`challenge:${created.challengeId}`)
+    );
+    if (field === 'codeHmac') record.codeHmac = 7;
+    else record.bindingHmac = 7;
     const response = await browser.verify({
       challengeId: created.challengeId,
       code: w.mailer.lastCode(),
@@ -186,7 +220,9 @@ void test('stored non-string code and binding HMACs fail at decoder use before c
   }
   for (const appOrigin of [null, undefined]) {
     const { w, browser, created } = await createdWorld();
-    const record = w.store.getRef(`challenge:${created.challengeId}`);
+    const record = challengeRecord(
+      w.store.getRef(`challenge:${created.challengeId}`)
+    );
     record.appOrigin = appOrigin;
     const response = await browser.verify({
       challengeId: created.challengeId,
@@ -242,7 +278,7 @@ void test('rolling timestamp reads keep nullish defaults and raw retained values
     }
     if (shape === 'null-count' || shape === 'undefined-count') {
       for (const dailyKey of w.store.keysWithPrefix('counter:sendday:')) {
-        const counter = w.store.getRef(dailyKey);
+        const counter = counterRecord(w.store.getRef(dailyKey));
         counter.count = shape === 'null-count' ? null : undefined;
       }
     }
@@ -253,12 +289,12 @@ void test('rolling timestamp reads keep nullish defaults and raw retained values
       if (shape === 'null-count' || shape === 'undefined-count') {
         for (const dailyKey of w.store.keysWithPrefix('counter:sendday:'))
           assert.equal(
-            w.store.get(dailyKey).count,
+            counterRecord(w.store.get(dailyKey)).count,
             shape === 'null-count' ? 1 : NaN
           );
       }
       assert.deepEqual(
-        w.store.get(key).timestamps,
+        timestampsRecord(w.store.get(key)).timestamps,
         shape === 'values' ? [String(now), now] : [now]
       );
     }
@@ -322,7 +358,7 @@ void test('a missing current signing key fails at proof signing after consumptio
   });
   assert.equal(response.status, 500);
   assert.equal(
-    w.store.get(`challenge:${created.challengeId}`).state,
+    challengeRecord(w.store.get(`challenge:${created.challengeId}`)).state,
     'consumed'
   );
   assert.deepEqual(w.store.keysWithPrefix('issuance:'), []);

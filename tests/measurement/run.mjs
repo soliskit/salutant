@@ -24,6 +24,7 @@ import { toFileCoverage, summarize } from './convert.mjs';
 import {
   MeasurementFailure,
   checkNavigationCoverage,
+  field,
   validateBrowserDir,
   validateServerDir
 } from './validate.mjs';
@@ -37,10 +38,12 @@ const outDir = args.includes('--out')
 const TIMEOUT_MS = 10 * 60 * 1000;
 const COMMAND = 'node --test tests/*.test.js';
 
+/** @param {string[]} gitArgs */
 function git(...gitArgs) {
   return execFileSync('git', gitArgs, { cwd: root, encoding: 'utf8' }).trim();
 }
 
+/** @param {string} name */
 function toolVersion(name) {
   return JSON.parse(
     readFileSync(join(root, 'node_modules', name, 'package.json'), 'utf8')
@@ -69,6 +72,7 @@ function checkToolVersions() {
   }
 }
 
+/** @returns {Promise<void>} */
 function runSuite() {
   const env = {
     ...process.env,
@@ -107,19 +111,36 @@ function runSuite() {
   });
 }
 
+// The TCP port of a listening server. A server without a TCP address fails
+// here, where reading the port from it gave undefined or a TypeError.
+/** @param {import('node:http').Server} server */
+function portOf(server) {
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    throw new MeasurementFailure('the verification server has no TCP address');
+  }
+  return address.port;
+}
+
 // Starts a verification server without any coverage or preload, for the page
 // check that must not add coverage to the measurement.
+/** @param {(baseUrl: string) => Promise<void>} fn */
 async function withVerificationServer(fn) {
   const { makeWorld } = await import('../helpers.js');
   const w = await makeWorld();
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     for await (const c of req) chunks.push(c);
-    const hasBody = !['GET', 'HEAD'].includes(req.method);
+    const hasBody = !['GET', 'HEAD'].includes(req.method ?? '');
     const out = await w.worker.fetch(
-      new Request(`http://localhost:${server.address().port}${req.url}`, {
+      new Request(`http://localhost:${portOf(server)}${req.url}`, {
         method: req.method,
-        headers: req.headers,
+        headers: Object.fromEntries(
+          Object.entries(req.headers).map(([name, value]) => [
+            name,
+            String(value)
+          ])
+        ),
         body: hasBody ? Buffer.concat(chunks) : undefined
       })
     );
@@ -130,9 +151,13 @@ async function withVerificationServer(fn) {
     res.statusCode = out.status;
     res.end(Buffer.from(await out.arrayBuffer()));
   });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) =>
+    server.listen(0, '127.0.0.1', () => {
+      resolve(undefined);
+    })
+  );
   try {
-    await fn(`http://localhost:${server.address().port}`);
+    await fn(`http://localhost:${portOf(server)}`);
   } finally {
     server.close();
   }
@@ -145,7 +170,7 @@ mkdirSync(join(outDir, 'browser'), { recursive: true });
 // The baseline names its production-source commit; the application source is
 // verified unchanged from it regardless of which branch the harness sits on,
 // and the harness revision is recorded separately.
-const PRODUCTION_COMMIT = '3889c1779112d18da4220c7ab8f10ca269e12ad6';
+const PRODUCTION_COMMIT = '61afadce68ec95502b56c41d7d928dddb6dacd25';
 const commit = git('rev-parse', 'HEAD');
 const appDiff = git('diff', '--name-only', PRODUCTION_COMMIT, '--', 'src');
 if (appDiff) {
@@ -176,11 +201,29 @@ checkServedScripts(browserCaptures);
 
 // Node pipeline: source comes from disk (V8 reports carry no source), which
 // the clean-tree check above ties to the pinned commit.
+/**
+ * fileURLToPath over a JSON-decoded coverage entry url. Only strings reach
+ * this call: validateServerDir returns just the entries whose url sits in the
+ * serverFiles string Set (SameValueZero), so every reachable value is a
+ * string. The original passed the raw value to fileURLToPath, which would
+ * throw its ERR_INVALID_ARG_TYPE TypeError on a non-string; on that provably
+ * unreachable state this guard throws a plain TypeError instead (disclosed
+ * unreachable-state error delta).
+ * @param {unknown} value
+ * @returns {string}
+ */
+function jsonFileUrlToPath(value) {
+  if (typeof value !== 'string') {
+    throw new TypeError('a server coverage entry url must be a string');
+  }
+  return fileURLToPath(value);
+}
+
 const serverMerged = mergeV8Entries(
   serverEntries.map((e) => ({
-    url: e.url,
-    source: readFile(fileURLToPath(e.url)),
-    functions: e.functions
+    url: field(e, 'url'),
+    source: readFile(jsonFileUrlToPath(field(e, 'url'))),
+    functions: field(e, 'functions')
   }))
 );
 // Browser scripts key by path, with content identity still enforced across
@@ -188,7 +231,11 @@ const serverMerged = mergeV8Entries(
 const browserMerged = mergeV8Entries(
   browserCaptures.map((e) => {
     try {
-      return { ...e, url: new URL(e.url).pathname };
+      return {
+        url: new URL(String(field(e, 'url'))).pathname,
+        source: field(e, 'source'),
+        functions: field(e, 'functions')
+      };
     } catch {
       return e;
     }

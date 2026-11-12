@@ -69,29 +69,8 @@ export function pageScriptLineShift() {
 // Shifts every location in an Istanbul file-coverage object by the given
 // number of lines, leaving columns and counts untouched.
 /**
- * @typedef {{ line: number, column?: number | null }} Position
- * @typedef {{ start: Position, end: Position }} Span
- * @typedef {{
- *   name: string,
- *   line: number,
- *   loc: Span,
- *   decl?: Span | null
- * }} ShiftFunction
- * @typedef {{
- *   type: string,
- *   line: number,
- *   loc: Span,
- *   locations?: Span[] | null
- * }} ShiftBranch
- * @typedef {{
- *   path: string,
- *   statementMap: Record<string, Span>,
- *   fnMap: Record<string, ShiftFunction>,
- *   branchMap: Record<string, ShiftBranch>,
- *   s: Record<string, number>,
- *   f: Record<string, number>,
- *   b: Record<string, number[]>
- * }} ShiftableCoverage
+ * @typedef {import('istanbul-lib-coverage').FileCoverageData} ShiftableCoverage
+ * @typedef {import('istanbul-lib-coverage').Range} Span
  */
 
 /**
@@ -117,13 +96,13 @@ export function shiftCoverageLines(coverage, shift) {
   }
   for (const [k, fn] of Object.entries(coverage.fnMap)) {
     out.fnMap[k] = { ...fn, loc: shiftLoc(fn.loc) };
-    if (fn.decl) out.fnMap[k].decl = shiftLoc(fn.decl);
+    out.fnMap[k].decl = shiftLoc(fn.decl);
   }
   for (const [k, br] of Object.entries(coverage.branchMap)) {
     out.branchMap[k] = {
       ...br,
       loc: shiftLoc(br.loc),
-      locations: (br.locations || []).map(shiftLoc)
+      locations: br.locations.map(shiftLoc)
     };
   }
   return out;

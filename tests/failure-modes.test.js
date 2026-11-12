@@ -106,6 +106,15 @@ void test('a double-click is one request', async () => {
   assert.equal(w.store.keysWithPrefix('challenge:').length, 1);
 });
 
+// Narrow a stored challenge to an object that carries stateId. Its writers
+// (service.js, both challenge writes) always include it. The test fails here,
+// not at a later read, if the record is missing or not an object.
+/** @param {unknown} value */
+function challengeRecord(value) {
+  assert.ok(typeof value === 'object' && value !== null && 'stateId' in value);
+  return value;
+}
+
 void test('a request without an idempotency header stays separate from the literal key null', async () => {
   const w = await makeWorld();
   const browser1 = new BrowserSession(w);
@@ -136,9 +145,9 @@ void test('a request without an idempotency header stays separate from the liter
   assert.equal(secondBody.status, 'ok');
   const secondChallenge = w.store.get(`challenge:${secondBody.challengeId}`);
   assert.ok(secondChallenge, 'the fresh request has a saved challenge');
-  assert.equal(secondChallenge.stateId, second.stateId);
+  assert.equal(challengeRecord(secondChallenge).stateId, second.stateId);
   assert.equal(
-    w.store.get(`challenge:${firstBody.challengeId}`).stateId,
+    challengeRecord(w.store.get(`challenge:${firstBody.challengeId}`)).stateId,
     first.stateId
   );
   assert.equal(
@@ -480,6 +489,7 @@ void test('a request that throws after registering its key does not block a same
     idempotencyKey: key
   });
   assert.equal(first.status, 500, 'the failed request is closed');
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
   let retryTimer;
   const retry = await Promise.race([
     new BrowserSession(w).postChallenge({
@@ -510,6 +520,7 @@ void test('a request that throws before registering its key leaves no stale entr
   });
   assert.equal(first.status, 500, 'the service stays closed');
   w.epoch.available = true;
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
   let retryTimer;
   const retry = await Promise.race([
     new BrowserSession(w).postChallenge({

@@ -50,9 +50,35 @@ void test('many parallel redemptions of one proof give one redemption', async ()
     )
   );
   assert.equal(outcomes.filter((o) => o.status === 200).length, 1);
-  assert.equal(outcomes.filter((o) => o.body.error === 'replayed').length, 19);
+  assert.equal(outcomes.filter((o) => errorOf(o) === 'replayed').length, 19);
 });
 
+// The error member of an exchange result, or undefined when the result is
+// the success shape that has none.
+/** @param {{ body: object }} result */
+function errorOf(result) {
+  return 'error' in result.body ? result.body.error : undefined;
+}
+
+// Narrow a stored sign-in state to an object that carries the members the
+// test reads. Its writer (stub-app.js startSignIn) always writes stateId,
+// cookieHmac, createdAtMs, verifiedSub and consumed. The test fails here,
+// not at a later read, if the record is missing or not an object.
+/** @param {unknown} value */
+function stateRecord(value) {
+  assert.ok(
+    typeof value === 'object' &&
+      value !== null &&
+      'verifiedSub' in value &&
+      'consumed' in value
+  );
+  return value;
+}
+
+/**
+ * @param {Awaited<ReturnType<typeof makeWorld>>} w
+ * @param {(claims: Record<string, unknown>) => void} mutate
+ */
 async function tampered(w, mutate) {
   const r = await honestSignIn(w);
   const [, p] = r.verified.proof.split('.');
@@ -63,6 +89,7 @@ async function tampered(w, mutate) {
   );
   mutate(claims);
   const key = w.service.signingKeys.get('k1');
+  assert.ok(key, 'the k1 signing key is present');
   return signProof(claims, key.privateKey, 'k1');
 }
 
@@ -74,6 +101,7 @@ void test('wrong issuer, audience, expiry, not-before and issue time are rejecte
       requestsPerSourcePerHour: 100
     }
   });
+  /** @type {((claims: Record<string, unknown>) => void)[]} */
   const cases = [
     (c) => {
       c.iss = 'https://evil.example.test';
@@ -175,7 +203,7 @@ void test('an unknown key id is rejected after one refresh', async () => {
     SERVICE_ORIGIN
   );
   assert.notEqual(res.status, 200);
-  assert.equal(res.body.error, 'unknown_key');
+  assert.equal(errorOf(res), 'unknown_key');
 });
 
 void test('a reused state value is rejected', async () => {
@@ -188,7 +216,7 @@ void test('a reused state value is rejected', async () => {
     { proof: r.verified.proof, state: r.verified.state },
     SERVICE_ORIGIN
   );
-  assert.equal(again.body.error, 'replayed');
+  assert.equal(errorOf(again), 'replayed');
 });
 
 void test('a proof for another audience is rejected by this app', async () => {
@@ -216,7 +244,7 @@ void test('a proof for another audience is rejected by this app', async () => {
     { proof: token, state: 'n1' },
     SERVICE_ORIGIN
   );
-  assert.equal(res.body.error, 'bad_proof');
+  assert.equal(errorOf(res), 'bad_proof');
 });
 
 void test('a correctly signed proof missing required claims is rejected', async () => {
@@ -241,7 +269,7 @@ void test('a correctly signed proof missing required claims is rejected', async 
       SERVICE_ORIGIN
     );
     assert.notEqual(res.status, 200, `missing ${field} must be rejected`);
-    assert.equal(res.body.error, 'bad_proof');
+    assert.equal(errorOf(res), 'bad_proof');
   }
 });
 
@@ -272,7 +300,7 @@ void test('a correctly signed numeric subject is rejected before identity bindin
   assert.deepEqual(res.body, { error: 'bad_proof' });
   assert.equal(res.acao, SERVICE_ORIGIN);
   assert.equal(
-    w.appStore.get(`state:${r.start.stateId}`).verifiedSub,
+    stateRecord(w.appStore.get(`state:${r.start.stateId}`)).verifiedSub,
     null,
     'a rejected proof must not bind an identity'
   );
@@ -324,11 +352,13 @@ void test('the exchange rejects a proof 61 seconds after issuance', async () => 
 });
 
 void test('exchange window boundary: 59,999 ms after issuance succeeds; 60,000 and 60,001 reject', async () => {
-  for (const [ms, ok] of [
+  /** @type {[number, boolean][]} */
+  const windows = [
     [59_999, true],
     [60_000, false],
     [60_001, false]
-  ]) {
+  ];
+  for (const [ms, ok] of windows) {
     const w = await makeWorld();
     const r = await honestSignIn(w, { redeem: false });
     assert.ok(r.verified.proof, 'setup proof');

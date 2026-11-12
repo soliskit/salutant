@@ -24,6 +24,7 @@ void test('SalutantService uses the wall clock when no clock is injected', async
   const signingKeys = new Map([
     ['k1', { ...keyPair, status: 'current', notAfterMs: null }]
   ]);
+  /** @type {NonNullable<import('../src/service.js').ServiceOptions['logSink']>} */
   const logSink = [];
   const service = new SalutantService({
     store: new MemoryStore(),
@@ -68,6 +69,12 @@ void test('StubApp uses the wall clock when no clock is injected', async () => {
   const after = Date.now();
   const pending = appStore.get(`state:${start.stateId}`);
   assert.ok(pending, 'pending state stored');
+  assert.ok(
+    typeof pending === 'object' &&
+      'createdAtMs' in pending &&
+      typeof pending.createdAtMs === 'number',
+    'the pending state records a numeric createdAtMs'
+  );
   assert.ok(
     pending.createdAtMs >= before && pending.createdAtMs <= after,
     `createdAtMs ${pending.createdAtMs} not between ${String(before)} and ${String(after)}`

@@ -204,7 +204,9 @@ void test('parity: snapshot inside a transaction sees the working copy', () => {
       s.set('c', 3);
       return s.snapshot();
     });
-    const entries = JSON.parse(snap).sort(([x], [y]) => (x < y ? -1 : 1));
+    const parsed = JSON.parse(snap);
+    assert.ok(Array.isArray(parsed), 'the snapshot is a list of entries');
+    const entries = parsed.sort(([x], [y]) => (x < y ? -1 : 1));
     assert.deepEqual(
       entries,
       [
