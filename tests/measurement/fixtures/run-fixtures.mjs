@@ -35,7 +35,12 @@ import {
 
 const { createFileCoverage } = libCoverage;
 const here = fileURLToPath(new URL('.', import.meta.url));
+/** @type {string[]} */
 const results = [];
+/**
+ * @param {string} name
+ * @param {() => unknown} fn
+ */
 async function proof(name, fn) {
   try {
     await fn();
@@ -46,9 +51,11 @@ async function proof(name, fn) {
   }
 }
 
+/** @param {Awaited<ReturnType<typeof toFileCoverage>>} cov */
 const lineHits = (cov) => createFileCoverage(cov).getLineCoverage();
 
 // Runs a fixture program with coverage on and returns its converted coverage.
+/** @param {string} fileAbs */
 async function nodeCoverageFor(fileAbs) {
   const dir = mkdtempSync(join(tmpdir(), 'fx-cov-'));
   await new Promise((resolve, reject) => {
@@ -79,6 +86,10 @@ async function nodeCoverageFor(fileAbs) {
 }
 
 // A temp file with fixture content, so the converter reads real paths.
+/**
+ * @param {string} name
+ * @param {string} content
+ */
 function tempScript(name, content) {
   const dir = mkdtempSync(join(tmpdir(), 'fx-js-'));
   const abs = join(dir, name);
@@ -86,6 +97,10 @@ function tempScript(name, content) {
   return abs;
 }
 
+/**
+ * @param {Record<string, { type: string, body: string }>} routes
+ * @param {(base: string) => unknown} fn
+ */
 async function withFixtureServer(routes, fn) {
   const server = createServer((req, res) => {
     const pathname = new URL(req.url, 'http://x').pathname;
@@ -108,6 +123,7 @@ async function withFixtureServer(routes, fn) {
 
 const FX_JS =
   'function f() {\n  return 7\n}\nif (location.search.includes("run")) {\n  f()\n}\n';
+/** @param {string} src */
 const PAGE = (src) =>
   `<html><body><script src="${src}"></script></body></html>`;
 const routesFor = (extra = {}) => ({
@@ -117,6 +133,7 @@ const routesFor = (extra = {}) => ({
 
 // Captures each document's coverage separately (the preload's job is capture
 // across navigation; these fixtures prove merge and conversion).
+/** @param {string[]} pages */
 async function capturePerDocument(pages) {
   const browser = await chromium.launch();
   const page = await browser.newPage();
@@ -631,6 +648,7 @@ await proof('dropping one capture among many fails the run', () => {
 // then converts the served script against its padded twin. The caught line
 // must show covered and the never-fired code-stage catch must stay uncovered,
 // each at its exact line in the checked-in src/assets.js.
+/** @type {ReturnType<typeof lineHits> | null} */
 let pageScriptLines = null;
 async function capturedPageScriptLines() {
   if (pageScriptLines) return pageScriptLines;
@@ -682,6 +700,10 @@ async function capturedPageScriptLines() {
 }
 
 // The line in src/assets.js carrying the nth (0-based) occurrence of a marker.
+/**
+ * @param {string} marker
+ * @param {number} n
+ */
 function lineOfOccurrence(marker, n) {
   const fileSource = readFileSync(join(root, 'src', 'assets.js'), 'utf8');
   let at = -1;
