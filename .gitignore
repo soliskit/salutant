@@ -3,3 +3,5 @@ node_modules/
 *.log
 tests/measurement/fixtures/fixture-src.js
 .stryker-tmp/
+__pycache__/
+*.pyc
