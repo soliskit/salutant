@@ -20,9 +20,13 @@ import { makeDOStorage, SERVICE_ORIGIN, APP_ORIGIN, OWNER } from './helpers.js';
 function makeCtx() {
   return {
     storage: makeDOStorage(),
-    /** @param {() => Promise<unknown>} fn */
+    /**
+     * @template T
+     * @param {() => Promise<T>} fn
+     * @returns {Promise<T>}
+     */
     async blockConcurrencyWhile(fn) {
-      await fn();
+      return await fn();
     }
   };
 }
