@@ -20,6 +20,7 @@ import { makeDOStorage, SERVICE_ORIGIN, APP_ORIGIN, OWNER } from './helpers.js';
 function makeCtx() {
   return {
     storage: makeDOStorage(),
+    /** @param {() => Promise<unknown>} fn */
     async blockConcurrencyWhile(fn) {
       await fn();
     }
@@ -57,16 +58,21 @@ async function makeEnv() {
 }
 
 void test('the worker forwards every request to the one named object', async () => {
+  /** @type {string[]} */
   const names = [];
+  /** @type {[unknown, string][]} */
   const seen = [];
   const env = {
     SALUTANT_STORE: {
+      /** @param {string} name */
       idFromName(name) {
         names.push(name);
         return `id:${name}`;
       },
+      /** @param {unknown} id */
       get(id) {
         return {
+          /** @param {Request} request */
           async fetch(request) {
             seen.push([id, request.url]);
             return new Response('from the object');
