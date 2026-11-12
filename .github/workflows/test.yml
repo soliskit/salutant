@@ -262,6 +262,8 @@ jobs:
           cache: npm
       # tsconfig.json is excluded from the mutation sandbox: it is a lint/typecheck
       # artifact and Stryker's npx environment has no typescript package to process it.
+      - run: npm ci
+        if: matrix.file == 'service'
       - run: >
           npx --yes "@stryker-mutator/core@${STRYKER_VERSION}" run
           --ignorePatterns tsconfig.json
