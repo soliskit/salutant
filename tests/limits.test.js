@@ -655,6 +655,11 @@ void test('withheld resends move the cooldown clock under tight budgets (30-minu
 // Current local defaults: rolling sends, independent fixed hourly requests.
 const HALF_HOUR = 30 * 60_000;
 const ALIGNED = Date.UTC(2026, 0, 1);
+/**
+ * @param {Awaited<ReturnType<typeof makeWorld>>} w
+ * @param {BrowserSession} browser
+ * @param {string} [address]
+ */
 async function create(w, browser, address = OWNER) {
   return (
     await browser.postChallenge({ address, stateId: 's'.repeat(24) })

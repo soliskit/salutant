@@ -18,6 +18,7 @@ import { MemoryStore } from '../src/storage.js';
 import { DurableObjectStore } from '../src/do-store.js';
 import { makeDOStorage } from './helpers.js';
 
+/** @returns {[string, MemoryStore | DurableObjectStore][]} */
 function makeStores() {
   return [
     ['MemoryStore', new MemoryStore()],
