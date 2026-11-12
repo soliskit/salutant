@@ -6,7 +6,7 @@
   "type": "module",
   "description": "Email sign-in proofs: a code to your inbox, a signed proof to the app. Phase 1 is local and mocked, with no real sends, no credentials and no network calls.",
   "engines": {
-    "node": ">=26.7 <27"
+    "node": "26.13.0"
   },
   "scripts": {
     "test": "node --test --experimental-test-coverage --test-coverage-include='src/*.js' --test-coverage-include-all --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 tests/*.test.js",
