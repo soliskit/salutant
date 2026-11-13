@@ -11,6 +11,7 @@ import {
   BrowserSession,
   honestSignIn,
   OWNER,
+  STRANGER,
   SERVICE_ORIGIN,
   readCreated,
   keyIds,
@@ -474,6 +475,148 @@ for (const [driver, storeFactory] of DRIVERS) {
     // The app drops sessions issued before the new epoch.
     w.app.dropSessionsBefore(2);
     assert.ok(!w.app.sessionExists(sessionId));
+  });
+
+  void test(`[${driver}] a restored used proof stays rejected through the restore epoch steps`, async () => {
+    const w = await makeWorld({ storeFactory });
+    const snapshot = w.store.snapshot();
+    const beforeSignIn = sortedEntries(snapshot);
+    const r = await honestSignIn(w);
+    assert.ok(r.complete, 'the sign-in completes');
+    assert.equal(r.complete.status, 200);
+    assert.equal(
+      typeof r.complete.body.sessionId,
+      'string',
+      'a session is issued'
+    );
+
+    w.store.restoreFrom(snapshot);
+    assert.deepEqual(
+      sortedEntries(w.store.snapshot()),
+      beforeSignIn,
+      'restore brings back exactly the snapshotted records'
+    );
+
+    // The proof still verifies at the old epoch, so the exchange reaches
+    // the app's own redemption record, which refuses the replay.
+    const replayed = await w.app.handleExchange(
+      { proof: r.verified.proof, state: r.verified.state },
+      SERVICE_ORIGIN
+    );
+    assert.equal(replayed.status, 400);
+    assert.equal(
+      'error' in replayed.body ? replayed.body.error : undefined,
+      'replayed',
+      'the app redemption record refuses the used proof'
+    );
+
+    // A restore does not resume service: the epoch stays unreadable until
+    // the owner raises it, and the service stays closed.
+    w.epoch.available = false;
+    const closedTry = await r.browser.verify({
+      challengeId: r.created.challengeId,
+      code: r.code,
+      address: OWNER
+    });
+    assert.equal(
+      closedTry.status,
+      500,
+      'the service stays closed while the epoch is unreadable'
+    );
+
+    // The owner raises the epoch. The used proof is from the old epoch
+    // and fails proof verification.
+    w.epoch.value = 2;
+    w.epoch.available = true;
+    w.app.jwksCache = null;
+    const afterRaise = await w.app.handleExchange(
+      { proof: r.verified.proof, state: r.verified.state },
+      SERVICE_ORIGIN
+    );
+    assert.equal(afterRaise.status, 400);
+    assert.equal(
+      'error' in afterRaise.body ? afterRaise.body.error : undefined,
+      'bad_proof',
+      'the old-epoch proof fails verification'
+    );
+
+    const fresh = await honestSignIn(w);
+    assert.ok(fresh.complete, 'the fresh sign-in completes');
+    assert.equal(fresh.complete.status, 200);
+    assert.ok(
+      typeof fresh.complete.body.sessionId === 'string',
+      'the fresh sign-in issues a session id'
+    );
+    assert.notEqual(
+      fresh.complete.body.sessionId,
+      r.complete.body.sessionId,
+      'a distinct session is issued on the new epoch'
+    );
+  });
+
+  void test(`[${driver}] the lost-mailbox steps reject the old identity and admit the new`, async () => {
+    const w = await makeWorld({ storeFactory });
+    const r = await honestSignIn(w);
+    assert.ok(r.complete, 'the sign-in completes');
+    assert.equal(r.complete.status, 200);
+    const oldSession = r.complete.body.sessionId;
+    const oldSub = r.complete.body.sub;
+    assert.ok(w.app.sessionExists(oldSession), 'the old session exists');
+
+    // The owner moves to a new address: the allowlist swap uses the live
+    // Set (service.js:91; no settings route exists) and the epoch rises.
+    w.service.allowlist.add(STRANGER);
+    w.service.allowlist.delete(OWNER);
+    w.epoch.value = 2;
+    w.app.jwksCache = null;
+
+    const oldProof = await w.app.handleExchange(
+      { proof: r.verified.proof, state: r.verified.state },
+      SERVICE_ORIGIN
+    );
+    assert.equal(oldProof.status, 400);
+    assert.equal(
+      'error' in oldProof.body ? oldProof.body.error : undefined,
+      'bad_proof',
+      'the old identity proof is rejected'
+    );
+
+    w.app.dropSessionsBefore(2);
+    assert.ok(!w.app.sessionExists(oldSession), 'the old session is dropped');
+
+    const fresh = await honestSignIn(w, { address: STRANGER });
+    assert.ok(fresh.complete, 'the new identity sign-in completes');
+    assert.equal(fresh.complete.status, 200);
+    assert.ok(
+      typeof fresh.complete.body.sessionId === 'string',
+      'the new identity sign-in issues a session id'
+    );
+    assert.notEqual(fresh.complete.body.sub, oldSub, 'a distinct subject');
+    assert.notEqual(
+      fresh.complete.body.sessionId,
+      oldSession,
+      'a distinct session'
+    );
+
+    // The removed address gets the anti-enumeration answer but no mail.
+    const start = await w.app.startSignIn(null);
+    const browser = new BrowserSession(w);
+    const attemptsBefore = w.mailer.attempts.length;
+    const create = await browser.postChallenge({
+      address: OWNER,
+      stateId: start.stateId
+    });
+    assert.equal(create.status, 200, 'the anti-enumeration answer');
+    await readCreated(create);
+    await w.service.drain();
+    const toRemoved = w.mailer.attempts
+      .slice(attemptsBefore)
+      .filter((a) => a.to === OWNER);
+    assert.equal(
+      toRemoved.length,
+      0,
+      'the mock mail adapter records no send attempt to the removed address'
+    );
   });
 
   void test(`[${driver}] the key endpoint reports the current epoch and honors the cache window`, async () => {
