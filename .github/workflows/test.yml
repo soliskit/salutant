@@ -442,13 +442,13 @@ jobs:
           --testRunner command
           --commandRunner.command "exec node --test tests/*.test.js"
           --mutate "${{ matrix.mutate }}"
-          --reporters ${{ contains(matrix.shard, 'service') && 'clear-text,progress-append-only,dots,json' || 'clear-text' }} --coverageAnalysis off
+          --reporters ${{ contains(matrix.shard, 'service') && 'clear-text,progress-append-only,dots,json' || 'clear-text,json' }} --coverageAnalysis off
           --concurrency 1 --timeoutMS 20000
       # A zero-mutant shard reports NaN score and passes green
       # (salutant has no thresholds.break configured, so the score never
       # fails a run), so a drift-emptied range would pass silently.
-      # Fail closed on an empty report for ranged shards; whole-file shards
-      # keep their existing reporters and behavior unchanged.
+      # Fail closed on an empty report for ranged shards. Every shard's report
+      # is fully verified against the generated mutants in the last step.
       - name: Verify this ranged shard produced mutants
         if: contains(matrix.mutate, ':')
         shell: bash
@@ -460,4 +460,25 @@ jobs:
             if (total === 0) { console.error("Vacuous shard: mutation report lists 0 mutants"); process.exit(1); }
             console.log(`Report lists ${total} mutants.`);
           '
+      # The pinned instrumenter is not a repo dependency: it installs into a
+      # scratch prefix so the shard environment stays as before. The check
+      # compares the report this job produced against the mutants generated for
+      # the shard's range (missing report, missing or unexpected mutant, or a
+      # duplicate fails), verifies the planned ranges together generate exactly
+      # the whole file's mutants for ranged files, requires at least one mutant
+      # Killed by a failing test, and prints status counts with survivor
+      # identities to the job summary. No reports are uploaded.
+      - name: Verify the report against the generated mutants
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm i --prefix "$RUNNER_TEMP/instr" --no-audit --no-fund "@stryker-mutator/instrumenter@${STRYKER_VERSION}"
+          mutate="${{ matrix.mutate }}"
+          file="${mutate%%:*}"
+          args=("$file" reports/mutation/mutation.json)
+          if [[ "$mutate" == *:* ]]; then
+            args+=("${mutate#*:}")
+            for r in ${{ matrix.shards }}; do args+=("$r"); done
+          fi
+          INSTRUMENTER_PREFIX="$RUNNER_TEMP/instr" node scripts/verify-mutation-report.mjs "${args[@]}"
 
