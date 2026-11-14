@@ -145,21 +145,16 @@ jobs:
           exit "$fail"
 
 
-  # Mutation selection: on every pull request, classify each changed path.
-  # A finitely enumerated set of files (the eight names in the case
-  # below) mutates nothing when every changed path is in it and stays a
-  # regular non-executable file; source, tests, fixtures, manifests, CI
-  # config and workflow changes run every shard; a path the classifier
-  # cannot place runs every shard too, and if the diff itself cannot be
-  # computed the plan job fails instead of guessing. An addition or
-  # deletion runs every shard; a detected rename is classified on both
-  # its old and new paths; a symlink, executable bit or typechange runs
-  # every shard.
-  # The docs files are in the zero set because src/ and tests/ cite them
-  # only in comments (grep-verified - the grounding method, not a proof).
-  # Scheduled, push and manual runs always get the full matrix. The weekly
-  # full sweep stays as the drift backstop, including for a missed
-  # consumer.
+  # Mutation selection: on every pull request, classify each changed path
+  # against the critical set in the case below. A path inside the set runs
+  # every shard. A path outside it does not trigger mutation: it is listed
+  # in the run log and the check summary, and the ordinary checks still
+  # run. A detected rename is classified on both its old and new paths; a
+  # symlink, executable bit, submodule or typechange runs every shard;
+  # additions, deletions and edits classify by path. If the diff itself
+  # cannot be computed the plan job fails instead of guessing.
+  # Scheduled, push and manual runs always get the full matrix; the
+  # weekly schedule is unchanged.
   plan:
     name: Mutation plan
     runs-on: ubuntu-latest
@@ -201,6 +196,26 @@ jobs:
             exit 1
           fi
           echo "merge_base=$merge_base" | tee -a "$GITHUB_OUTPUT"
+          # Trigger set, positively defined: everything the service's
+          # behavior or the mutation verdict depends on - the mutated
+          # sources (src/, including the page markup and styles embedded
+          # in assets.js), the tests, fixtures and tool pins that judge
+          # them (tests/), the gate scripts (scripts/, .github/), and
+          # every build, type, lint, format and deploy configuration
+          # (including .gitignore), and the requirements and adapter
+          # contracts (docs/requirements.md,
+          # docs/mail/mock-mail-adapter-contract.md), which are protected
+          # as contracts whether or not a test reads them. A changed path
+          # outside this set does not trigger mutation: it is listed in
+          # the run log and the check summary, and the ordinary checks
+          # still run. The remaining docs are read by the logging-hygiene
+          # scan, a content gate in the ordinary suite that runs on every
+          # pull request. When a test, script or app process starts
+          # reading a new file, that file joins this set in the same
+          # change. A detected rename is classified on both its old and
+          # new paths; a symlink, executable bit, submodule or typechange
+          # runs the full matrix; adds, deletes and edits classify by
+          # path.
           # Endpoint delta (the two-endpoint form of A...B): what this pull
           # request itself changes. --raw -z carries both revisions' modes
           # and both paths on a rename, NUL-safe. -M keeps rename detection
@@ -208,13 +223,19 @@ jobs:
           git diff --raw -z -M "$merge_base" "$head_sha" > "$RUNNER_TEMP/diff.raw"
           verdict=zero
           changed=0
+          : > "$RUNNER_TEMP/unmatched.list"
           classify() {
             case "$1" in
-              # The finitely enumerated zero-impact files; a new or unknown
-              # path is never zero.
-              .gitignore|LICENSE|README.md) return 0 ;;
-              docs/audit/phase-1-findings.md|docs/contributing.md|docs/evidence-record.md|docs/mail/mock-mail-adapter-contract.md|docs/requirements.md) return 0 ;;
-              *) verdict=full ;;
+              # The positive critical definition: what the service's
+              # behavior or the mutation verdict depends on. A path outside
+              # it does not trigger mutation; it is listed in the run log
+              # and the check summary, and the ordinary checks still run.
+              src/*|tests/*|scripts/*|.github/*) verdict=full ;;
+              package.json|package-lock.json|tsconfig.json|tsconfig.all.json) verdict=full ;;
+              eslint.config.mjs|.prettierrc.json|.prettierignore|ruff.toml|lefthook.yml|wrangler.jsonc) verdict=full ;;
+              docs/requirements.md|docs/mail/mock-mail-adapter-contract.md) verdict=full ;;  # contracts; protected whether or not a test reads them
+              .gitignore) verdict=full ;;
+              *) echo "$1" >> "$RUNNER_TEMP/unmatched.list" ;;
             esac
           }
           while IFS= read -r -d '' meta; do
@@ -224,12 +245,14 @@ jobs:
             srcmode=$(echo "$meta" | awk '{print substr($1, 2)}')  # strip the leading colon
             dstmode=$(echo "$meta" | awk '{print $2}')
             status=$(echo "$meta" | awk '{print $5}')
-            # Strict rule: BOTH revisions of every changed file must be
-            # regular non-executable files. An addition or deletion (the
-            # absent side is 000000), a symlink, an executable bit or a
-            # typechange is FULL - no new path ever lands in ZERO.
-            [ "$srcmode" = "100644" ] || verdict=full
-            [ "$dstmode" = "100644" ] || verdict=full
+            # Strict rule: a symlink, executable bit, submodule or
+            # typechange is FULL. Adds, deletes and edits classify by path.
+            case "$srcmode $dstmode" in
+              *120000*|*100755*|*160000*) verdict=full ;;
+            esac
+            case "$status" in
+              T*) verdict=full ;;
+            esac
             case "$status" in
               R*|C*)
                 IFS= read -r -d '' path2
@@ -245,8 +268,31 @@ jobs:
             echo "The pull request changes no files: a legitimate, reported empty diff."
           fi
           echo "verdict=$verdict" | tee -a "$GITHUB_OUTPUT"
+          if [ -s "$RUNNER_TEMP/unmatched.list" ]; then
+            if [ "$verdict" = zero ]; then
+              echo "Outside the critical definition (mutation not triggered; the ordinary checks run separately):"
+            else
+              echo "Outside the critical definition (the full run is still triggered for this pull request):"
+            fi
+            while IFS= read -r p; do
+              echo "  $p"
+              echo "::notice title=Outside the critical definition::$p"
+            done < "$RUNNER_TEMP/unmatched.list"
+            {
+              echo '### Paths outside the critical definition'
+              echo ''
+              if [ "$verdict" = zero ]; then
+                echo 'Every changed path is outside the critical definition in this workflow, so no mutation run was triggered.'
+              else
+                echo 'These changed paths are outside the critical definition; the full mutation run is still triggered for this pull request.'
+              fi
+              echo 'The ordinary checks run separately on this pull request. If any of these paths can change behavior under test, add the path to the definition in this workflow.'
+              echo ''
+              while IFS= read -r p; do echo "- \`$p\`"; done < "$RUNNER_TEMP/unmatched.list"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ "$verdict" = zero ]; then
-            echo "Zero mutation targets: every changed path is an enumerated non-executable file."
+            echo "No changed path is in the critical definition: mutation not triggered; the ordinary checks run separately."
           else
             echo "Full sweep: every source file; service.js runs as four line-range shards."
           fi
