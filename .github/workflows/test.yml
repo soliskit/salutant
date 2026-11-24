@@ -84,6 +84,68 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm i --no-save "playwright@${PLAYWRIGHT_VERSION}"
+      - name: Exclude the observed slow regional Ubuntu mirror
+        shell: bash
+        run: |
+          sudo python3 - <<'PYTHON'
+          from pathlib import Path
+          import os
+          import re
+          import stat
+
+          path = Path('/etc/apt/apt-mirrors.txt')
+          sources = Path('/etc/apt/sources.list.d/ubuntu.sources')
+          for file in (path, sources):
+              if not stat.S_ISREG(file.lstat().st_mode):
+                  raise SystemExit('Expected regular non-symlink APT files; no changes made')
+          source_text = sources.read_text()
+          uri_lines = re.findall(r'^URIs:[ \t]*(.+)$', source_text, re.MULTILINE)
+          if not uri_lines or any(
+              line.split() != ['mirror+file:/etc/apt/apt-mirrors.txt']
+              for line in uri_lines
+          ):
+              raise SystemExit('Unexpected APT source reference; no changes made')
+          target = b'http://us-east-2.ec2.archive.ubuntu.com/ubuntu/'
+          allowed = {
+              target: 1,
+              b'http://azure.archive.ubuntu.com/ubuntu/': 1,
+              b'https://archive.ubuntu.com/ubuntu/': 2,
+              b'https://security.ubuntu.com/ubuntu/': 3,
+          }
+          with path.open('r+b') as file:
+              before = os.fstat(file.fileno())
+              if not stat.S_ISREG(before.st_mode) or before.st_ino != path.lstat().st_ino:
+                  raise SystemExit('APT mirror file changed; no changes made')
+              lines = file.read().splitlines(keepends=True)
+              entries = {}
+              for index, line in enumerate(lines):
+                  if not line.strip() or line.lstrip().startswith(b'#'):
+                      continue
+                  match = re.fullmatch(rb'(\S+)\tpriority:([123])[ \t]*(?:\r?\n)?', line)
+                  if match is None:
+                      raise SystemExit('Unexpected mirror syntax; no changes made')
+                  uri, priority = match.group(1), int(match.group(2))
+                  if uri not in allowed or allowed[uri] != priority or uri in entries:
+                      raise SystemExit('Unexpected or duplicate mirror entry; no changes made')
+                  entries[uri] = index
+              if not all(uri in entries for uri in (
+                  b'https://archive.ubuntu.com/ubuntu/',
+                  b'https://security.ubuntu.com/ubuntu/',
+              )):
+                  raise SystemExit('Required official fallbacks missing; no changes made')
+              if target not in entries:
+                  print('Observed AWS mirror absent; valid mirror file left unchanged')
+              else:
+                  updated = b''.join(line for index, line in enumerate(lines) if index != entries[target])
+                  file.seek(0)
+                  file.write(updated)
+                  file.truncate()
+                  print('Excluded exact observed AWS mirror for this job only')
+              print('Configured mirror list, not proof of selected fetch host:')
+              for uri in entries:
+                  if uri != target:
+                      print(uri.decode('ascii'), 'priority=' + str(allowed[uri]))
+          PYTHON
       - run: npx playwright install --with-deps webkit
       - name: Check Playwright package version
         run: node -e "process.exit(require('playwright/package.json').version==='1.64.1'?0:1)"
